@@ -38,6 +38,7 @@ ROOT = Path(__file__).parent
 URL = "https://www.ponsfamily.com/launchpad/create"
 IMAGE = "assets/flycoin_square.png"
 PAIR = os.environ.get("FLY_RH_PAIR", "GOOGL")   # default on the page is ETH
+X_HANDLE = os.environ.get("FLY_RH_X", "elonmusk")   # x.com/<handle> on the coin
 TAX_PCT = int(os.environ.get("FLY_RH_TAX", "2"))
 
 app = FastAPI()
@@ -215,35 +216,61 @@ async def dismiss_banners(page):
         pass
 
 
+def _is_dark(css):
+    """True if that CSS colour is a dark ground. Rec.709 luma, mid threshold."""
+    import re
+    n = re.findall("[0-9.]+", css or "")
+    if len(n) < 3:
+        return False
+    r, g, b = (float(x) for x in n[:3])
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 110
+
+
+BG_JS = "() => getComputedStyle(document.body).backgroundColor"
+
+
 async def go_dark(page, send=None):
     """
-    Put the launchpad in dark mode.
+    Put the launchpad in dark mode - and leave it there.
 
-    Two reasons. It looks wrong on camera next to a dark interface - but more
-    to the point, the fly's retina is a luminance map, and every bit of tuning
-    it has was done against dark UI. A white page inverts the contrast
+    Two reasons for dark. It looks wrong on camera next to a dark interface,
+    but more to the point the fly's retina is a luminance map and every bit of
+    tuning it has was done against dark UI. A white page inverts the contrast
     relationships it learned.
+
+    The site's control is a *toggle*, so this used to be a flip rather than a
+    set: it turned /create dark, then the coin page - which the site already
+    remembered as dark - got flipped back to light for the closing shot. Now it
+    measures first, and flips only if it needs to.
     """
-    try:
-        was = await page.evaluate(
-            """() => getComputedStyle(document.body).backgroundColor""")
+    async def flip():
         clicked = await page.evaluate(
             """() => { const b=[...document.querySelectorAll('button,[role=button]')]
                  .find(x => /theme|dark|light|appearance/i.test(
                    (x.getAttribute('aria-label')||'') + (x.title||'')));
                if (b) { b.click(); return true; } return false; }""")
         if not clicked:
-            # next-themes and friends keep it here; set it and reload
+            # next-themes and friends keep it here; set it directly
             await page.evaluate("""() => {
                 try { localStorage.setItem('theme','dark'); } catch(e){}
                 document.documentElement.classList.add('dark');
                 document.documentElement.setAttribute('data-theme','dark'); }""")
         await page.wait_for_timeout(1200)
-        now = await page.evaluate(
-            """() => getComputedStyle(document.body).backgroundColor""")
+
+    try:
+        was = await page.evaluate(BG_JS)
+        if _is_dark(was):
+            if send:
+                await send({"type": "log", "msg": f"theme already dark ({was})"})
+            return True
+        await flip()
+        now = await page.evaluate(BG_JS)
+        if not _is_dark(now):
+            await flip()                      # toggle went the wrong way
+            now = await page.evaluate(BG_JS)
         if send:
             await send({"type": "log", "msg": f"theme {was} -> {now}"})
-        return now != was
+        return _is_dark(now)
     except Exception as e:
         if send:
             await send({"type": "log", "msg": f"theme switch failed: {str(e)[:90]}"})
@@ -897,9 +924,14 @@ async def find_token(receipt, loop_, rpc, send=None):
 
 
 async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
+    # placeholder is the only stable handle on these - no name, no id. The X
+    # field carries aria-label "X profile handle" and sits behind an x.com/
+    # prefix; it is optional on the form, so a missing one must not stop a run.
     SEL = {"name": 'input[placeholder="Token name"]',
            "ticker": 'input[placeholder="symbol"]',
-           "desc": 'textarea[placeholder="A short description of the token"]'}
+           "desc": 'textarea[placeholder="A short description of the token"]',
+           "x": 'input[placeholder="handle"]'}
+    OPTIONAL = {"x"}
     by_fly = sorted(filled)
     by_rig = []
     before = {}
@@ -907,12 +939,13 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
         try:
             before[k] = await page.input_value(sel, timeout=3000)
         except Exception:
-            before[k] = "<unreadable>"
+            before[k] = "" if k in OPTIONAL else "<unreadable>"
     await send({"type": "log", "msg": f"field values before completion: {before}"})
 
     for k, sel in SEL.items():
         cur = before.get(k, "")
-        if cur == "<unreadable>" or cur.strip() == str(coin[k]).strip():
+        want = str(coin.get(k, "") or "")
+        if not want or cur == "<unreadable>" or cur.strip() == want.strip():
             continue
         try:
             el = page.locator(sel).first
@@ -927,11 +960,18 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Delete")
             await asyncio.sleep(0.35)
-            await page.keyboard.type(str(coin[k]), delay=105)
+            await page.keyboard.type(want, delay=105)
             await asyncio.sleep(0.9)
             await shot(f"typed {k}")
         except Exception:
-            await page.fill(sel, str(coin[k]))
+            try:
+                await page.fill(sel, want, timeout=4000)
+            except Exception:
+                if k in OPTIONAL:
+                    await send({"type": "log",
+                                "msg": f"optional field '{k}' is not on the form"})
+                    continue
+                raise
         by_rig.append(k)
 
     after = {}
@@ -939,7 +979,7 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
         try:
             after[k] = await page.input_value(sel, timeout=3000)
         except Exception:
-            after[k] = "<unreadable>"
+            after[k] = "<missing>" if k in OPTIONAL else "<unreadable>"
     await send({"type": "log", "msg": f"FINAL field values: {after}"})
     await send({"type": "fields", "by_fly": by_fly, "by_rig": by_rig})
     await shot("form complete")
@@ -1105,7 +1145,8 @@ async def run(ws: WebSocket):
             STATE["running"] = True
             coin = {"name": msg.get("name") or "test",
                     "ticker": msg.get("ticker") or "test",
-                    "desc": msg.get("desc") or "launched by a fruit fly connectome"}
+                    "desc": msg.get("desc") or "launched by a fruit fly connectome",
+                    "x": msg.get("x") or X_HANDLE}
             try:
                 await run_episode(ws, coin, int(msg.get("steps", 18)),
                                   int(msg.get("seed", 350)),

@@ -27,8 +27,9 @@ the descending neurons a fly actually walks with:
 | **DNp09** | stopping | the click |
 
 Then it connects the wallet, accepts the launchpad's terms, uploads the token
-image, fills the form, picks the paired asset out of a 57-item list of
-tokenised equities, opens **Advanced**, sets the creator tax, and launches.
+image, fills the form — name, ticker, description and the `x.com/` handle —
+picks the paired asset out of a 57-item list of tokenised equities, opens
+**Advanced**, sets the creator tax, and launches.
 
 ## Why Robinhood Chain is the better half of this project
 
@@ -127,6 +128,29 @@ address out of the receipt logs (the contract that answers `name()` and
 `symbol()`), opens that token's page, accepts the terms gate that navigating
 re-arms, and scrolls down it. The last thing on screen is the coin.
 
+### The socials field
+
+The X handle is `input[placeholder="handle"]`, `aria-label="X profile handle"`,
+behind an `x.com/` prefix; Telegram sits next to it as `community`. Neither has
+a name or an id, so the placeholder is the only stable handle on them. It is
+typed like every other field and set by `FLY_RH_X`.
+
+It is also optional on the form, and the rig treats it that way — a missing
+field logs and the run continues rather than dying on a selector.
+
+> The default is `elonmusk`, which is a **test value**. It has only ever been
+> typed in dry runs. Putting a real person's handle on a live token presents
+> that token as theirs, which is impersonation and gets both the token and the
+> creator wallet flagged. Set `FLY_RH_X` to something you own before any live
+> launch, or clear it.
+
+### Dark mode was a flip, not a set
+
+`go_dark()` clicks the site's theme *toggle*. That turned `/create` dark, and
+then the coin page — which the site already remembered as dark — got flipped
+back to **light** for the closing shot. It now measures the body background's
+luma first and only flips when it has to, so the run both starts and ends dark.
+
 ### The bug that made the first attempt look like a success
 
 The first live run reported a signed transaction and then nothing: the balance
@@ -193,7 +217,7 @@ signed edges. If your numbers differ from mine, one of us has a bug.
   the fly — the fly's contribution ends at the form and the launch button.
 - **The fly does not choose the paired asset.** It cannot read `GOOGL` at 892
   columns; picking a row out of a 57-item list is the rig following
-  `FLY_RH_PAIR`. The same goes for the creator tax.
+  `FLY_RH_PAIR`. The same goes for the creator tax and the X handle.
 - **The token above is a test.** `test (TEST)`, launched to prove the path
   end-to-end. It is not a project and nobody should buy it.
 
