@@ -370,6 +370,43 @@ Two flags gate everything, both in `.env`, both off by default:
 - `FLY_RH_LIVE=1` — required before any transaction is signed. Funding the
   wallet does not, on its own, arm anything.
 
+## Fork it
+
+```bash
+git clone https://github.com/fruitflydev/flycoinrh
+cd flycoinrh
+pip install -r requirements.txt
+python -m playwright install chromium
+
+# the connectome itself - 1.1 GB, CC-BY, no account and no key
+# (URLs under "Check it yourself" below), into data/
+py build_graph.py            # -> build/graph.npz, 165,122 neurons
+
+cp .env.example .env         # then set FLY_ALLOW_BROWSER=1
+py roam.py                   # http://localhost:4660
+```
+
+MIT for the code. The connectome is **not ours to license** and stays CC-BY
+wherever it goes — keep the attribution, it is the whole reason any of this is
+real.
+
+Things worth pointing it at that we have not:
+
+- **A different readout.** The cursor comes out of DNa02, DNa01, MDN and DNp09
+  because those are what a fly walks with. Nothing says the output has to be a
+  cursor.
+- **The olfactory channel.** 2,635 ORNs across 53 receptor types are sitting
+  there unused. cVA through ORN_DA1 drives pC1 at 222 Hz untrained, so the
+  pathway works — it just has nothing plugged into it.
+- **A real reward.** Ours is novelty, which is invented. Anything measurable
+  and honest would be better.
+- **Somewhere else entirely.** A game, a robot, a microscope. The brain does
+  not know it is on a launchpad.
+
+If you build something with it, open an issue — we would rather see it than
+not.
+
+
 ## Credits
 
 Connectome data © HHMI Janelia FlyEM, the Cambridge Connectomics Group and

@@ -1,0 +1,21 @@
+# What the fly needs. Versions are the ones it has actually been run against.
+#
+# After installing these, one more step:  python -m playwright install chromium
+#
+# Then fetch the connectome (the README says where, ~1.1 GB, CC-BY, no account
+# needed) and run:  py build_graph.py
+
+numpy==2.4.2
+scipy==1.17.1
+pandas==3.0.1
+pyarrow==23.0.1          # pandas needs it to read the .feather annotations
+requests==2.32.5
+Pillow==12.2.0           # decodes the screenshots the retina samples
+
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+
+playwright==1.62.0       # the real browser the fly drives
+
+eth-account==0.13.7      # signs on Robinhood Chain; never sends a key to a page
+eth-utils==5.4.0
