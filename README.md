@@ -38,8 +38,48 @@ site entirely and mint through a signed transaction.
 
 The pons launchpad **accepts the injected EIP-1193 wallet directly**. It
 auto-connects with no modal, `eth_chainId` returns `0x1237`, `personal_sign`
-round-trips. So here the site's own button is the real path: the fly's click
-would genuinely produce the transaction.
+round-trips. So here the site's own button is the real path — and on
+2026-09-10 the fly's click went all the way through it to a mined block.
+
+## It launched
+
+The fly read the form through its retina, typed into it, opened **Advanced**,
+set the creator tax, clicked **Launch token**, then clicked **Confirm** in the
+launchpad's own dialog. That click produced exactly one `eth_sendTransaction`,
+which was signed in Python and broadcast:
+
+| | |
+|---|---|
+| token | **test (TEST)** |
+| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` |
+| transaction | `0x1b3cda17f6456c9a4a67989770be97812e6ca67b3f1f1fb85d2ff04645484932` |
+| block | 59557979, status **SUCCESS**, 3,621,799 gas at 0.13 gwei |
+| creator | `0x739Ccc9dd8Ed6412F00782927dbd087c4e72bFc3` — the fly's wallet |
+| creator fee | 2% (trade fee 3.00%, 2.00% to the creator) |
+| cost | 0.000973 ETH — 0.0005 launch fee plus 0.000473 gas |
+
+- https://www.ponsfamily.com/launchpad/0xd00d0419651c893e8c04edf5e0e074e950c370d3
+- https://robinhoodchain.blockscout.com/tx/0x1b3cda17f6456c9a4a67989770be97812e6ca67b3f1f1fb85d2ff04645484932
+
+Read the receipt yourself rather than taking the table's word for it:
+
+```bash
+curl -s https://rpc.mainnet.chain.robinhood.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0x1b3cda17f6456c9a4a67989770be97812e6ca67b3f1f1fb85d2ff04645484932"]}'
+```
+
+`from` is the fly's wallet, `status` is `0x1`, and among the logs is a fresh
+ERC-20 at `0xd00d…70d3` whose `name()` returns `test` and `symbol()` returns
+`TEST`.
+
+### The bug that made the first attempt look like a success
+
+The first live run reported a signed transaction and then nothing: the balance
+never moved. `hexbytes >= 1.0` changed `.hex()` to return the raw hex *without*
+the `0x` prefix, so `eth_sendRawTransaction` rejected the payload — and because
+the failure came back through `page.expose_function`, the launchpad swallowed
+it and the page just sat there. `send_transaction` now re-prefixes, logs a
+rejection loudly, and polls for the receipt so a silent failure is not
+possible.
 
 ## Check it yourself
 
@@ -91,10 +131,12 @@ signed edges. If your numbers differ from mine, one of us has a bug.
 - **The idle animation is decoration.** During a run every dot is a neuron at a
   measured soma coordinate. While idle it is a fly-shaped scatter, and the panel
   label changes to say so.
-- **Nothing has launched yet.** The wallet is unfunded, so the button reads
-  `Insufficient ETH` and every run so far ends there with zero transaction
-  requests. The launchpad's own transaction — its shape, and whether it takes
-  one signature or several — cannot be seen until the button enables.
+- **The launch is one signature, and the rig arms it.** The launchpad asks for
+  a single `eth_sendTransaction`; there is no second approval and no separate
+  ERC-20 allowance. But the rig is what presses **Confirm** in the dialog, not
+  the fly — the fly's contribution ends at the form and the launch button.
+- **The token above is a test.** `test (TEST)`, launched to prove the path
+  end-to-end. It is not a project and nobody should buy it.
 
 ## Running it
 
@@ -104,6 +146,9 @@ py rhdryrun.py                  # prove the signing path, spend nothing
 py rhlive.py                    # http://localhost:4651, press START
 py record.py --port 4651        # record the run to build/recordings/
 ```
+
+A launch costs about **0.001 ETH** all in, so ~0.002 ETH in the wallet is
+enough for a first one with room for the gas estimate to be wrong.
 
 Two flags gate everything, both in `.env`, both off by default:
 

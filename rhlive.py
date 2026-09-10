@@ -430,7 +430,7 @@ async def run_episode(ws, coin, steps, seed, headful):
                 f"filled={m['filled']} {m.get('note','')}")
         elif t == "done":
             say(f"DONE {m.get('outcome')} :: {str(m.get('msg') or '')[:250]}")
-        elif t != "frame":
+        elif t not in ("frame", "cursor"):
             say(f"{t.upper()}: {str(m.get('msg') or m)[:250]}")
 
     async def send(m):
@@ -482,8 +482,24 @@ async def run_episode(ws, coin, steps, seed, headful):
             if not live_flag:
                 raise RuntimeError("FLY_RH_LIVE=0 - transaction refused")
             from rhprovider import send_transaction
-            return send_transaction(acct, tx, rpc, CHAIN_ID,
-                                    say=lambda m: say("  [tx] " + m))
+            loop = asyncio.get_running_loop()
+
+            def note(m):
+                say("  [tx] " + m)
+                asyncio.run_coroutine_threadsafe(
+                    send({"type": "log", "msg": m}), loop)
+
+            try:
+                # in a thread: the receipt poll must not stall the frame
+                # streamer, or the video freezes on the last screenshot
+                return await loop.run_in_executor(
+                    None,
+                    lambda: send_transaction(acct, tx, rpc, CHAIN_ID, say=note))
+            except Exception as exc:
+                await send({"type": "log",
+                            "msg": f"TRANSACTION FAILED: {str(exc)[:200]}"})
+                say(f"  [tx] FAILED {str(exc)[:300]}")
+                raise
 
         await attach(page, acct, rpc, CHAIN_ID, allow_send=live_flag,
                      on_send=on_send, log=lambda m: say("  [wallet] " + m))
@@ -697,7 +713,7 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
     await shot("form complete")
     await asyncio.sleep(1.4)
 
-    await set_creator_tax(page, 3, send, shot)
+    await set_creator_tax(page, 2, send, shot)
     await asyncio.sleep(1.2)
 
     await scroll_to_el(page,
@@ -732,11 +748,63 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
 
     await send({"type": "log", "msg": "FLY_RH_LIVE=1 - pressing launch"})
     await page.mouse.click(c["x"] + c["w"] // 2, c["y"] + c["h"] // 2)
+    await page.wait_for_timeout(2500)
+    try:
+        await page.screenshot(path=str(ROOT / "build" / "rh_after_launch.png"))
+    except Exception:
+        pass
+
+    # The press produced no signature request at all last time, and the log
+    # stopped dead. Report what the page is actually showing rather than
+    # silently polling into the void.
+    state = await page.evaluate(
+        """() => {
+           const t = document.body.innerText;
+           const line = (re) => { const m = t.match(re); return m ? m[0] : ''; };
+           const bs = [...document.querySelectorAll('button')]
+             .map(b => ({t:(b.textContent||'').trim().slice(0,40), d:b.disabled}))
+             .filter(o => o.t);
+           return {
+             url: location.href,
+             err: line(/(error|failed|rejected|denied|insufficient|invalid|missing).{0,90}/i),
+             confirm: /confirm|review|approve|sign|are you sure/i.test(t),
+             buttons: bs.slice(0, 14) }; }""")
+    await send({"type": "log", "msg": f"after press: {json.dumps(state)[:400]}"})
+
+    # if a confirmation step appeared, take it
+    if state.get("confirm"):
+        for label in ("Confirm", "Launch", "Approve", "Continue", "Sign"):
+            try:
+                btn = page.get_by_role("button", name=label).first
+                box = await btn.bounding_box()
+                if not box:
+                    continue
+                await send({"type": "log", "msg": f"confirmation step: '{label}'"})
+                await glide(page, box["x"] + box["width"] / 2,
+                            box["y"] + box["height"] / 2, send, hold=0.6)
+                await page.mouse.click(box["x"] + box["width"] / 2,
+                                       box["y"] + box["height"] / 2)
+                await page.wait_for_timeout(2500)
+                break
+            except Exception:
+                continue
+
     for i in range(30):
         await page.wait_for_timeout(2000)
         await shot("waiting for the launch")
         if sent["n"]:
             break
+        if i % 4 == 0:
+            msg = await page.evaluate(
+                """() => { const m = document.body.innerText.match(
+                     /(error|failed|rejected|denied|insufficient|pending|confirming|success).{0,80}/i);
+                   return m ? m[0] : ''; }""")
+            if msg:
+                await send({"type": "log", "msg": f"page: {msg[:120]}"})
+    try:
+        await page.screenshot(path=str(ROOT / "build" / "rh_end.png"))
+    except Exception:
+        pass
     await send({"type": "done",
                 "outcome": "minted" if sent["n"] else "clicked",
                 "result": page.url,

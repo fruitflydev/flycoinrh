@@ -177,6 +177,8 @@ async def attach(page, acct, rpc, chain_id, allow_send=False, on_send=None,
 
 def send_transaction(acct, tx, rpc, chain_id, say=None):
     """Fill, sign and broadcast a transaction the page asked for."""
+    import time
+
     import requests
 
     def rpc_call(method, prms):
@@ -224,7 +226,29 @@ def send_transaction(acct, tx, rpc, chain_id, say=None):
         say(f"signing tx to {str(body['to'])[:12]}... "
             f"value {body['value']/1e18:.6f} ETH gas {body['gas']}")
     signed = acct.sign_transaction(body)
-    h = rpc_call("eth_sendRawTransaction", [signed.raw_transaction.hex()])
+    raw = signed.raw_transaction.hex()
+    if not raw.startswith("0x"):
+        raw = "0x" + raw          # hexbytes >= 1.0 drops the prefix
+    try:
+        h = rpc_call("eth_sendRawTransaction", [raw])
+    except Exception as exc:
+        if say:
+            say(f"BROADCAST REJECTED: {exc}")
+        raise
     if say:
         say(f"broadcast {h}")
+        for _ in range(30):
+            time.sleep(2)
+            try:
+                rec = rpc_call("eth_getTransactionReceipt", [h])
+            except Exception:
+                rec = None
+            if rec:
+                ok = as_int(rec.get("status"), 0) == 1
+                say(f"receipt block {as_int(rec.get('blockNumber'))} "
+                    f"status {'SUCCESS' if ok else 'REVERTED'} "
+                    f"gas used {as_int(rec.get('gasUsed'))}")
+                break
+        else:
+            say("no receipt after 60s - still pending")
     return h
