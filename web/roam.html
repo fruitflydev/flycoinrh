@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FLYBRAIN — roaming</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#06070a; --plate:#0b0d12; --line:#1a1f28;
+  --ink:#e2eaf1; --ink-dim:#9dabb7; --ink-faint:#75828d;
+  --cyan:#7deaff; --amber:#f0bc5f; --live:#6fdca6; --red:#ff8b7a;
+  --serif:"Instrument Serif",Georgia,serif;
+  --sans:"Archivo",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.6}
+.bar{display:flex;align-items:center;gap:18px;padding:14px 20px;
+  border-bottom:1px solid var(--line);background:var(--plate);flex-wrap:wrap}
+.bar h1{font-family:var(--serif);font-weight:400;font-size:24px;margin:0}
+.bar .sub{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-faint)}
+button{font-family:var(--mono);font-size:14px;font-weight:500;cursor:pointer;
+  min-height:42px;padding:0 20px;border-radius:8px;
+  background:#12222a;color:var(--cyan);border:1px solid #24505e}
+button:hover{background:#173139;border-color:var(--cyan)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 340px;gap:1px;background:var(--line)}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.pane{background:var(--ground);padding:0}
+.viewwrap{position:relative;background:#000;aspect-ratio:16/10;overflow:hidden}
+#view{width:100%;height:100%;object-fit:contain;display:block}
+#cur{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.side{padding:18px 20px;display:grid;gap:20px;align-content:start;
+  max-height:calc(100vh - 64px);overflow:auto}
+.k{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:500}
+.cells{display:grid;gap:8px;margin-top:10px}
+.cell{display:grid;grid-template-columns:78px 1fr 54px;gap:10px;align-items:center;
+  font-family:var(--mono);font-size:12.5px}
+.cell .nm{color:var(--cyan)}
+.cell .bar2{height:7px;background:#12171d;border-radius:4px;overflow:hidden}
+.cell .fill{height:100%;background:var(--cyan);width:0%}
+.cell .hz{text-align:right;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.stat .n{font-family:var(--serif);font-size:26px;line-height:1.1}
+.stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.where{font-family:var(--mono);font-size:12px;color:var(--ink-dim);
+  word-break:break-all;margin-top:8px}
+.trail{margin-top:10px;display:grid;gap:7px;font-size:13px}
+.trail a{color:var(--ink);text-decoration:none;border-bottom:1px solid #22303a;
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trail a:hover{border-bottom-color:var(--cyan)}
+#log{font-family:var(--mono);font-size:12px;color:var(--ink-dim);
+  border-top:1px solid var(--line);padding:12px 20px;height:132px;overflow:auto}
+#log div{padding:1px 0}
+#log .veto{color:var(--amber)}
+#log .blocked{color:var(--red)}
+.note{font-size:13px;color:var(--ink-faint);max-width:60ch;padding:0 20px 18px}
+.pill{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);
+  font-size:11.5px;border:1px solid var(--line);border-radius:999px;
+  padding:5px 12px;color:var(--ink-dim)}
+.pip{width:6px;height:6px;border-radius:50%;background:var(--ink-faint)}
+.pip.on{background:var(--live)}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>FLYBRAIN</h1>
+  <span class="sub">roaming</span>
+  <span class="pill"><span class="pip" id="pip"></span><span id="pip-t">idle</span></span>
+  <span style="flex:1"></span>
+  <span class="sub" id="since">&nbsp;</span>
+</div>
+
+<div class="grid">
+  <div class="pane">
+    <div class="viewwrap">
+      <img id="view" alt="what the fly is looking at">
+      <canvas id="cur"></canvas>
+    </div>
+    <div id="log"></div>
+    <p class="note">No wallet, no keyboard, no downloads. A click is checked
+      before it lands and vetoed if it looks like it commits something. Blocked
+      pages bounce straight back.</p>
+  </div>
+
+  <div class="pane side">
+    <div>
+      <div class="k">Descending neurons</div>
+      <div class="cells" id="cells"></div>
+    </div>
+    <div>
+      <div class="k">This run</div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="s-hops">0</div><div class="l">pages</div></div>
+        <div class="stat"><div class="n" id="s-clicks">0</div><div class="l">clicks</div></div>
+        <div class="stat"><div class="n" id="s-steps">0</div><div class="l">brain steps</div></div>
+        <div class="stat"><div class="n" id="s-vetoes">0</div><div class="l">vetoed</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="k">Where it is</div>
+      <div class="where" id="url">—</div>
+    </div>
+    <div>
+      <div class="k">Where it has been</div>
+      <div class="trail" id="trail"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const CELLS = [
+  ['steer_L','DNa02 L'], ['steer_R','DNa02 R'],
+  ['fwd_L','DNa01 L'],   ['fwd_R','DNa01 R'],
+  ['back','MDN'],        ['stop','DNp09'],
+];
+const rows = {};
+for (const [key, name] of CELLS){
+  const el = document.createElement('div');
+  el.className = 'cell';
+  el.innerHTML = '<span class="nm"></span><span class="bar2"><span class="fill"></span></span><span class="hz">0</span>';
+  el.querySelector('.nm').textContent = name;
+  $('cells').appendChild(el);
+  rows[key] = {fill: el.querySelector('.fill'), hz: el.querySelector('.hz')};
+}
+
+const cc = $('cur'), cg = cc.getContext('2d');
+let cur = {x:0.5, y:0.5}, target = {x:0.5, y:0.5}, wing = 0;
+
+function sizeCanvas(){
+  const r = cc.getBoundingClientRect(), d = Math.min(devicePixelRatio||1,2);
+  cc.width = Math.max(2, r.width*d); cc.height = Math.max(2, r.height*d);
+}
+addEventListener('resize', sizeCanvas); sizeCanvas();
+
+/* The pointer is a fly. The position is the real output of DNa02, DNa01, MDN
+   and DNp09 - only the glyph is decoration. */
+function drawCursor(){
+  const W = cc.width, H = cc.height;
+  cg.clearRect(0,0,W,H);
+  cur.x += (target.x - cur.x) * 0.25;
+  cur.y += (target.y - cur.y) * 0.25;
+  const x = cur.x*W, y = cur.y*H, s = Math.min(W,H)*0.026;
+  wing += 0.55;
+  cg.save(); cg.translate(x, y);
+  cg.fillStyle = 'rgba(125,234,255,0.92)';
+  cg.beginPath(); cg.ellipse(0, 0, s*0.62, s*0.42, 0, 0, 7); cg.fill();
+  cg.beginPath(); cg.ellipse(s*0.62, -s*0.06, s*0.30, s*0.28, 0, 0, 7); cg.fill();
+  cg.fillStyle = 'rgba(125,234,255,0.34)';
+  for (const sgn of [1,-1]){
+    cg.beginPath();
+    cg.ellipse(-s*0.22, sgn*(s*0.42 + Math.abs(Math.sin(wing))*s*0.16),
+               s*0.72, s*0.20, sgn*0.5, 0, 7);
+    cg.fill();
+  }
+  cg.restore();
+  requestAnimationFrame(drawCursor);
+}
+drawCursor();
+
+function log(msg, cls){
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  $('log').appendChild(d);
+  $('log').scrollTop = $('log').scrollHeight;
+  while ($('log').children.length > 240) $('log').firstChild.remove();
+}
+
+let ws;
+function connect(){
+  ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws');
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'frame'){
+      $('view').src = 'data:image/jpeg;base64,' + m.jpg;
+      target = {x: m.cx/1280, y: m.cy/800};
+      for (const [k, r] of Object.entries(rows)){
+        const v = m.hz[k] || 0;
+        r.hz.textContent = v.toFixed(0);
+        r.fill.style.width = Math.min(100, v/4.5) + '%';
+      }
+      for (const k of ['steps','clicks','vetoes','hops'])
+        $('s-'+k).textContent = (m.stats[k]||0).toLocaleString();
+      $('url').textContent = m.url || '—';
+    }
+    else if (m.type === 'place'){
+      const a = document.createElement('a');
+      a.href = m.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = m.title || m.url;
+      $('trail').prepend(a);
+      while ($('trail').children.length > 14) $('trail').lastChild.remove();
+    }
+    else if (m.type === 'log'){
+      const s = String(m.msg);
+      log(s, /did not click|veto/.test(s) ? 'veto'
+            : /blocked/.test(s) ? 'blocked' : '');
+    }
+    else if (m.type === 'done'){
+      $('pip').classList.remove('on');
+      $('pip-t').textContent = 'between lives';
+      if (m.msg) log(m.msg, 'blocked');
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+connect();
+
+/* No controls. The fly is already roaming; this page only watches. */
+setInterval(async () => {
+  try {
+    const d = await (await fetch('/state', {cache:'no-store'})).json();
+    const fresh = d.updated && (Date.now()/1000 - d.updated) < 20;
+    $('pip').classList.toggle('on', !!fresh);
+    $('pip-t').textContent = fresh ? 'roaming' : 'between lives';
+    if (d.uptime_s) {
+      const m = Math.floor(d.uptime_s/60), h = Math.floor(m/60);
+      $('since').textContent = h ? `${h}h ${m%60}m in this life`
+                                 : `${m}m ${d.uptime_s%60}s in this life`;
+    }
+  } catch (e) {}
+}, 4000);
+</script>
+</body>
+</html>

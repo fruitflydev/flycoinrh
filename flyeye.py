@@ -116,7 +116,14 @@ class FlyPilot:
             "click": dn("MN9"),            # proboscis extension = commit
         }
 
-    def step(self, img, cx, cy, gains=None, seed=0):
+    def step(self, img, cx, cy, gains=None, seed=0, detail=False):
+        """
+        One control step.
+
+        detail=True adds a fifth return value: what the rest of the brain was
+        doing while the descending neurons decided. Existing callers unpack
+        four and are unaffected.
+        """
         drive = self.eye.look(img, cx, cy)
         r = self.fb.run(drive, steps=self.sim_steps, gains=gains,
                         record=self.motor, seed=seed)
@@ -139,4 +146,23 @@ class FlyPilot:
         # genuinely visually driven (167-417 Hz), so arriving and halting on a
         # target is the click.
         click = hz["stop"] >= self.click_hz and speed < 0.25
-        return dx, dy, click, hz
+        if not detail:
+            return dx, dy, click, hz
+
+        fired = r.get("_fired")
+        eye_idx = np.flatnonzero(self.eye.on_mask | self.eye.off_mask)
+        motor_idx = np.concatenate([v for v in self.motor.values()])             if self.motor else np.array([], dtype=np.int64)
+        info = {
+            "firing": int(len(fired)) if fired is not None else 0,
+            "spikes_per_sec": float(r.get("_spikes_per_sec", 0.0)),
+            "mean_mv": float(r.get("_mean_mv", 0.0)),
+            "visual": int(np.isin(eye_idx, fired).sum()) if fired is not None else 0,
+            "motor": int(np.isin(motor_idx, fired).sum()) if fired is not None else 0,
+            "fired": fired,
+            "turn_l": float(max(0.0, -turn)), "turn_r": float(max(0.0, turn)),
+            "forward": float(max(0.0, speed)), "reverse": float(back),
+            "click": float(stop),
+            "drive": drive,
+        }
+        return dx, dy, click, hz, info
+

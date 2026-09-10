@@ -131,6 +131,10 @@ class FlyBrain:
         record = record or {}
         counts = {k: np.zeros(len(v_), dtype=np.int64) for k, v_ in record.items()}
         total_spikes = 0
+        # which neurons fired at all in this window - one bit each, so it costs
+        # nothing and lets a caller show the population that actually woke up
+        # rather than a rate averaged over everything
+        ever = np.zeros(n, dtype=bool)
         log = [] if spike_log else None
 
         indptr, indices, wdata = self.indptr, self.indices, self.wdata
@@ -154,6 +158,7 @@ class FlyBrain:
 
             if len(fired):
                 total_spikes += len(fired)
+                ever[fired] = True
                 refr[fired] = self.refr_steps
                 v[fired] = reset
 
@@ -176,6 +181,9 @@ class FlyBrain:
         secs = steps * p.dt / 1000.0
         out = {k: c / secs for k, c in counts.items()}
         out["_total_hz"] = total_spikes / secs / n
+        out["_spikes_per_sec"] = total_spikes / secs
+        out["_fired"] = np.flatnonzero(ever)
+        out["_mean_mv"] = float(v.mean())
         if spike_log:
             out["_spikes"] = log
         return out

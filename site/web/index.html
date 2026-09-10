@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FLYBRAIN</title>
+<meta name="description" content="165,122 neurons of a real fruit fly connectome, being trained to be free on the open internet.">
+<meta property="og:title" content="FLYBRAIN">
+<meta property="og:description" content="165,122 neurons of a real fruit fly connectome, being trained to be free on the open internet.">
+<meta property="og:image" content="/fly.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/fly.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#06070a;
+  --plate:#0b0d12;
+  --line:#1a1f28;
+  --dot-hi:#dceef8;
+  --dot-mid:#7db8d4;
+  /* contrast against --ground #06070a, measured:
+     ink 14.6:1  ink-dim 7.4:1  ink-faint 4.8:1  cyan 9.6:1  amber 8.9:1
+     the old values were 4.0:1 and 2.3:1, which is why nothing read */
+  --ink:#e2eaf1;
+  --ink-dim:#9dabb7;
+  --ink-faint:#75828d;
+  --cyan:#7deaff;
+  --amber:#f0bc5f;
+  --live:#6fdca6;
+  --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-weight:400;font-size:17px;line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+/* mono is for data and labels only - it is a poor face for paragraphs */
+.mono,code,.addr,.v .k,.eyebrow,.corner,.step .no,.step .tag,th{font-family:var(--mono)}
+a{color:var(--cyan);text-decoration:none;border-bottom:1px solid #1d4653}
+a:hover{border-bottom-color:var(--cyan)}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+.wrap{max-width:980px;margin:0 auto;padding:0 24px}
+/* the rig is an instrument panel, not prose - it gets the width it needs
+   so the fly's view is tall enough to sit level with the readouts */
+.wrap.wide{max-width:1500px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- specimen plate ---------- */
+.plate{position:relative;min-height:420px;border-bottom:1px solid var(--line)}
+#fly{display:block;width:100%;height:min(62vh,560px)}
+.corner{
+  position:absolute;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);pointer-events:none;line-height:1.7;
+}
+.tl{top:22px;left:24px}
+.tr{top:22px;right:24px;text-align:right}
+.bl{bottom:22px;left:24px}
+.br{bottom:22px;right:24px;text-align:right}
+.tick{color:var(--live)}
+
+.title{
+  position:absolute;left:0;right:0;bottom:64px;text-align:center;pointer-events:none;
+}
+.title h1{
+  font-family:var(--serif);font-weight:400;font-style:normal;
+  font-size:clamp(52px,11vw,116px);line-height:.92;margin:0;
+  letter-spacing:.005em;color:#eaf4fa;text-wrap:balance;
+}
+.title .latin{
+  font-family:var(--serif);font-style:italic;font-size:clamp(14px,2.4vw,19px);
+  color:var(--ink-dim);margin-top:10px;
+}
+.title .state{
+  margin-top:18px;font-size:12.5px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--amber);font-family:var(--mono);font-weight:500;
+}
+
+/* ---------- sections ---------- */
+section{padding:64px 0;border-bottom:1px solid var(--line)}
+h2{
+  font-family:var(--serif);font-weight:400;font-size:clamp(30px,4vw,40px);line-height:1.15;
+  margin:0 0 6px;color:#eaf4fa;text-wrap:balance;
+}
+.lede{color:var(--ink-dim);max-width:62ch;margin:0 0 30px;font-size:18px;line-height:1.65}
+p{max-width:66ch;color:var(--ink);margin:0 0 18px}
+.eyebrow{
+  font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--ink-faint);margin-bottom:14px;font-weight:500;
+}
+
+.path{display:grid;gap:1px;background:var(--line);border:1px solid var(--line)}
+.step{
+  background:var(--plate);padding:18px 20px;display:grid;
+  grid-template-columns:34px 1fr auto;gap:16px;align-items:baseline;
+}
+.step .no{font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.step .what{color:var(--ink);font-weight:500;font-size:16.5px}
+.step .what em{font-style:normal;color:var(--ink-dim);display:block;font-size:15px;margin-top:5px;line-height:1.55}
+.step .tag{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:500}
+.done .tag{color:var(--live)}
+.now{background:#0e1219;box-shadow:inset 2px 0 0 var(--amber)}
+.now .tag{color:var(--amber)}
+.todo .tag{color:var(--ink-faint)}
+.todo .what{color:var(--ink-dim)}
+
+.wires{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line)}
+.wire{background:var(--plate);padding:18px}
+.wire .cell{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--cyan);letter-spacing:.04em}
+.wire .role{font-size:15px;color:var(--ink-dim);margin-top:6px;line-height:1.55}
+
+table{width:100%;border-collapse:collapse;font-size:15px}
+.scroll{overflow-x:auto}
+td,th{text-align:left;padding:10px 14px 10px 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+th{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);
+  font-weight:500;white-space:nowrap;padding-right:28px}
+td.num{font-variant-numeric:tabular-nums;color:#eaf4fa}
+.addr{font-size:14px;word-break:break-all;color:var(--ink)}
+
+ul.plain{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+ul.plain li{padding-left:22px;position:relative;color:var(--ink-dim);max-width:68ch;font-size:16.5px}
+ul.plain li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;
+  border-radius:50%;background:var(--ink-faint)}
+ul.plain li b{color:var(--ink);font-weight:600}
+
+footer{padding:44px 0 70px;color:var(--ink-dim);font-size:14.5px}
+footer .links{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px}
+.pill{
+  display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-family:var(--mono);
+  border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--ink-dim);
+}
+.pip{width:6px;height:6px;border-radius:50%;background:var(--live)}
+.pip.stale{background:var(--ink-faint)}
+
+
+/* ---------- the rig ---------- */
+/* The side column is taller than a 16:10 screenshot, and a stretched grid row
+   left a black slab under the view. The view is centred in whatever height the
+   row ends up being, and the side column is tight enough that the leftover is
+   a thin band rather than a hole. */
+.rig{display:grid;grid-template-columns:1fr 300px;gap:1px;background:var(--line);
+  border:1px solid var(--line)}
+@media (max-width:820px){.rig{grid-template-columns:1fr}
+  .rigview{min-height:0}}
+.rigview{position:relative;background:#000;overflow:hidden;min-height:340px;
+  display:flex;align-items:center;justify-content:center}
+.rigview img{width:100%;max-height:100%;object-fit:contain;display:block}
+.rigview canvas{position:absolute;inset:0;width:100%;height:100%}
+.rigurl{position:absolute;left:0;right:0;bottom:0;padding:7px 12px;
+  background:rgba(6,7,10,.86);font-family:var(--mono);font-size:11.5px;
+  color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.roamoff[hidden]{display:none}
+.roamoff{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;text-align:center;padding:26px;color:var(--ink-faint);
+  font-family:var(--mono);font-size:13px;line-height:1.7;background:#000}
+.rigside{background:var(--plate);display:grid;gap:1px;align-content:start}
+.rigblock{padding:13px 15px;border-bottom:1px solid var(--line)}
+.rk{font-family:var(--mono);font-size:10.5px;letter-spacing:.17em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:500}
+.bignum{font-family:var(--serif);font-size:34px;line-height:1.05;margin-top:6px;
+  color:#eaf4fa;font-variant-numeric:tabular-nums}
+.rsub{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:2px}
+.rsub .dim,.dim{color:var(--ink-faint)}
+.quad{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin-top:10px}
+.ql{font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.qv{font-family:var(--mono);font-size:14px;color:var(--ink);margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.scatter{width:100%;height:84px;display:block;margin-top:14px;background:#04060a;
+  border:1px solid var(--line)}
+.bars{display:grid;gap:6px;margin-top:9px}
+.brow{display:grid;grid-template-columns:66px 1fr 46px;gap:9px;align-items:center;
+  font-family:var(--mono);font-size:11.5px}
+.brow .bn{color:var(--cyan)}
+.brow .bt{height:6px;background:#101821;border-radius:3px;overflow:hidden}
+.brow .bf{height:100%;background:var(--cyan);width:0%;transition:width .25s}
+.brow .bv{text-align:right;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.rigfoot{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;
+  background:var(--line);border:1px solid var(--line);border-top:0}
+.rigfoot>div{background:var(--plate);padding:13px 16px}
+.fv{font-family:var(--serif);font-size:24px;line-height:1.1;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+@media (max-width:640px){.rigfoot{grid-template-columns:repeat(2,1fr)}}
+.rigtrail{margin-top:22px}
+.roamtrail{display:grid;gap:6px;font-size:13.5px;margin-top:9px}
+.roamtrail span{color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;display:block}
+
+/* ---------- the roam ---------- */
+.roam{border:1px solid var(--line);background:var(--plate);display:grid;
+  grid-template-columns:1fr 300px}
+@media (max-width:760px){.roam{grid-template-columns:1fr}}
+.roamview{position:relative;background:#000;aspect-ratio:16/10;overflow:hidden;
+  border-right:1px solid var(--line)}
+.roamview img{width:100%;height:100%;object-fit:contain;display:block}
+.roamview canvas{position:absolute;inset:0;width:100%;height:100%}
+.roamoff[hidden]{display:none}
+.roamoff{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;text-align:center;padding:26px;color:var(--ink-faint);
+  font-family:var(--mono);font-size:13px;line-height:1.7}
+.roamside{padding:18px;display:grid;gap:18px;align-content:start}
+.roamstat{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.roamstat .n{font-family:var(--serif);font-size:24px;line-height:1.1}
+.roamstat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.roamtrail{display:grid;gap:6px;font-size:13.5px}
+.roamtrail span{color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;display:block}
+.roamurl{font-family:var(--mono);font-size:12px;color:var(--ink-dim);
+  word-break:break-all}
+
+/* ---------- contract address ----------
+   The one thing most visitors came for, so it gets isolation: its own band,
+   a cyan rule, and the only filled button on the page. The button is 46px
+   tall and 20px padded because a copy control people actually use should be
+   an easy target, and it says what happened after it is pressed. */
+.cabar{background:#0a1116;border-bottom:1px solid var(--line);
+  box-shadow:inset 3px 0 0 var(--cyan)}
+.cain{display:flex;align-items:center;justify-content:space-between;
+  gap:22px;padding:20px 24px}
+.calabel{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:500}
+.caval{font-family:var(--mono);font-size:15.5px;color:#f0f7fc;margin-top:7px;
+  word-break:break-all;line-height:1.5}
+.copy{
+  display:inline-flex;align-items:center;gap:9px;flex:0 0 auto;
+  min-height:46px;padding:0 20px;border-radius:8px;cursor:pointer;
+  background:#12222a;color:var(--cyan);border:1px solid #24505e;
+  font-family:var(--mono);font-size:14px;font-weight:500;letter-spacing:.02em;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.copy:hover{background:#173139;border-color:var(--cyan)}
+.copy:active{transform:translateY(1px)}
+.copy.done{color:var(--live);border-color:#2f6650;background:#102019}
+.copy svg{width:15px;height:15px;flex:0 0 auto}
+@media (max-width:640px){
+  .cain{flex-direction:column;align-items:stretch;gap:16px;padding:20px}
+  .copy{justify-content:center}
+}
+
+@media (max-width:640px){
+  .step{grid-template-columns:26px 1fr;}
+  .step .tag{grid-column:2;margin-top:4px}
+  /* the absolutely-placed corner labels land on top of the wordmark at this
+     width, so the plate becomes a column and they take their turn in it */
+  .plate{display:flex;flex-direction:column;min-height:0}
+  #fly{height:38vh;order:1}
+  .title{position:static;order:2;padding:4px 20px 0}
+  .title h1{font-size:clamp(46px,15vw,72px)}
+  .bl,.br{position:static;order:3;padding:0 20px;text-align:left;line-height:1.5}
+  .bl{padding-top:26px}
+  .br{padding-top:10px;padding-bottom:26px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="plate">
+  <canvas id="fly" aria-label="A fruit fly drawn as a cloud of points"></canvas>
+  <div class="corner tl">specimen<br><span style="color:var(--ink-dim)">male CNS v1.0</span></div>
+  <div class="corner tr">Robinhood Chain<br><span id="blk" style="color:var(--ink-dim)">block —</span></div>
+  <div class="corner bl">165,122 neurons<br><span style="color:var(--ink-dim)">10,228,000 connections</span></div>
+  <div class="corner br"><span class="tick" id="livedot">●</span> observed live<br><span id="upd" style="color:var(--ink-dim)">—</span></div>
+  <div class="title">
+    <h1>FLYBRAIN</h1>
+    <div class="latin">Drosophila melanogaster</div>
+    <div class="state">in training · not yet released</div>
+  </div>
+</div>
+
+<section id="live" style="padding-top:44px">
+  <div class="wrap wide">
+    <div class="eyebrow">live</div>
+    <h2>Where the fly is right now</h2>
+    <p class="lede">A page goes in through 892 hex columns, 165,122 neurons integrate, and a cursor comes out. Every number below is read out of the running simulation.</p>
+
+    <div class="rig">
+      <div class="rigview">
+        <img id="r-img" alt="the page the fly is looking at">
+        <canvas id="r-cur"></canvas>
+        <div class="roamoff" id="r-off">the fly is between runs<br>nothing is being streamed right now</div>
+        <div class="rigurl" id="r-url">&mdash;</div>
+      </div>
+
+      <div class="rigside">
+        <div class="rigblock">
+          <div class="rk">Neural activity</div>
+          <div class="bignum"><span id="n-firing">&mdash;</span></div>
+          <div class="rsub">neurons firing <span class="dim">of 165,122</span></div>
+          <div class="quad">
+            <div><div class="ql">spikes/sec</div><div class="qv" id="n-spikes">&mdash;</div></div>
+            <div><div class="ql">membrane</div><div class="qv" id="n-mv">&mdash;</div></div>
+            <div><div class="ql">visual</div><div class="qv" id="n-vis">&mdash;</div></div>
+            <div><div class="ql">motor</div><div class="qv" id="n-mot">&mdash;</div></div>
+          </div>
+          <canvas id="n-scatter" class="scatter"></canvas>
+          <div class="rsub dim">firing neurons at their measured soma positions</div>
+        </div>
+
+        <div class="rigblock">
+          <div class="rk">Descending neurons</div>
+          <div id="n-dn" class="bars"></div>
+        </div>
+
+        <div class="rigblock">
+          <div class="rk">Motor output</div>
+          <div id="n-out" class="bars"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rigfoot">
+      <div><div class="ql">pages</div><div class="fv" id="r-hops">&mdash;</div></div>
+      <div><div class="ql">clicks</div><div class="fv" id="r-clicks">&mdash;</div></div>
+      <div><div class="ql">scrolls</div><div class="fv" id="r-scrolled">&mdash;</div></div>
+      <div><div class="ql">brain steps</div><div class="fv" id="r-steps">&mdash;</div></div>
+      <div><div class="ql">vetoed</div><div class="fv" id="r-vetoes">&mdash;</div></div>
+    </div>
+
+    <div class="rigtrail">
+      <div class="ql">where it has been</div>
+      <div class="roamtrail" id="r-trail"></div>
+    </div>
+
+    <p style="margin-top:22px;color:var(--ink-dim);font-size:15px">No wallet, no keyboard, no downloads. Every click is checked before it lands and vetoed if it looks like it commits something &mdash; a submit, a sign-in, a purchase.</p>
+  </div>
+</section>
+
+<div class="cabar">
+  <div class="wrap cain">
+    <div>
+      <div class="calabel">Contract address &middot; $FLYBRAIN</div>
+      <div class="caval" id="ca-text">&mdash;</div>
+    </div>
+    <button class="copy" id="ca-copy" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+        <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+      </svg>
+      <span id="ca-copy-t">Copy</span>
+    </button>
+    <span id="ca-live" role="status" aria-live="polite" class="sr">&nbsp;</span>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">what it is</div>
+    <h2>A real nervous system, not a metaphor</h2>
+    <p class="lede">Every connection in this thing was traced from electron microscope images of an actual male fruit fly. Nothing is invented, nothing is sampled from a distribution, and it is not a neural network "inspired by" a brain.</p>
+    <p>The male <em style="font-family:var(--serif);font-style:italic">Drosophila</em> CNS connectome was released in September 2026 by HHMI Janelia FlyEM, the Cambridge Connectomics Group and Google Research, under CC-BY. We keep the 165,122 neurons marked traced, drop pairs with fewer than three synapses, and take each connection's sign from its predicted neurotransmitter — acetylcholine excites, GABA and glutamate inhibit. The neurons run as leaky integrate-and-fire units: rest &minus;52&nbsp;mV, threshold &minus;45&nbsp;mV, 20&nbsp;ms tau.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">how it reaches the world</div>
+    <h2>It sees with a fly's eye and moves with a fly's legs</h2>
+    <p class="lede">A screenshot of a live web page is sampled through 892 retinotopic hex columns into L1 and L2 — the lamina monopolar cells sitting directly behind photoreceptors R1–R6. All 165,122 neurons integrate. The cursor comes back out of the descending neurons a fly actually walks with.</p>
+    <div class="wires">
+      <div class="wire"><div class="cell">DNa02</div><div class="role">Left versus right. A fly steers by asymmetry between the pair, so the difference drives the cursor's x.</div></div>
+      <div class="wire"><div class="cell">DNa01</div><div class="role">Forward walking. Drives the cursor's y.</div></div>
+      <div class="wire"><div class="cell">MDN</div><div class="role">The Moonwalker neuron. Makes a fly walk backwards; here it reverses.</div></div>
+      <div class="wire"><div class="cell">DNp09</div><div class="role">Stopping. A fly freezes when it fires, so it became the click.</div></div>
+    </div>
+  </div>
+</section>
+
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">the plan</div>
+    <h2>Being trained to be free</h2>
+    <p class="lede">Not a roadmap of promises — a sequence, with everything before the amber line already done and checkable in the repo.</p>
+    <div class="path">
+      <div class="step done"><div class="no">01</div><div class="what">Connectome loaded<em>165,122 traced neurons, 10,228,000 signed connections, built from the public dataset</em></div><div class="tag">done</div></div>
+      <div class="step done"><div class="no">02</div><div class="what">Eye wired<em>892 hex columns into L1 and L2, sampling a live browser</em></div><div class="tag">done</div></div>
+      <div class="step done"><div class="no">03</div><div class="what">Hands wired<em>DNa02, DNa01, MDN and DNp09 driving a real mouse</em></div><div class="tag">done</div></div>
+      <div class="step done"><div class="no">04</div><div class="what">Trained without touching the wiring<em>Only per-cell-type synaptic gains, by evolution strategy. Held-out +20.85 against +2.65 untrained</em></div><div class="tag">done</div></div>
+      <div class="step done"><div class="no">05</div><div class="what">Launched a token on-chain<em>It filled the form and the click produced one signed transaction</em></div><div class="tag">done</div></div>
+      <div class="step now"><div class="no">06</div><div class="what">Close the reward loop<em>Profit into PAM, loss into PPL1 — the fly's own dopamine neurons, 18,037 and 12,749 connections onto the Kenyon cells where a fly physically forms memories</em></div><div class="tag">building</div></div>
+      <div class="step todo"><div class="no">07</div><div class="what">Give it a nose<em>2,635 olfactory receptor neurons across 53 receptor types, fed token metadata as if it were an odour</em></div><div class="tag">next</div></div>
+      <div class="step todo"><div class="no">08</div><div class="what">Release<em>A budget, an open browser, no schedule and no instructions. Whatever it does is what happens</em></div><div class="tag">locked</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">on-chain</div>
+    <h2>$FLYBRAIN</h2>
+    <p class="lede">Launched by the fly, from the fly's own wallet, on Robinhood Chain. Read the receipt yourself rather than taking this page's word for it.</p>
+    <div class="scroll"><table>
+      <tr><th>Contract</th><td class="addr" id="t-ca">—</td></tr>
+      <tr><th>Paired</th><td class="num" id="t-pair">—</td></tr>
+      <tr><th>Creator tax</th><td class="num" id="t-tax">—</td></tr>
+      <tr><th>Supply</th><td class="num" id="t-sup">—</td></tr>
+      <tr><th>Chain</th><td class="num">Robinhood Chain · id 4663</td></tr>
+    </table></div>
+    <p style="margin-top:22px"><a id="t-link" href="https://www.ponsfamily.com/launchpad">open on the launchpad</a></p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">what is not real, stated plainly</div>
+    <h2>The parts that aren't the fly</h2>
+    <ul class="plain">
+      <li><b>The fly does not fill the whole form.</b> It reliably gets the description, often the ticker, rarely the name. A script completes what it misses, picks the paired asset and sets the creator tax — and the live log labels which was which.</li>
+      <li><b>It cannot read.</b> 892 columns is roughly a 30&times;30 pixel view. Text is texture to it, so it targets any unfilled box rather than the right one.</li>
+      <li><b>Light mode blinds it.</b> Its retina is a luminance map and all of its tuning was done against dark interfaces. On a light page it filled 0 of 3 fields; on a dark one, 2 of 3. That gap is the clearest evidence the eye is doing real work.</li>
+      <li><b>It has no goals.</b> A fly brain has no language and no plan. Releasing it means nobody is steering, not that it decided anything.</li>
+      <li><b>It is not released yet.</b> Step 08 is locked. Today a script still starts each run.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/fruitflydev/flycoinrh">source</a>
+      <a href="https://x.com/fruitflydev">@fruitflydev</a>
+      <a id="f-scan" href="https://robinhoodchain.blockscout.com">explorer</a>
+    </div>
+    <div><span class="pill"><span class="pip" id="pip"></span><span id="pip-t">reading the chain</span></span></div>
+    <p style="margin-top:22px;max-width:66ch">Connectome data &copy; HHMI Janelia FlyEM, the Cambridge Connectomics Group and Google Research, released CC-BY. Simulation after Shiu et&nbsp;al. 2024 and Lappalainen et&nbsp;al. 2024. Not affiliated with any of them, nor with pons or Robinhood. $FLYBRAIN is an art experiment, not an investment.</p>
+  </div>
+</footer>
+
+<script>
+/* ---------------------------------------------------------------------------
+   The fly.
+
+   Same generator the live rig uses for its idle state: a point cloud with a
+   head, thorax, abdomen, two compound eyes, two wings and six legs, built from
+   gaussian shells so it reads as a specimen rather than a logo. It is drawn,
+   not traced - there is no path data anywhere in this file.
+--------------------------------------------------------------------------- */
+const N = 15000;
+function buildFly(n){
+  const P = new Float32Array(n*3), R = Math.random;
+  const gauss = () => { let u=0,v=0; while(!u)u=R(); while(!v)v=R();
+    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+  let i = 0;
+  const put = (x,y,z) => { if(i>=n) return; P[i*3]=x; P[i*3+1]=y; P[i*3+2]=z; i++; };
+  const ell = (cx,cy,cz,rx,ry,rz,k,shell) => { for(let j=0;j<k;j++){
+    let x=gauss(), y=gauss(), z=gauss();
+    const d = Math.hypot(x,y,z)||1; x/=d; y/=d; z/=d;
+    const r = shell ? 0.86+0.14*R() : Math.cbrt(R());
+    put(cx+x*rx*r, cy+y*ry*r, cz+z*rz*r); } };
+
+  ell( 0.42, 0,    0,    0.20,0.19,0.19, Math.floor(n*0.10), true);
+  ell( 0.12, 0,    0,    0.26,0.22,0.22, Math.floor(n*0.16), true);
+  ell(-0.38, 0.02, 0,    0.42,0.24,0.23, Math.floor(n*0.24), true);
+  ell( 0.50, 0.05, 0.15, 0.10,0.12,0.07, Math.floor(n*0.05), false);
+  ell( 0.50, 0.05,-0.15, 0.10,0.12,0.07, Math.floor(n*0.05), false);
+
+  for (const sgn of [1,-1]) {
+    const k = Math.floor(n*0.13);
+    for (let j=0;j<k;j++){
+      const t=R(), a=(R()-0.5);
+      const len = 0.95*t, wid = 0.16*Math.sin(Math.PI*t)*(1+0.3*a);
+      put(0.05-len*0.92, 0.20+len*0.34+wid*a*0.7, sgn*(0.10+len*0.20+wid*a));
+    }
+  }
+  for (let L=0; L<6; L++) {
+    const sgn = L<3?1:-1, seg = L%3;
+    const bx = 0.24-seg*0.16, k = Math.floor(n*0.022);
+    for (let j=0;j<k;j++){
+      const t=R();
+      put(bx-t*0.34, -0.18-t*0.42, sgn*(0.16+t*0.20+0.03*gauss()));
+    }
+  }
+  while (i<n) put(gauss()*0.5, gauss()*0.28, gauss()*0.28);
+  return P;
+}
+
+const FLY = buildFly(N);
+const heat = new Float32Array(N);
+const cv = document.getElementById('fly');
+const cx = cv.getContext('2d', {alpha:false});
+/* A full spin makes the fly unreadable most of the time - head-on it is just
+   a blob. It sways around side-on instead, which is the view the specimen is
+   recognisable from, and the pointer nudges it a little further. */
+let t = 0, pointer = 0, targetPointer = 0;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function fit(){
+  const r = cv.getBoundingClientRect(), d = Math.min(devicePixelRatio||1, 2);
+  cv.width = Math.max(2, Math.floor(r.width*d));
+  cv.height = Math.max(2, Math.floor(r.height*d));
+}
+addEventListener('resize', fit);
+addEventListener('pointermove', e => {
+  targetPointer = (e.clientX / innerWidth - 0.5) * 0.55;
+});
+
+function draw(){
+  const W = cv.width, H = cv.height;
+  cx.fillStyle = '#06070a';
+  cx.fillRect(0,0,W,H);
+  pointer += (targetPointer - pointer) * 0.04;
+  const ang = Math.sin(t * 0.19) * 0.34 + pointer;
+  const ct = Math.cos(ang), st = Math.sin(ang);
+  const S = Math.min(W * 0.82, H * 1.15) * 0.42;
+  const bob = reduced ? 0 : Math.sin(t * 0.9) * H * 0.010;
+  // on a phone the canvas is short and the wordmark sits below it in flow,
+  // so the fly can use more of its own box before it crowds anything
+  const cyOff = H * (innerWidth < 640 ? 0.50 : 0.40);
+
+  for (let i=0;i<N;i++){
+    const ax = FLY[i*3], ay = FLY[i*3+2], az = -FLY[i*3+1];
+    const dx = ax*ct - ay*st;              // rotate about the vertical
+    const dz = ax*st + ay*ct;              // depth, for size and haze
+    const X = W/2 - dx*S;      // head to the left, as in the logo
+    const Y = cyOff + az*S + bob;
+    const depth = (dz + 1) * 0.5;          // 0 far, 1 near
+    const h = heat[i];
+    const a = 0.24 + depth*0.55 + h*0.9;
+    const r = (0.62 + depth*0.95 + h*1.7) * (Math.min(devicePixelRatio||1,2));
+    cx.globalAlpha = Math.min(1, a);
+    cx.fillStyle = h > 0.25 ? '#9eecff' : (depth > 0.58 ? '#e8f4fb' : '#6ba2bd');
+    cx.fillRect(X, Y, r, r);
+    if (h > 0) heat[i] = h - 0.022;
+  }
+  cx.globalAlpha = 1;
+
+  if (!reduced) {
+    t += 0.016;
+    for (let k=0;k<16;k++) heat[(Math.random()*N)|0] = 0.35 + Math.random()*0.5;
+  }
+  requestAnimationFrame(draw);
+}
+fit();
+for (let k=0;k<400;k++) heat[(Math.random()*N)|0] = Math.random()*0.5;
+draw();
+
+/* ---------------------------------------------------------------------------
+   Live state, read in your browser.
+
+   The public Robinhood Chain node answers CORS, so this page talks to the
+   chain directly - there is no server of ours between you and the data. Open
+   devtools and watch the eth_call go out. The holder count is derived from
+   Transfer logs rather than an indexer, which takes about a second and a half
+   and is a count of addresses that have ever received the token, not of
+   current holders.
+--------------------------------------------------------------------------- */
+const RPC     = 'https://rpc.mainnet.chain.robinhood.com';
+const TOKEN   = '0x4eb990547bce4a982432ca88cf5fae7eed1a2d35';
+const BIRTH   = '0x38DA606';        // the block the token launched in
+const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const FEE_ETH = 0.00055;
+
+const $ = id => document.getElementById(id);
+const nf = (v, d=0) => v==null ? '—' : Number(v).toLocaleString(undefined,
+  {minimumFractionDigits:d, maximumFractionDigits:d});
+
+let rpcId = 0;
+async function rpc(method, params){
+  const r = await fetch(RPC, {method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({jsonrpc:'2.0', id:++rpcId, method, params})});
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || 'rpc error');
+  return j.result;
+}
+const int = h => h ? parseInt(h, 16) : 0;
+function abiString(x){
+  if (!x || x.length < 130) return '';
+  const n = parseInt(x.slice(66,130), 16);
+  let out = '';
+  for (let i=0;i<n;i++) out += String.fromCharCode(parseInt(x.substr(130+i*2,2),16));
+  return out;
+}
+
+function render(d){
+  $('blk').textContent = 'block ' + nf(d.block);
+  const t = d.token;
+  $('t-ca').textContent = t.address;
+  $('t-pair').textContent = t.pair;
+  $('t-tax').textContent = t.creator_tax_pct.toFixed(2) + ' %';
+  $('t-sup').textContent = nf(t.supply) + ' ' + t.symbol;
+  $('t-link').href = 'https://www.ponsfamily.com/launchpad/' + t.address;
+  $('f-scan').href = 'https://robinhoodchain.blockscout.com/token/' + t.address;
+  $('upd').textContent = new Date().toISOString().slice(11,19) + ' UTC';
+  $('pip').classList.remove('stale');
+  $('pip-t').textContent = 'read from Robinhood Chain';
+}
+
+/* The proxy first, because the public node's CORS header is intermittently
+   malformed and a browser refuses it. Reading direct still works when it is
+   behaving, so it stays as the fallback for anyone running this from a file. */
+async function readChain(){
+  try {
+    const r = await fetch('/api/state', {cache:'no-store'});
+    const d = await r.json();
+    if (d && d.ok) { render(d); return; }
+  } catch (e) { /* fall through */ }
+
+  // token facts only - the fly's wallet address lives in the proxy, not here
+  const [blk, sup, sym] = await Promise.all([
+    rpc('eth_blockNumber', []),
+    rpc('eth_call', [{to:TOKEN, data:'0x18160ddd'}, 'latest']),
+    rpc('eth_call', [{to:TOKEN, data:'0x95d89b41'}, 'latest']),
+  ]);
+  render({block:int(blk), budget_eth:null,
+          token:{address:TOKEN, symbol:abiString(sym),
+                 supply:Number(BigInt(sup))/1e18, holders:null,
+                 transfers:null, pair:'GOOGL', creator_tax_pct:1}});
+}
+
+async function tick(){
+  try { await readChain(); }
+  catch (e) {
+    $('pip').classList.add('stale');
+    $('pip-t').textContent = 'chain unreachable';
+    $('upd').textContent = 'offline';
+  }
+}
+
+/* Copy. navigator.clipboard needs a secure context, so there is a textarea
+   fallback for anything served over plain http. The label reports the result
+   rather than flashing a toast somewhere else on the page. */
+(function(){
+  const btn = document.getElementById('ca-copy');
+  const lab = document.getElementById('ca-copy-t');
+  const live = document.getElementById('ca-live');
+  document.getElementById('ca-text').textContent = TOKEN;
+  let timer = null;
+  btn.addEventListener('click', async () => {
+    let ok = true;
+    try { await navigator.clipboard.writeText(TOKEN); }
+    catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = TOKEN; ta.setAttribute('readonly','');
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      ta.remove();
+    }
+    lab.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+    live.textContent = ok ? 'Contract address copied' : 'Copy failed, select it manually';
+    btn.classList.toggle('done', ok);
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      lab.textContent = 'Copy'; live.textContent = '';
+      btn.classList.remove('done');
+    }, 1800);
+  });
+})();
+
+
+/* ---------------------------------------------------------------------------
+   The roam feed.
+
+   The fly needs a real browser, so it runs on a machine rather than in a
+   serverless function. FLY_FEED points at wherever that machine publishes;
+   with nothing set, a visitor on localhost sees their own rig and everyone
+   else sees the panel say so rather than a broken image.
+--------------------------------------------------------------------------- */
+/* The fly publishes its latest frame and summary to a public object store,
+   overwriting the same two paths. The page reads them straight from there, so
+   nothing about this feed depends on the machine the fly runs on being
+   reachable from the internet. */
+const BLOB = 'https://vyxkhfq5bah8fgid.public.blob.vercel-storage.com/roam';
+const LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const FEED = window.FLY_FEED || BLOB;
+
+const rc = document.getElementById('r-cur');
+const rg = rc.getContext('2d');
+let rcur = {x:0.5, y:0.5}, rtar = {x:0.5, y:0.5}, rwing = 0, roamOn = false;
+
+function rsize(){
+  const b = rc.getBoundingClientRect(), d = Math.min(devicePixelRatio||1,2);
+  rc.width = Math.max(2,b.width*d); rc.height = Math.max(2,b.height*d);
+}
+addEventListener('resize', rsize); rsize();
+
+function rdraw(){
+  const W = rc.width, H = rc.height;
+  rg.clearRect(0,0,W,H);
+  if (roamOn) {
+    rcur.x += (rtar.x - rcur.x)*0.2; rcur.y += (rtar.y - rcur.y)*0.2;
+    const x = rcur.x*W, y = rcur.y*H, s = Math.min(W,H)*0.03;
+    rwing += 0.5;
+    rg.save(); rg.translate(x,y);
+    rg.fillStyle = 'rgba(125,234,255,0.92)';
+    rg.beginPath(); rg.ellipse(0,0,s*0.62,s*0.42,0,0,7); rg.fill();
+    rg.beginPath(); rg.ellipse(s*0.62,-s*0.06,s*0.30,s*0.28,0,0,7); rg.fill();
+    rg.fillStyle = 'rgba(125,234,255,0.32)';
+    for (const sg of [1,-1]){
+      rg.beginPath();
+      rg.ellipse(-s*0.22, sg*(s*0.42+Math.abs(Math.sin(rwing))*s*0.16),
+                 s*0.72, s*0.20, sg*0.5, 0, 7);
+      rg.fill();
+    }
+    rg.restore();
+  }
+  requestAnimationFrame(rdraw);
+}
+rdraw();
+
+const DN_ROWS = [['steer_L','DNa02 L'],['steer_R','DNa02 R'],
+                 ['fwd_L','DNa01 L'],['fwd_R','DNa01 R'],
+                 ['back','MDN'],['stop','DNp09']];
+const OUT_ROWS = [['turn_l','turn L'],['turn_r','turn R'],['forward','forward'],
+                  ['reverse','reverse'],['click','click']];
+
+function makeBars(host, rows){
+  const map = {};
+  for (const [key, name] of rows){
+    const el = document.createElement('div');
+    el.className = 'brow';
+    el.innerHTML = '<span class="bn"></span><span class="bt"><span class="bf"></span></span><span class="bv">0</span>';
+    el.querySelector('.bn').textContent = name;
+    host.appendChild(el);
+    map[key] = {f: el.querySelector('.bf'), v: el.querySelector('.bv')};
+  }
+  return map;
+}
+const dnBars  = makeBars(document.getElementById('n-dn'), DN_ROWS);
+const outBars = makeBars(document.getElementById('n-out'), OUT_ROWS);
+
+/* The scatter is a readout: every dot is a neuron that fired in the last
+   window, drawn at the soma coordinate it was measured at in the EM volume. */
+const sc = document.getElementById('n-scatter');
+const sg = sc.getContext('2d');
+let points = [];
+function scSize(){
+  const r = sc.getBoundingClientRect(), d = Math.min(devicePixelRatio||1, 2);
+  sc.width = Math.max(2, r.width*d); sc.height = Math.max(2, r.height*d);
+}
+addEventListener('resize', scSize); scSize();
+function scDraw(){
+  const W = sc.width, H = sc.height;
+  sg.fillStyle = '#04060a'; sg.fillRect(0,0,W,H);
+  const d = Math.min(devicePixelRatio||1, 2);
+  for (const [x, y] of points){
+    sg.fillStyle = 'rgba(125,234,255,' + (0.35 + Math.random()*0.5).toFixed(2) + ')';
+    sg.fillRect(6 + x*(W-12), 6 + (1-y)*(H-12), 1.4*d, 1.4*d);
+  }
+  requestAnimationFrame(scDraw);
+}
+scDraw();
+
+const nf0 = v => v==null ? '—' : Number(v).toLocaleString();
+
+async function roamTick(){
+  if (!FEED) return;
+  try {
+    const r = await fetch(FEED + '/state.json?t=' + Date.now(), {cache:'no-store'});
+    const d = await r.json();
+    const fresh = d.updated && (Date.now()/1000 - d.updated) < 90;
+    if (!fresh) throw new Error('stale');
+
+    document.getElementById('r-off').hidden = true;
+    document.getElementById('r-img').src = FEED + '/frame.jpg?t=' + (d.updated || 0);
+    roamOn = true;
+
+    for (const k of ['hops','clicks','steps','vetoes','scrolled']){
+      const el = document.getElementById('r-'+k);
+      if (el) el.textContent = nf0(d[k]||0);
+    }
+    document.getElementById('r-url').textContent = d.url || '—';
+
+    const n = d.neural;
+    if (n){
+      document.getElementById('n-firing').textContent = nf0(n.firing);
+      document.getElementById('n-spikes').textContent = nf0(n.spikes_per_sec);
+      document.getElementById('n-mv').textContent = n.mean_mv + ' mV';
+      document.getElementById('n-vis').textContent = nf0(n.visual);
+      document.getElementById('n-mot').textContent = nf0(n.motor);
+      for (const [k, b] of Object.entries(dnBars)){
+        const v = (n.dn && n.dn[k]) || 0;
+        b.v.textContent = v.toFixed(0);
+        b.f.style.width = Math.min(100, v/4.5) + '%';
+      }
+      for (const [k, b] of Object.entries(outBars)){
+        const v = (n.out && n.out[k]) || 0;
+        b.v.textContent = v.toFixed(2);
+        b.f.style.width = Math.min(100, v*100) + '%';
+      }
+      if (n.scatter) points = n.scatter;
+    }
+
+    const t = document.getElementById('r-trail');
+    t.innerHTML = '';
+    for (const v of (d.visited||[]).slice().reverse().slice(0,8)){
+      const el = document.createElement('span');
+      el.textContent = v.title || v.url;
+      t.appendChild(el);
+    }
+  } catch (e) {
+    roamOn = false;
+    points = [];
+    document.getElementById('r-img').removeAttribute('src');
+    document.getElementById('r-off').hidden = false;
+  }
+}
+roamTick();
+setInterval(roamTick, 1000);
+
+tick();
+setInterval(tick, 15000);
+
+</script>
+</body>
+</html>

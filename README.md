@@ -31,6 +31,67 @@ image, fills the form — name, ticker, description and the `x.com/` handle —
 picks the paired asset out of a 57-item list of tokenised equities, opens
 **Advanced**, sets the creator tax, and launches.
 
+## The fly is loose on the internet
+
+`roam.py` gives it a browser and no instructions. A page is screenshotted,
+sampled through the 892 hex columns, and 165,122 neurons decide where the
+cursor goes. If a click lands on a link, the fly is somewhere new. When its
+forward drive pushes past the bottom of the window the page scrolls, so it
+walks down a page the way it walks across one.
+
+It is watchable live at **[flybrain.online](https://flybrain.online)** — the
+page it is looking at, the neurons firing, and what its descending neurons are
+doing, all read out of the running simulation.
+
+```bash
+py roam.py            # http://localhost:4660, no start button
+```
+
+There is no start and no stop. It roams when the process is up, and if a run
+dies it waits six seconds and starts another life.
+
+### The rails, and why each one is there
+
+A random clicker on the open internet, streamed publicly, from a machine that
+also holds a funded wallet, is a genuinely bad idea unless it is fenced.
+
+- **No wallet.** This browser gets no key, no provider and no extension. The
+  roaming browser and the launching browser share nothing but the brain.
+- **No keyboard.** The fly cannot type, so it cannot fill a field, write a
+  message or answer a prompt.
+- **Every click is checked before it lands.** Anything that reads as a submit,
+  an upload, a payment or a sign-in is vetoed, and the veto count is on screen.
+- **A domain fence.** The first thing built was a keyword blocklist; the first
+  thing tested was `p0rn.com`, which walked straight through it. Keyword
+  filters do not hold, so the real control is an allowlist of link-rich
+  domains. `FLY_ROAM_OPEN=1` removes the fence and should not be left on for an
+  unattended public stream.
+- No downloads, no popups, no dialogs, and a hop budget so a dead end does not
+  become a permanent home.
+
+### What the readouts actually are
+
+Nothing on that page is decoration. `flysim` was extended to report it:
+
+| on screen | what it is |
+|---|---|
+| neurons firing | a per-neuron bit set on every spike in the window |
+| spikes/sec | total spikes divided by simulated time |
+| membrane | mean membrane potential at the end of the window |
+| visual / motor | firing neurons intersected with L1/L2 and the DN groups |
+| the scatter | those neurons at their **measured soma coordinates** |
+| DNa02 / DNa01 / MDN / DNp09 | the recorded rates already driving the cursor |
+
+`FlyPilot.step(detail=True)` returns the extra readout as a fifth value, so
+every existing caller still unpacks four and is unaffected.
+
+The site itself is in `site/` — a static page on Vercel plus one serverless
+function that proxies the chain, because the public Robinhood node
+intermittently answers `Access-Control-Allow-Origin: *,*`, which browsers
+refuse. The fly publishes its latest frame and summary to a public object
+store, so nothing about the feed needs the machine it runs on to be reachable.
+
+
 ## Why Robinhood Chain is the better half of this project
 
 pump.fun's backend answers `401 Unauthorized` to an injected wallet, so its own
