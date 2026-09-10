@@ -20,6 +20,7 @@ import asyncio
 import base64
 import io
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +37,8 @@ from rhprovider import attach
 ROOT = Path(__file__).parent
 URL = "https://www.ponsfamily.com/launchpad/create"
 IMAGE = "assets/flycoin_square.png"
+PAIR = os.environ.get("FLY_RH_PAIR", "GOOGL")   # default on the page is ETH
+TAX_PCT = int(os.environ.get("FLY_RH_TAX", "2"))
 
 app = FastAPI()
 STATE = {"brain": None, "pilot": None, "remap": None, "xyz": None,
@@ -308,6 +311,141 @@ async def glide(page, x, y, send=None, steps=22, hold=0.0):
             await asyncio.sleep(hold)
     except Exception:
         pass
+
+
+async def smooth_scroll_in(page, container_js, target_top, send=None,
+                           ms=1400, steps=34):
+    """
+    Ease a scrollable container - not the window - to `target_top`.
+
+    The paired-asset menu is its own 262px window onto a 2,064px list. Page
+    scrolling cannot reach inside it and scrollIntoView teleports, so without
+    this the list cuts from one asset to another between two frames.
+    """
+    try:
+        start = await page.evaluate(
+            "(js) => { const e = eval(js); return e ? e.scrollTop : 0; }",
+            container_js)
+        for i in range(1, steps + 1):
+            t = i / steps
+            t = t * t * (3 - 2 * t)
+            await page.evaluate(
+                "(a) => { const e = eval(a[0]); if (e) e.scrollTop = a[1]; }",
+                [container_js, start + (target_top - start) * t])
+            await asyncio.sleep(ms / 1000.0 / steps)
+    except Exception:
+        pass
+
+
+MENU_JS = "document.querySelector('.launchpad-pair-menu')"
+PAIR_TRIGGER_JS = ("[...document.querySelectorAll('button')]"
+                   ".find(b => /^[A-Z]{2,6}$/.test((b.textContent||'').trim())"
+                   " && b.getBoundingClientRect().width > 200)")
+
+OPTION_JS = """(sym) => {
+  const m = document.querySelector('.launchpad-pair-menu');
+  if (!m) return null;
+  const bs = [...m.querySelectorAll('button')];
+  const i = bs.findIndex(b => (b.textContent || '').trim().indexOf(sym) === 0);
+  if (i < 0) return {miss: true, n: bs.length};
+  const b = bs[i], mr = m.getBoundingClientRect(), br = b.getBoundingClientRect();
+  return {idx: i, n: bs.length,
+          top: (br.top - mr.top) + m.scrollTop,
+          x: Math.round(br.x), y: Math.round(br.y),
+          w: Math.round(br.width), h: Math.round(br.height),
+          mh: m.clientHeight, sh: m.scrollHeight}; }"""
+
+
+async def set_pair_asset(page, symbol, send=None, shot=None):
+    """
+    Change the paired asset away from the default ETH.
+
+    pons pairs a new token against something already on Robinhood Chain, and
+    what is on Robinhood Chain is mostly tokenised equities - so the menu is a
+    2,000px list of NVDA, SPCX, GOOGL, TSLA and the rest behind a 262px window.
+    Picking one changes what the curve raises and what graduation is measured
+    in, which the caller should read back off the page rather than assume.
+
+    This is the rig, not the fly. A fly cannot read 'GOOGL' at 892 columns.
+    """
+    def note(m):
+        return send and send({"type": "log", "msg": m})
+
+    try:
+        await scroll_to_el(page, PAIR_TRIGGER_JS, send, offset=0.35)
+        await asyncio.sleep(0.8)
+        box = await page.evaluate(
+            "(js) => { const e = eval(js); if (!e) return null;"
+            " const r = e.getBoundingClientRect();"
+            " return {x: r.x, y: r.y, w: r.width, h: r.height,"
+            "         t: (e.textContent || '').trim()}; }", PAIR_TRIGGER_JS)
+        if not box:
+            await note("paired-asset selector not found")
+            return False
+        await note(f"paired asset is {box['t']} - opening the list")
+        await glide(page, box["x"] + box["w"] / 2, box["y"] + box["h"] / 2,
+                    send, hold=0.5)
+        if shot:
+            await shot(f"paired asset: {box['t']}")
+        await page.mouse.click(box["x"] + box["w"] / 2, box["y"] + box["h"] / 2)
+        await asyncio.sleep(1.4)
+
+        # the menu opens downwards and runs off the bottom of the window
+        await scroll_to_el(page, MENU_JS, send, offset=0.22)
+        await asyncio.sleep(0.7)
+        if shot:
+            await shot("paired-asset list open")
+
+        info = await page.evaluate(OPTION_JS, symbol)
+        if not info or info.get("miss"):
+            await note(f"{symbol} is not in the pair list"
+                       f" ({info.get('n') if info else 0} assets)")
+            return False
+        await note(f"{info['n']} assets in the list, {symbol} is number "
+                   f"{info['idx'] + 1}")
+
+        # let the list be seen for what it is before landing on one row
+        await smooth_scroll_in(page, MENU_JS, min(320, info["sh"] - info["mh"]),
+                               send, ms=1500)
+        if shot:
+            await shot("tokenised equities on Robinhood Chain")
+        target = max(0, min(info["sh"] - info["mh"],
+                            info["top"] - info["mh"] / 2 + info["h"] / 2))
+        await smooth_scroll_in(page, MENU_JS, target, send, ms=1500)
+        await asyncio.sleep(0.5)
+
+        info = await page.evaluate(OPTION_JS, symbol)
+        if not info or info.get("miss"):
+            return False
+        await glide(page, info["x"] + info["w"] / 2, info["y"] + info["h"] / 2,
+                    send, steps=26, hold=0.7)
+        if shot:
+            await shot(f"about to pick {symbol}")
+        await page.mouse.click(info["x"] + info["w"] / 2,
+                               info["y"] + info["h"] / 2)
+        await asyncio.sleep(1.6)
+
+        now = await page.evaluate(
+            "(js) => { const e = eval(js);"
+            " return e ? (e.textContent || '').trim() : null; }",
+            PAIR_TRIGGER_JS)
+        ok = bool(now) and now.startswith(symbol)
+        await note(f"paired asset is now {now}"
+                   f"{'' if ok else ' - the switch did not take'}")
+        if shot:
+            await shot(f"paired with {now}")
+
+        # what the pair changed: graduation target, fee currency, button state
+        terms = await page.evaluate(
+            """() => { const L = document.body.innerText
+                 .split(String.fromCharCode(10)).map(s => s.trim());
+               return L.filter(l => /graduat|due|pair/i.test(l)).slice(0, 6); }""")
+        for line in terms:
+            await note("  " + line[:90])
+        return ok
+    except Exception as exc:
+        await note(f"paired asset step failed: {str(exc)[:120]}")
+        return False
 
 
 async def set_creator_tax(page, pct, send=None, shot=None):
@@ -713,7 +851,10 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
     await shot("form complete")
     await asyncio.sleep(1.4)
 
-    await set_creator_tax(page, 2, send, shot)
+    await set_pair_asset(page, PAIR, send, shot)
+    await asyncio.sleep(1.2)
+
+    await set_creator_tax(page, TAX_PCT, send, shot)
     await asyncio.sleep(1.2)
 
     await scroll_to_el(page,

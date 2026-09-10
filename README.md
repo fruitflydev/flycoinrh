@@ -27,8 +27,8 @@ the descending neurons a fly actually walks with:
 | **DNp09** | stopping | the click |
 
 Then it connects the wallet, accepts the launchpad's terms, uploads the token
-image, fills the form, opens **Advanced**, sets the creator tax, and stops on
-the launch button.
+image, fills the form, picks the paired asset out of a 57-item list of
+tokenised equities, opens **Advanced**, sets the creator tax, and launches.
 
 ## Why Robinhood Chain is the better half of this project
 
@@ -43,10 +43,24 @@ round-trips. So here the site's own button is the real path — and on
 
 ## It launched
 
-The fly read the form through its retina, typed into it, opened **Advanced**,
-set the creator tax, clicked **Launch token**, then clicked **Confirm** in the
-launchpad's own dialog. That click produced exactly one `eth_sendTransaction`,
-which was signed in Python and broadcast:
+The fly read the form through its retina and typed into it. The rig chose the
+paired asset, opened **Advanced**, set the creator tax, clicked **Launch
+token**, then clicked **Confirm** in the launchpad's own dialog. That click
+produced exactly one `eth_sendTransaction`, which was signed in Python and
+broadcast. Twice:
+
+| | first launch | paired against GOOGL |
+|---|---|---|
+| token | test (TEST) | test (TEST) |
+| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` | `0x9cdbac79e4ed1d0ba96d02006c3f24d07dfef898` |
+| transaction | `0x1b3cda17…45484932` | `0x6efef14f…8852b68c` |
+| block | 59557979 | 59570036 |
+| pair | ETH, graduates at 4.2 ETH | **GOOGL**, graduates at 24.2 GOOGL |
+| cost | 0.000973 ETH | 0.000979 ETH |
+
+Both `status` `0x1`, both creator `0x739Ccc9dd8Ed6412F00782927dbd087c4e72bFc3`
+— the fly's wallet — both 2.00% creator tax, both 1,000,000,000 supply fixed at
+launch. The first one in full:
 
 | | |
 |---|---|
@@ -70,6 +84,29 @@ curl -s https://rpc.mainnet.chain.robinhood.com -H 'content-type: application/js
 `from` is the fly's wallet, `status` is `0x1`, and among the logs is a fresh
 ERC-20 at `0xd00d…70d3` whose `name()` returns `test` and `symbol()` returns
 `TEST`.
+
+### The paired asset
+
+pons pairs a new token against something already on Robinhood Chain, and what
+is on Robinhood Chain is mostly tokenised equities — the menu is **57 assets**:
+NVDA, SPCX, GOOGL, TSLA, GME, AAPL, SPY, and so on down to gold, oil and
+Treasuries. The default is ETH. `set_pair_asset()` changes it, and the choice
+is real: graduation goes from `4.2 ETH` to `24.2 GOOGL`.
+
+The launch fee stays in ETH either way — the page says `GOOGL pair, ETH 0.0005
+due` — so pairing against an equity needs none of that equity in the wallet.
+
+```bash
+FLY_RH_PAIR=GOOGL FLY_RH_TAX=2 py rhlive.py --port 4651
+```
+
+Two things about that menu are worth knowing if you automate it. It is a 262px
+window onto a 2,064px list with **its own** scrollbar, so page scrolling cannot
+reach inside it — `smooth_scroll_in()` eases the container's own `scrollTop`,
+because `scrollIntoView` teleports and the list would cut from ETH to GOOGL
+between two frames. And Playwright's `get_by_role("button", name="GOOGL")`
+never resolves against it; the rows have to be found by `textContent` and
+clicked at coordinates.
 
 ### The bug that made the first attempt look like a success
 
@@ -135,6 +172,9 @@ signed edges. If your numbers differ from mine, one of us has a bug.
   a single `eth_sendTransaction`; there is no second approval and no separate
   ERC-20 allowance. But the rig is what presses **Confirm** in the dialog, not
   the fly — the fly's contribution ends at the form and the launch button.
+- **The fly does not choose the paired asset.** It cannot read `GOOGL` at 892
+  columns; picking a row out of a 57-item list is the rig following
+  `FLY_RH_PAIR`. The same goes for the creator tax.
 - **The token above is a test.** `test (TEST)`, launched to prove the path
   end-to-end. It is not a project and nobody should buy it.
 
