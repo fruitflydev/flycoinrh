@@ -59,18 +59,25 @@ OUT = ROOT / "build"
 # Link-rich, text-heavy, safe places to be dropped into. The fly leaves them
 # on its own within a few clicks; these only decide where a life starts.
 SEEDS = [
-    # Robinhood Chain only. Solana venues were tried and dropped: this fly
-    # launched its own token on this chain, and roaming the place it lives is
-    # the point. X and reddit were dead ends anyway - both serve a login wall
-    # to a real browser, so neither renders anything a retina could work on.
-    "https://www.ponsfamily.com/launchpad",
+    # The open internet, chosen for what a real browser can actually render.
+    # Google, X, reddit and archive.org were all tried and all fail: the first
+    # three serve a consent or login wall (Google answers 335 characters of
+    # "unusual traffic"), and archive.org paints nothing at all headless. What
+    # is left is the link-rich, text-heavy web, which is what a retina can work
+    # on anyway.
+    "https://en.wikipedia.org/wiki/Special:Random",
+    "https://en.wikipedia.org/wiki/Drosophila_melanogaster",
+    "https://commons.wikimedia.org/wiki/Main_Page",
+    "https://en.wikisource.org/wiki/Main_Page",
+    "https://news.ycombinator.com/",
+    "https://www.gutenberg.org/browse/scores/top",
+    "https://openlibrary.org/",
+    "https://xkcd.com/",
+    "https://arxiv.org/list/q-bio.NC/recent",
+    # and the chain it launched its own token on
     "https://www.ponsfamily.com/launchpad/explore",
-    "https://www.ponsfamily.com/analytics",
-    # its own coin, launched from this wallet on this chain
     "https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432ca88cf5fae7eed1a2d35",
-    "https://robinhoodchain.blockscout.com/",
     "https://robinhoodchain.blockscout.com/txs",
-    "https://robinhoodchain.blockscout.com/tokens",
 ]
 
 # Checked against every URL the browser tries to commit to.
@@ -92,6 +99,14 @@ BLOCK = re.compile(
 # Wikipedia alone is millions of pages that link everywhere, so this is still a
 # real roam; it is just a roam with a fence.
 ALLOW = {
+    "en.wikipedia.org", "en.m.wikipedia.org", "commons.wikimedia.org",
+    "en.wikisource.org", "en.wikiquote.org", "en.wikibooks.org",
+    "www.wikidata.org", "species.wikimedia.org",
+    "news.ycombinator.com",
+    "www.gutenberg.org", "gutenberg.org",
+    "openlibrary.org",
+    "xkcd.com", "www.xkcd.com",
+    "arxiv.org", "www.arxiv.org",
     "www.ponsfamily.com", "ponsfamily.com",
     "robinhoodchain.blockscout.com",
 }

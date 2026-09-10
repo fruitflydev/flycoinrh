@@ -211,14 +211,27 @@ parts that are real.
 
 ### Where it roams, and where it does not
 
-Robinhood Chain and pons only: the launchpad, its explore and analytics pages,
-Blockscout, and — as one of the seeds — the fly's own token page.
+The open web, plus the chain it launched its own token on: Wikipedia,
+Wikimedia Commons, Wikisource, Hacker News, Project Gutenberg, Open Library,
+xkcd, arXiv — and the pons launchpad, Blockscout, and the fly's own token page.
 
-X and reddit were tried first and dropped. Both serve a login wall to a real
-browser: X answers 623 characters of "Continue with phone", old.reddit blocks
-outright. Neither renders anything a retina could work on. Solana venues were
-dropped too; this fly launched its own token on this chain, so roaming the
-place it lives is the point.
+Four places were tried and dropped, all for the same reason: a real browser
+gets nothing usable from them.
+
+| tried | what a headless browser actually gets |
+|---|---|
+| Google | 335 chars behind an "unusual traffic" wall |
+| X | 623 chars of "Continue with phone" |
+| old.reddit | blocked outright |
+| archive.org | 0 chars — paints nothing headless, even at `networkidle` |
+
+Open Library stands in for the Internet Archive, since it renders. The list is
+what it is because a retina needs a page that exists, not because those sites
+were uninteresting.
+
+Keeping it on two domains was tried too, and the failure was quieter: 93 pages
+and 110 clicks in 49 minutes across **6 unique pages**. It was moving the whole
+time and going nowhere.
 
 Trade controls are blocked and vetoed now that it roams a launchpad. It has no
 wallet and a trade is impossible, but the claim was that every click is
