@@ -175,8 +175,16 @@ async def attach(page, acct, rpc, chain_id, allow_send=False, on_send=None,
     return acct.address
 
 
-def send_transaction(acct, tx, rpc, chain_id, say=None):
-    """Fill, sign and broadcast a transaction the page asked for."""
+def send_transaction(acct, tx, rpc, chain_id, say=None, wait_receipt=True):
+    """
+    Fill, sign and broadcast a transaction the page asked for.
+
+    wait_receipt=False returns as soon as the hash is back. The page is
+    blocked on this call - it cannot render its own "confirming" state
+    until the hash returns - so a caller that wants to watch the page
+    settle should poll for the receipt itself rather than hold the promise
+    open for a minute.
+    """
     import time
 
     import requests
@@ -237,6 +245,7 @@ def send_transaction(acct, tx, rpc, chain_id, say=None):
         raise
     if say:
         say(f"broadcast {h}")
+    if say and wait_receipt:
         for _ in range(30):
             time.sleep(2)
             try:

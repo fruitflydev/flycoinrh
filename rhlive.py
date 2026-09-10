@@ -610,7 +610,8 @@ async def run_episode(ws, coin, steps, seed, headful):
         page = await browser.new_page(viewport={"width": 1280, "height": 720})
         page.on("pageerror", lambda e: say(f"  [page.error] {str(e)[:150]}"))
 
-        sent = {"n": 0}
+        sent = {"n": 0, "hash": None, "receipt": None,
+                "token": None}
 
         async def on_send(tx):
             sent["n"] += 1
@@ -628,11 +629,17 @@ async def run_episode(ws, coin, steps, seed, headful):
                     send({"type": "log", "msg": m}), loop)
 
             try:
-                # in a thread: the receipt poll must not stall the frame
-                # streamer, or the video freezes on the last screenshot
-                return await loop.run_in_executor(
+                # in a thread: the RPC round trips must not stall the frame
+                # streamer, or the video freezes on the last screenshot.
+                # wait_receipt=False so the page gets its hash straight away
+                # and can render its own confirming state; the run loop waits
+                # for the receipt itself, on camera.
+                h = await loop.run_in_executor(
                     None,
-                    lambda: send_transaction(acct, tx, rpc, CHAIN_ID, say=note))
+                    lambda: send_transaction(acct, tx, rpc, CHAIN_ID, say=note,
+                                             wait_receipt=False))
+                sent["hash"] = h
+                return h
             except Exception as exc:
                 await send({"type": "log",
                             "msg": f"TRANSACTION FAILED: {str(exc)[:200]}"})
@@ -802,6 +809,93 @@ async def run_episode(ws, coin, steps, seed, headful):
         await browser.close()
 
 
+async def show_coin_page(page, addr, send=None, shot=None):
+    """
+    End on the coin, the way pump.fun does.
+
+    The pons launchpad does not redirect after a launch - it leaves you on the
+    empty create form, which is a strange place for a recording to end. This
+    opens the token's own page and scrolls down it, so the last thing on screen
+    is the thing that was just made.
+    """
+    url = f"https://www.ponsfamily.com/launchpad/{addr}"
+    try:
+        if send:
+            await send({"type": "log", "msg": f"opening the coin page: {url}"})
+        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        await page.wait_for_timeout(3500)
+        await go_dark(page)
+        # navigating re-arms the terms gate, and its modal covers the whole
+        # coin - the same accept the create page needs
+        await accept_terms(page)
+        await dismiss_banners(page)
+        await page.wait_for_timeout(1800)
+        if shot:
+            await shot("the coin")
+
+        facts = await page.evaluate(
+            """() => { const L = document.body.innerText
+                 .split(String.fromCharCode(10)).map(s => s.trim())
+                 .filter(Boolean);
+               return L.filter(l => /paired|creator tax|supply|graduat|fruit fly/i
+                 .test(l)).slice(0, 6); }""")
+        for line in facts:
+            if send:
+                await send({"type": "log", "msg": "  " + line[:90]})
+
+        # walk down the page so the chart and the details are both seen
+        height = await page.evaluate("document.body.scrollHeight")
+        vh = await page.evaluate("innerHeight")
+        for frac in (0.30, 0.60, 0.95):
+            await smooth_scroll(page, max(0, (height - vh) * frac), send, ms=1500)
+            await page.wait_for_timeout(900)
+            if shot:
+                await shot("the coin")
+        await smooth_scroll(page, 0, send, ms=1400)
+        await page.wait_for_timeout(1200)
+        if shot:
+            await shot("the coin")
+    except Exception as exc:
+        if send:
+            await send({"type": "log",
+                        "msg": f"coin page did not open: {str(exc)[:120]}"})
+
+
+async def find_token(receipt, loop_, rpc, send=None):
+    """
+    Pull the new token's address out of the launch receipt.
+
+    The launchpad touches several contracts; the token is the one that answers
+    name() and symbol(). Worth reporting: it is the only thing in the whole run
+    a stranger can look up afterwards.
+    """
+    def _dec(x):
+        if not x or len(x) < 130:
+            return ""
+        n = int(x[66:130], 16)
+        try:
+            return bytes.fromhex(x[130:130 + n * 2]).decode("utf-8", "replace")
+        except Exception:
+            return ""
+
+    try:
+        for addr in dict.fromkeys(lg["address"] for lg in receipt.get("logs", [])):
+            nm = _dec(await loop_.run_in_executor(
+                None, rpc, "eth_call", [{"to": addr, "data": "0x06fdde03"}, "latest"]))
+            sy = _dec(await loop_.run_in_executor(
+                None, rpc, "eth_call", [{"to": addr, "data": "0x95d89b41"}, "latest"]))
+            if nm or sy:
+                if send:
+                    await send({"type": "log",
+                                "msg": f"token {nm} ({sy}) at {addr}"})
+                    await send({"type": "log",
+                                "msg": f"https://www.ponsfamily.com/launchpad/{addr}"})
+                return addr
+    except Exception:
+        pass
+    return None
+
+
 async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
     SEL = {"name": 'input[placeholder="Token name"]',
            "ticker": 'input[placeholder="symbol"]',
@@ -930,12 +1024,55 @@ async def finish(ws, page, coin, filled, live_flag, send, shot, sent):
             except Exception:
                 continue
 
-    for i in range(30):
+    # Wait for the chain, not for the click.
+    #
+    # sent["n"] rises the instant the page ASKS for a signature, so breaking on
+    # it ended the run about two seconds later - with the launchpad still
+    # showing "Confirming", the video cutting away before anything was mined,
+    # and the token appearing on-chain a few seconds after the recording
+    # stopped. It looked exactly like a hang and was the opposite of one.
+    loop_ = asyncio.get_running_loop()
+    rpc_url = load_env().get("FLY_RH_RPC", RPC)
+
+    def _rpc(method, prms):
+        import requests
+        return requests.post(rpc_url, json={"jsonrpc": "2.0", "id": 1,
+                                            "method": method,
+                                            "params": prms},
+                             timeout=20).json().get("result")
+
+    for i in range(75):
         await page.wait_for_timeout(2000)
         await shot("waiting for the launch")
-        if sent["n"]:
+
+        if sent["hash"] and not sent["receipt"]:
+            try:
+                rec = await loop_.run_in_executor(
+                    None, _rpc, "eth_getTransactionReceipt", [sent["hash"]])
+            except Exception:
+                rec = None
+            if rec:
+                sent["receipt"] = rec
+                ok = int(rec.get("status", "0x0"), 16) == 1
+                await send({"type": "log", "msg":
+                            f"receipt block {int(rec.get('blockNumber','0x0'),16)}"
+                            f" status {'SUCCESS' if ok else 'REVERTED'}"})
+                sent["token"] = await find_token(rec, loop_, _rpc, send)
+
+        if sent["receipt"]:
+            # Give the launchpad a moment to move on its own - unlike pump.fun
+            # it does not, it just sits on /create - then go to the coin page
+            # ourselves and stay there, because that page is the whole point.
+            for _ in range(6):
+                await page.wait_for_timeout(1500)
+                await shot("launched")
+                if "/launchpad/0x" in (page.url or ""):
+                    break
+            if sent["token"] and "/launchpad/0x" not in (page.url or ""):
+                await show_coin_page(page, sent["token"], send, shot)
             break
-        if i % 4 == 0:
+
+        if not sent["n"] and i % 4 == 0:
             msg = await page.evaluate(
                 """() => { const m = document.body.innerText.match(
                      /(error|failed|rejected|denied|insufficient|pending|confirming|success).{0,80}/i);

@@ -52,15 +52,16 @@ broadcast. Twice:
 | | first launch | paired against GOOGL |
 |---|---|---|
 | token | test (TEST) | test (TEST) |
-| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` | `0x9cdbac79e4ed1d0ba96d02006c3f24d07dfef898` |
-| transaction | `0x1b3cda17…45484932` | `0x6efef14f…8852b68c` |
-| block | 59557979 | 59570036 |
+| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` | `0xcc80a38afd807bfed1b9c21b6f236ea8ee651dc3` |
+| transaction | `0x1b3cda17…45484932` | `0x9602a50f…00e5aca2` |
+| block | 59557979 | 59581451 |
 | pair | ETH, graduates at 4.2 ETH | **GOOGL**, graduates at 24.2 GOOGL |
 | cost | 0.000973 ETH | 0.000979 ETH |
 
-Both `status` `0x1`, both creator `0x739Ccc9dd8Ed6412F00782927dbd087c4e72bFc3`
-— the fly's wallet — both 2.00% creator tax, both 1,000,000,000 supply fixed at
-launch. The first one in full:
+Every `status` `0x1`, every creator `0x739Ccc9dd8Ed6412F00782927dbd087c4e72bFc3`
+— the fly's wallet — every one 2.00% creator tax and 1,000,000,000 supply fixed
+at launch. Five have been launched this way; these two are the first and the
+latest. The first one in full:
 
 | | |
 |---|---|
@@ -107,6 +108,24 @@ because `scrollIntoView` teleports and the list would cut from ETH to GOOGL
 between two frames. And Playwright's `get_by_role("button", name="GOOGL")`
 never resolves against it; the rows have to be found by `textContent` and
 clicked at coordinates.
+
+### Waiting for the chain, not for the click
+
+A launch that had already succeeded looked exactly like a hang. The run loop
+broke as soon as the page *asked* for a signature, so the rig declared itself
+done about two seconds later — with the launchpad still showing "Confirming",
+the recording cut, and the token appearing on-chain a few seconds after
+everything had stopped.
+
+The loop now waits for the receipt, on camera, and `send_transaction` takes
+`wait_receipt=False` so the page gets its hash immediately: it is blocked on
+that call and cannot render its own confirming state until the hash returns.
+
+Then it ends where pump.fun would. pons does **not** redirect after a launch —
+it leaves you on the empty create form — so `show_coin_page()` reads the token
+address out of the receipt logs (the contract that answers `name()` and
+`symbol()`), opens that token's page, accepts the terms gate that navigating
+re-arms, and scrolls down it. The last thing on screen is the coin.
 
 ### The bug that made the first attempt look like a success
 
