@@ -50,6 +50,7 @@ from fastapi.responses import FileResponse, Response
 
 from flysim import FlyBrain
 from envcfg import load_env
+from mushroom import MushroomBody
 from flyeye import FlyPilot
 
 ROOT = Path(__file__).parent
@@ -58,13 +59,18 @@ OUT = ROOT / "build"
 # Link-rich, text-heavy, safe places to be dropped into. The fly leaves them
 # on its own within a few clicks; these only decide where a life starts.
 SEEDS = [
-    "https://en.wikipedia.org/wiki/Special:Random",
-    "https://en.wikipedia.org/wiki/Drosophila_melanogaster",
-    "https://en.wikipedia.org/wiki/Connectome",
-    "https://news.ycombinator.com/",
-    "https://www.gutenberg.org/browse/scores/top",
-    "https://xkcd.com/",
-    "https://arxiv.org/list/q-bio.NC/recent",
+    # Robinhood Chain only. Solana venues were tried and dropped: this fly
+    # launched its own token on this chain, and roaming the place it lives is
+    # the point. X and reddit were dead ends anyway - both serve a login wall
+    # to a real browser, so neither renders anything a retina could work on.
+    "https://www.ponsfamily.com/launchpad",
+    "https://www.ponsfamily.com/launchpad/explore",
+    "https://www.ponsfamily.com/analytics",
+    # its own coin, launched from this wallet on this chain
+    "https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432ca88cf5fae7eed1a2d35",
+    "https://robinhoodchain.blockscout.com/",
+    "https://robinhoodchain.blockscout.com/txs",
+    "https://robinhoodchain.blockscout.com/tokens",
 ]
 
 # Checked against every URL the browser tries to commit to.
@@ -72,6 +78,8 @@ BLOCK = re.compile(
     r"(porn|xxx|adult|nsfw|escort|hentai|onlyfans|camsoda|chaturbate"
     r"|casino|bet365|poker|gambl|lottery"
     r"|checkout|/cart|/pay|payment|billing|invoice|subscribe"
+    # it roams trading sites now, where every other control is a trade
+    r"|/buy|/sell|/swap|/trade|connect-wallet|/deposit|/withdraw"
     r"|signin|sign-in|login|log-in|signup|sign-up|register|/auth"
     r"|password|passwd|account/delete|unsubscribe"
     r"|\.exe$|\.dmg$|\.msi$|\.apk$|\.zip$|\.torrent$|magnet:"
@@ -84,13 +92,8 @@ BLOCK = re.compile(
 # Wikipedia alone is millions of pages that link everywhere, so this is still a
 # real roam; it is just a roam with a fence.
 ALLOW = {
-    "en.wikipedia.org", "en.m.wikipedia.org", "commons.wikimedia.org",
-    "news.ycombinator.com", "www.gutenberg.org", "gutenberg.org",
-    "xkcd.com", "www.xkcd.com", "arxiv.org", "www.arxiv.org",
-    "openlibrary.org", "archive.org", "web.archive.org",
-    "www.nature.com", "www.science.org", "elifesciences.org",
-    "www.janelia.org", "neuprint.janelia.org", "flywire.ai",
-    "en.wikiquote.org", "en.wikisource.org", "www.ponsfamily.com",
+    "www.ponsfamily.com", "ponsfamily.com",
+    "robinhoodchain.blockscout.com",
 }
 OPEN = load_env().get("FLY_ROAM_OPEN") == "1"
 
@@ -109,6 +112,7 @@ def allowed_host(url):
 # Checked against the element under the cursor before a click is allowed.
 VETO = re.compile(
     r"(submit|upload|sign in|sign up|log in|log out|subscribe|buy|purchase"
+    r"|sell|swap|trade|connect wallet|approve|confirm|bridge|stake"
     r"|checkout|pay |donate|delete|remove|report|flag|send|post|reply"
     r"|comment|password|credit card)", re.I)
 
@@ -179,6 +183,61 @@ def start_tunnel(port):
     threading.Thread(target=watch, daemon=True).start()
 
 
+LIVE_REPO = "fruitflydev/flycoinrh"
+LIVE_PATH = "site/web/live.json"
+_addr = {"url": None, "at": 0.0}
+
+
+def publish_address():
+    """
+    Tell the world where the tunnel is.
+
+    The quick tunnel's address is random and changes every run, so the page
+    cannot have it hardcoded. This writes it to one small file in the public
+    repo, which the page reads. It is written only when the address actually
+    changes, so a long run makes no commits at all.
+    """
+    import base64 as _b64
+    import urllib.request
+
+    tok = load_env().get("FLY_GH_TOKEN", "")
+    url = TUNNEL["url"]
+    if not tok or not url or url == _addr["url"]:
+        return
+    if time.time() - _addr["at"] < 30:
+        return
+    _addr["at"] = time.time()
+
+    body = json.dumps({"stream": url, "at": int(time.time())}, indent=1) + chr(10)
+    api = f"https://api.github.com/repos/{LIVE_REPO}/contents/{LIVE_PATH}"
+
+    def call(method, payload=None):
+        req = urllib.request.Request(
+            api, method=method,
+            data=json.dumps(payload).encode() if payload else None,
+            headers={"Authorization": f"Bearer {tok}",
+                     "Accept": "application/vnd.github+json",
+                     "User-Agent": "flybrain"})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return json.loads(r.read() or b"{}")
+
+    try:
+        sha = None
+        try:
+            sha = call("GET").get("sha")
+        except Exception:
+            pass
+        payload = {"message": "the fly moved house",
+                   "content": _b64.b64encode(body.encode()).decode()}
+        if sha:
+            payload["sha"] = sha
+        call("PUT", payload)
+        _addr["url"] = url
+        say("published tunnel address")
+    except Exception as exc:
+        say("could not publish address:", str(exc)[:90])
+
+
 def blob_del(path):
     """Drop one object. Old frames are litter, not history."""
     import urllib.request
@@ -238,7 +297,12 @@ def load_brain():
         STATE["brain"] = fb
         STATE["pilot"] = FlyPilot(fb, sim_steps=60)
         STATE["xy"] = soma_xy(fb)
+        STATE["mb"] = MushroomBody(fb)
+        st = STATE["mb"].stats()
         say(f"brain ready: {len(fb.bodies):,} neurons")
+        say(f"mushroom body: {st['synapses']:,} KC->MBON synapses "
+            f"({st['reward_side']:,} reward / {st['punish_side']:,} punish), "
+            f"{st['depressed']:,} already depressed")
     return STATE["brain"], STATE["pilot"]
 
 
@@ -473,6 +537,14 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                     if not np.isnan(x):
                         scatter.append([round(float(x), 3), round(float(y), 3)])
 
+            # The one place a weight is allowed to move. A Kenyon cell that
+            # fired just now becomes eligible; when dopamine arrives below,
+            # its synapse onto the addressed compartment is depressed.
+            mb = STATE.get("mb")
+            if mb is not None:
+                mb.observe(info.get("fired"))
+                mb.forget()
+
             stats["firing"].append(info["firing"])
             stats["firing"] = stats["firing"][-72:]
 
@@ -487,6 +559,8 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                 "out": {k: round(info[k], 3) for k in
                         ("turn_l", "turn_r", "forward", "reverse", "click")},
                 "scatter": scatter,
+                "learning": (STATE["mb"].stats()
+                             if STATE.get("mb") is not None else None),
             }
 
             # The fly decides twice a second - that is 12 ms of brain time per
@@ -508,6 +582,8 @@ async def roam(steps_per_page=26, headful=False, seed=None):
             px_, py_ = cx, cy
 
             await send({"type": "frame", "neural": neural,
+                        "events": stats["events"][-18:],
+                        "visited": stats["visited"][-8:],
                         "cx": cx, "cy": cy,
                         "hz": {k: round(v, 1) for k, v in hz.items()},
                         "stats": {k: stats[k] for k in
@@ -530,6 +606,9 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                     if page.url != before:
                         if BLOCK.search(page.url) or not allowed_host(page.url):
                             stats["blocked"] += 1
+                            if mb is not None:
+                                mb.dopamine(-1, 1.0)     # a wall
+                                mb.apply()
                             await log(f"landed somewhere blocked, going back")
                             try:
                                 await page.go_back(timeout=15000)
@@ -537,6 +616,9 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                                 await goto(rng.choice(SEEDS), "bounced")
                         else:
                             stats["hops"] += 1
+                            if mb is not None:
+                                mb.dopamine(+1, 1.0)     # somewhere new
+                                mb.apply()
                             title = (await page.title())[:70]
                             stats["visited"].append(
                                 {"url": page.url, "title": title,
@@ -549,6 +631,9 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                         cx, cy = 640.0, 400.0
                 else:
                     stats["vetoes"] += 1
+                    if mb is not None:
+                        mb.dopamine(-1, 0.6)             # reached for a wall
+                        mb.apply()
                     await log(f"did not click - {why}")
 
             # a fly that has run out of page gets put back on a seed
@@ -558,6 +643,8 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                 await goto(rng.choice(SEEDS), "hop budget spent")
 
             publish(stats, raw, page.url, hz, neural)
+            if mb is not None and stats["steps"] % 40 == 0:
+                mb.save()
             await asyncio.sleep(0.05)
 
         cap.cancel()
@@ -597,29 +684,19 @@ def publish(stats, jpg, url, hz, neural=None):
             _last_push["at"] = now
             import threading
 
-            # Time-addressed frames.
+            # Nothing goes to object storage any more.
             #
-            # The store's CDN answers X-Vercel-Cache: HIT with an Age of twenty
-            # seconds even though every upload sets max-age=0, and a query
-            # string does not bust it - public blobs are treated as immutable.
-            # So a fixed pathname can never carry a live feed. Each push gets
-            # its own pathname keyed to the half-second it happened in, and the
-            # page asks for the slot it expects rather than looking anything
-            # up. Every URL is fetched once, so nothing is ever stale.
-            slot = int(now * 2)
+            # Pushing two frames a second suspended the blob store on
+            # operation count - 13 MB held, but the writes and deletes blew
+            # the free tier and every read started answering 403, which took
+            # the public feed down with it. The tunnel already carries frames,
+            # telemetry and events for free, so the only thing that ever
+            # needed publishing is where the tunnel is. That is one small file,
+            # written when the address changes and not otherwise.
+            import threading
 
             def push():
-                try:
-                    blob_put(f"roam/t/{slot}.jpg", jpg, "image/jpeg")
-                    blob_put(f"roam/t/{slot}.json", payload.encode(),
-                             "application/json")
-                    blob_put("roam/state.json", payload.encode(),
-                             "application/json")   # slow fallback
-                    for old_slot in range(slot - 240, slot - 200):
-                        blob_del(f"roam/t/{old_slot}.jpg")
-                        blob_del(f"roam/t/{old_slot}.json")
-                except Exception:
-                    pass
+                publish_address()
             threading.Thread(target=push, daemon=True).start()
     except Exception:
         pass

@@ -422,6 +422,19 @@ footer .links{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px}
           </div>
 
           <div class="tblk">
+            <div class="tk">Mushroom body &middot; learning</div>
+            <div class="tquad" style="margin-top:8px">
+              <div><div class="tql">depressed</div><div class="tqv" id="l-dep">&mdash;</div></div>
+              <div><div class="tql">mean gain</div><div class="tqv" id="l-gain">&mdash;</div></div>
+              <div><div class="tql">rewards</div><div class="tqv" id="l-rew">&mdash;</div></div>
+              <div><div class="tql">punishments</div><div class="tqv" id="l-pun">&mdash;</div></div>
+            </div>
+            <div class="tsub" style="margin-top:8px;text-transform:none;letter-spacing:0">
+              <span class="tdim">KC&rarr;MBON synapses under dopamine. Depression only &mdash; that is the rule a fly actually uses.</span>
+            </div>
+          </div>
+
+          <div class="tblk">
             <div class="tk">Motor output</div>
             <div id="n-out" class="tbars"></div>
           </div>
@@ -923,6 +936,13 @@ function renderState(d){
     }
     if (n.scatter) points = n.scatter;
     if (n.history) hist = n.history;
+    if (n.learning){
+      const L = n.learning;
+      $$('l-dep').textContent  = nf0(L.depressed) + ' / ' + nf0(L.synapses);
+      $$('l-gain').textContent = L.mean_gain;
+      $$('l-rew').textContent  = nf0(L.rewards);
+      $$('l-pun').textContent  = nf0(L.punishments);
+    }
     if (n.vision){
       cols = n.vision.cols || [];
       $$('n-on').textContent  = n.vision.on_hz + ' Hz';
@@ -982,7 +1002,8 @@ function openSocket(url){
     } else if (m.type === 'cursor'){
       rtar = {x: m.cx/1280, y: m.cy/800};
     } else if (m.type === 'frame'){
-      renderState({neural: m.neural, url: m.url});
+      renderState({neural: m.neural, url: m.url, events: m.events,
+                   visited: m.visited, ...(m.stats || {})});
     }
   };
   sock.onclose = function(){ sock = null; sockUrl = null; };
@@ -990,42 +1011,34 @@ function openSocket(url){
 }
 
 let tickN = 0;
-async function roamTick(){
-  if (!FEED) return;
-  tickN++;
-  /* With the socket up, the frames and the neural readout already arrive on
-     it. The polled feed is then only carrying the event stream and the run
-     counters, so it drops to once every three seconds instead of firing five
-     speculative slot requests twice a second and 404-ing most of them. */
-  if (sock && sock.readyState === 1 && tickN % 6 !== 0) return;
+/* Discovery, then the socket.
+   The fly's tunnel address is random and changes every run, so live.json in
+   the public repo says where it is. Everything after that - frames, the
+   neural readout, the event stream - arrives on the socket itself. There is
+   no object store in the path any more: pushing two frames a second to one
+   suspended it on operation count and every read started answering 403. */
+async function findStream(){
   try {
-    const slot = Math.floor(Date.now()/500) - 4;
-    let d = null, used = null;
-    const tries = (sock && sock.readyState === 1) ? 2 : 4;
-    for (let k = 0; k < tries; k++){
-      try {
-        const rr = await fetch(FEED + '/t/' + (slot-k) + '.json');
-        if (rr.ok){ d = await rr.json(); used = slot-k; break; }
-      } catch (e) {}
-    }
-    if (!d){
-      const rr = await fetch(FEED + '/state.json?t=' + Date.now(), {cache:'no-store'});
-      d = await rr.json();
-    }
-    if (!(d.updated && (Date.now()/1000 - d.updated) < 90)) throw new Error('stale');
+    /* Read from the repo, not from this deployment: the fly writes the
+       address there and this page is only redeployed when someone deploys
+       it. The minute-keyed query keeps the CDN copy from going stale. */
+    const src = 'https://raw.githubusercontent.com/fruitflydev/flycoinrh/main/site/web/live.json';
+    const r = await fetch(src + '?t=' + Math.floor(Date.now()/60000));
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.stream) return null;
+    if (d.at && (Date.now()/1000 - d.at) > 21600) return null;   // stale address
+    return d.stream;
+  } catch (e) { return null; }
+}
 
-    renderState(d);
-    if (d.stream) openSocket(d.stream);
-    if (!sock && used){
-      $$('r-img').src = FEED + '/t/' + used + '.jpg';
-      $$('r-fps').textContent = 'polled';
-    }
-  } catch (e) {
-    if (!sock) goOffline();
-  }
+async function roamTick(){
+  if (sock && sock.readyState === 1) return;      // already watching
+  const url = await findStream();
+  if (url) openSocket(url); else goOffline();
 }
 roamTick();
-setInterval(roamTick, 500);
+setInterval(roamTick, 15000);
 
 tick();
 setInterval(tick, 15000);
