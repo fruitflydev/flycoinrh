@@ -1,0 +1,19 @@
+# secrets - the wallets' private keys live here
+.env
+.env.*
+!.env.example
+
+# 1.1 GB of connectome downloaded from Janelia's public bucket; the README
+# says exactly how to fetch it, and build_graph.py turns it into build/graph.npz
+data/
+
+# derived artefacts, recordings, scratch
+build/
+scratch/
+__pycache__/
+*.pyc
+*.mp4
+*.webm
+
+# trained gains are small and reproducible, but they ARE a result - keep them
+!build/gains_ui.npz
