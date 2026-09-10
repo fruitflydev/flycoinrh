@@ -140,6 +140,85 @@ footer .links{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px}
 .pip.stale{background:var(--ink-faint)}
 
 
+/* ---------- the terminal ----------
+   A phosphor instrument panel inset into the page. It commits to one look and
+   paints every colour explicitly, so it reads the same wherever it lands. */
+.term{
+  --g:#3dff88; --g-dim:#1f8f4d; --g-faint:#155c33; --g-bg:#020704;
+  background:var(--g-bg);border:1px solid #123a24;font-family:var(--mono);
+  color:var(--g);font-size:12px;line-height:1.5;
+}
+.tbar{display:flex;align-items:center;gap:14px;padding:8px 12px;flex-wrap:wrap;
+  border-bottom:1px solid #123a24;background:#04100a}
+.tname{font-weight:500;letter-spacing:.14em}
+.tdim{color:var(--g-faint);letter-spacing:.1em;font-size:10.5px}
+.tspacer{flex:1}
+.tpills{display:flex;gap:6px;flex-wrap:wrap}
+.pip2{border:1px solid var(--g-faint);color:var(--g-dim);padding:2px 7px;
+  font-size:9.5px;letter-spacing:.12em;border-radius:2px}
+.pip2.on{color:var(--g);border-color:var(--g-dim);background:#07200f}
+.pip2.off{color:#5a2b2b;border-color:#4a2020}
+.tlive{color:#ff5f56;font-size:10px;letter-spacing:.14em}
+.tlive.on{color:var(--g)}
+
+.tgrid{display:grid;grid-template-columns:1fr 320px;gap:1px;background:#123a24}
+@media (max-width:880px){.tgrid{grid-template-columns:1fr}}
+.tscreen{position:relative;background:#000;min-height:320px;display:flex;
+  align-items:center;justify-content:center;overflow:hidden}
+.tscreen img{width:100%;max-height:100%;object-fit:contain;display:block}
+.tscreen canvas{position:absolute;inset:0;width:100%;height:100%}
+.toff[hidden]{display:none}
+.toff{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;background:#000;
+  color:var(--g-dim);letter-spacing:.14em;font-size:11px;text-align:center}
+.turl{position:absolute;left:0;right:0;bottom:0;display:flex;gap:12px;
+  padding:5px 10px;background:rgba(2,7,4,.92);border-top:1px solid #123a24;
+  font-size:11px;color:var(--g-dim)}
+.turl #r-url{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tfps{color:var(--g-faint)}
+
+.tside{background:var(--g-bg);display:grid;align-content:start}
+.tblk{padding:10px 12px;border-bottom:1px solid #0d2c1b}
+.tk{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--g-faint)}
+.tbig{font-size:30px;line-height:1.1;margin-top:5px;letter-spacing:.01em;
+  font-variant-numeric:tabular-nums}
+.tsub{font-size:9.5px;letter-spacing:.13em;color:var(--g-dim);margin-top:1px}
+.spark{width:100%;height:34px;display:block;margin-top:9px}
+.tquad{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin-top:9px}
+.tql{font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--g-faint)}
+.tqv{font-size:12.5px;color:var(--g);margin-top:1px;font-variant-numeric:tabular-nums}
+.scatter{width:100%;height:78px;display:block;margin-top:8px;background:#000;
+  border:1px solid #0d2c1b}
+.tbars{display:grid;gap:5px;margin-top:8px}
+.trow{display:grid;grid-template-columns:60px 1fr 42px;gap:8px;align-items:center;
+  font-size:10.5px}
+.trow .tn{color:var(--g-dim)}
+.trow .tt{height:6px;background:#06180e;border:1px solid #0d2c1b}
+.trow .tf{height:100%;background:var(--g);width:0%;transition:width .2s linear}
+.trow .tv{text-align:right;color:var(--g-dim);font-variant-numeric:tabular-nums}
+.tvis{display:grid;grid-template-columns:1fr 88px;gap:10px;margin-top:8px;
+  align-items:start}
+.tvis canvas{width:100%;height:74px;display:block;background:#000;
+  border:1px solid #0d2c1b}
+.tvismeta{display:grid;gap:6px}
+
+.tevents{padding:10px 12px;border-top:1px solid #123a24}
+.tlog{margin-top:7px;height:92px;overflow:auto;font-size:11px;
+  color:var(--g-dim);display:flex;flex-direction:column-reverse}
+.tlog div{padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tlog .veto{color:#e8c15f}
+.tlog .blk{color:#ff8b7a}
+.tlog b{color:var(--g-faint);font-weight:400;margin-right:8px}
+
+.tfoot{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#123a24;
+  border-top:1px solid #123a24}
+.tfoot>div{background:#04100a;padding:8px 12px;display:flex;
+  justify-content:space-between;align-items:baseline;gap:8px}
+.tfv{font-size:16px;color:var(--g);font-variant-numeric:tabular-nums}
+@media (max-width:640px){.tfoot{grid-template-columns:repeat(2,1fr)}}
+
 /* ---------- the rig ---------- */
 /* The side column is taller than a 16:10 screenshot, and a stretched grid row
    left a black slab under the view. The view is centred in whatever height the
@@ -280,54 +359,87 @@ footer .links{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px}
   <div class="wrap wide">
     <div class="eyebrow">live</div>
     <h2>Where the fly is right now</h2>
-    <p class="lede">A page goes in through 892 hex columns, 165,122 neurons integrate, and a cursor comes out. Every number below is read out of the running simulation.</p>
+    <p class="lede">A page goes in through 892 hex columns, 165,122 neurons integrate, and a cursor comes out. Every number on this panel is read out of the running simulation.</p>
 
-    <div class="rig">
-      <div class="rigview">
-        <img id="r-img" alt="the page the fly is looking at">
-        <canvas id="r-cur"></canvas>
-        <div class="roamoff" id="r-off">the fly is between runs<br>nothing is being streamed right now</div>
-        <div class="rigurl" id="r-url">&mdash;</div>
+    <div class="term">
+      <div class="tbar">
+        <span class="tname">FLYBRAIN LIVE</span>
+        <span class="tdim">DROSOPHILA CONNECTOME &middot; OPEN INTERNET</span>
+        <span class="tpills">
+          <span class="pip2" id="p-vision">VISION</span>
+          <span class="pip2" id="p-motor">MOTOR</span>
+          <span class="pip2" id="p-sim">SIMULATION</span>
+          <span class="pip2" id="p-net">INTERNET</span>
+          <span class="pip2 off" id="p-wallet">WALLET</span>
+        </span>
+        <span class="tspacer"></span>
+        <span class="tdim">165,122 NEURONS &nbsp; 10,228,000 EDGES</span>
+        <span class="tlive" id="t-live">&#9679; LIVE</span>
       </div>
 
-      <div class="rigside">
-        <div class="rigblock">
-          <div class="rk">Neural activity</div>
-          <div class="bignum"><span id="n-firing">&mdash;</span></div>
-          <div class="rsub">neurons firing <span class="dim">of 165,122</span></div>
-          <div class="quad">
-            <div><div class="ql">spikes/sec</div><div class="qv" id="n-spikes">&mdash;</div></div>
-            <div><div class="ql">membrane</div><div class="qv" id="n-mv">&mdash;</div></div>
-            <div><div class="ql">visual</div><div class="qv" id="n-vis">&mdash;</div></div>
-            <div><div class="ql">motor</div><div class="qv" id="n-mot">&mdash;</div></div>
+      <div class="tgrid">
+        <div class="tscreen">
+          <img id="r-img" alt="the page the fly is looking at">
+          <canvas id="r-cur"></canvas>
+          <div class="toff" id="r-off">THE FLY IS BETWEEN RUNS<br><span class="tdim">nothing is being streamed right now</span></div>
+          <div class="turl"><span id="r-url">&mdash;</span><span class="tfps" id="r-fps">&mdash;</span></div>
+        </div>
+
+        <div class="tside">
+          <div class="tblk">
+            <div class="tk">Neural activity</div>
+            <div class="tbig" id="n-firing">&mdash;</div>
+            <div class="tsub">NEURONS FIRING <span class="tdim">of 165,122</span></div>
+            <canvas id="n-spark" class="spark"></canvas>
+            <div class="tquad">
+              <div><div class="tql">spikes/sec</div><div class="tqv" id="n-spikes">&mdash;</div></div>
+              <div><div class="tql">membrane</div><div class="tqv" id="n-mv">&mdash;</div></div>
+              <div><div class="tql">visual</div><div class="tqv" id="n-vis">&mdash;</div></div>
+              <div><div class="tql">motor</div><div class="tqv" id="n-mot">&mdash;</div></div>
+            </div>
           </div>
-          <canvas id="n-scatter" class="scatter"></canvas>
-          <div class="rsub dim">firing neurons at their measured soma positions</div>
-        </div>
 
-        <div class="rigblock">
-          <div class="rk">Descending neurons</div>
-          <div id="n-dn" class="bars"></div>
-        </div>
+          <div class="tblk">
+            <div class="tk">Firing neurons &middot; soma positions</div>
+            <canvas id="n-scatter" class="scatter"></canvas>
+          </div>
 
-        <div class="rigblock">
-          <div class="rk">Motor output</div>
-          <div id="n-out" class="bars"></div>
+          <div class="tblk">
+            <div class="tk">Descending neurons</div>
+            <div id="n-dn" class="tbars"></div>
+          </div>
+
+          <div class="tblk">
+            <div class="tk">Vision &rarr; retina</div>
+            <div class="tvis">
+              <canvas id="n-retina"></canvas>
+              <div class="tvismeta">
+                <div><div class="tql">L1 on</div><div class="tqv" id="n-on">&mdash;</div></div>
+                <div><div class="tql">L2 off</div><div class="tqv" id="n-off">&mdash;</div></div>
+                <div><div class="tql">columns</div><div class="tqv" id="n-cols">&mdash;</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tblk">
+            <div class="tk">Motor output</div>
+            <div id="n-out" class="tbars"></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="rigfoot">
-      <div><div class="ql">pages</div><div class="fv" id="r-hops">&mdash;</div></div>
-      <div><div class="ql">clicks</div><div class="fv" id="r-clicks">&mdash;</div></div>
-      <div><div class="ql">scrolls</div><div class="fv" id="r-scrolled">&mdash;</div></div>
-      <div><div class="ql">brain steps</div><div class="fv" id="r-steps">&mdash;</div></div>
-      <div><div class="ql">vetoed</div><div class="fv" id="r-vetoes">&mdash;</div></div>
-    </div>
+      <div class="tevents">
+        <div class="tk">Event stream</div>
+        <div id="r-events" class="tlog"></div>
+      </div>
 
-    <div class="rigtrail">
-      <div class="ql">where it has been</div>
-      <div class="roamtrail" id="r-trail"></div>
+      <div class="tfoot">
+        <div><span class="tql">pages</span><span class="tfv" id="r-hops">&mdash;</span></div>
+        <div><span class="tql">clicks</span><span class="tfv" id="r-clicks">&mdash;</span></div>
+        <div><span class="tql">scrolls</span><span class="tfv" id="r-scrolled">&mdash;</span></div>
+        <div><span class="tql">brain steps</span><span class="tfv" id="r-steps">&mdash;</span></div>
+        <div><span class="tql">vetoed</span><span class="tfv" id="r-vetoes">&mdash;</span></div>
+      </div>
     </div>
 
     <p style="margin-top:22px;color:var(--ink-dim);font-size:15px">No wallet, no keyboard, no downloads. Every click is checked before it lands and vetoed if it looks like it commits something &mdash; a submit, a sign-in, a purchase.</p>
@@ -713,100 +825,207 @@ const DN_ROWS = [['steer_L','DNa02 L'],['steer_R','DNa02 R'],
                  ['back','MDN'],['stop','DNp09']];
 const OUT_ROWS = [['turn_l','turn L'],['turn_r','turn R'],['forward','forward'],
                   ['reverse','reverse'],['click','click']];
+const $$ = id => document.getElementById(id);
 
 function makeBars(host, rows){
   const map = {};
   for (const [key, name] of rows){
     const el = document.createElement('div');
-    el.className = 'brow';
-    el.innerHTML = '<span class="bn"></span><span class="bt"><span class="bf"></span></span><span class="bv">0</span>';
-    el.querySelector('.bn').textContent = name;
+    el.className = 'trow';
+    el.innerHTML = '<span class="tn"></span><span class="tt"><span class="tf"></span></span><span class="tv">0</span>';
+    el.querySelector('.tn').textContent = name;
     host.appendChild(el);
-    map[key] = {f: el.querySelector('.bf'), v: el.querySelector('.bv')};
+    map[key] = {f: el.querySelector('.tf'), v: el.querySelector('.tv')};
   }
   return map;
 }
-const dnBars  = makeBars(document.getElementById('n-dn'), DN_ROWS);
-const outBars = makeBars(document.getElementById('n-out'), OUT_ROWS);
+const dnBars  = makeBars($$('n-dn'), DN_ROWS);
+const outBars = makeBars($$('n-out'), OUT_ROWS);
 
-/* The scatter is a readout: every dot is a neuron that fired in the last
-   window, drawn at the soma coordinate it was measured at in the EM volume. */
-const sc = document.getElementById('n-scatter');
-const sg = sc.getContext('2d');
+function fitCanvas(c){
+  const r = c.getBoundingClientRect(), d = Math.min(devicePixelRatio||1, 2);
+  c.width = Math.max(2, r.width*d); c.height = Math.max(2, r.height*d);
+  return d;
+}
+
+/* Every dot is a neuron that fired in the last window, drawn at the soma
+   coordinate it was measured at in the EM volume. */
+const sc = $$('n-scatter'), sg = sc.getContext('2d');
 let points = [];
-function scSize(){
-  const r = sc.getBoundingClientRect(), d = Math.min(devicePixelRatio||1, 2);
-  sc.width = Math.max(2, r.width*d); sc.height = Math.max(2, r.height*d);
-}
-addEventListener('resize', scSize); scSize();
-function scDraw(){
-  const W = sc.width, H = sc.height;
-  sg.fillStyle = '#04060a'; sg.fillRect(0,0,W,H);
-  const d = Math.min(devicePixelRatio||1, 2);
-  for (const [x, y] of points){
-    sg.fillStyle = 'rgba(125,234,255,' + (0.35 + Math.random()*0.5).toFixed(2) + ')';
-    sg.fillRect(6 + x*(W-12), 6 + (1-y)*(H-12), 1.4*d, 1.4*d);
+/* The retina: hex columns at their real positions, brightness = drive rate. */
+const rt = $$('n-retina'), rtg = rt.getContext('2d');
+let cols = [];
+/* Firing population over the last minute or so. */
+const sp = $$('n-spark'), pg = sp.getContext('2d');
+let hist = [];
+
+function paintPanels(){
+  let d = fitCanvas(sc);
+  sg.fillStyle = '#000'; sg.fillRect(0,0,sc.width,sc.height);
+  for (const [x,y] of points){
+    sg.fillStyle = 'rgba(61,255,136,' + (0.3+Math.random()*0.55).toFixed(2) + ')';
+    sg.fillRect(4 + x*(sc.width-8), 4 + (1-y)*(sc.height-8), 1.3*d, 1.3*d);
   }
-  requestAnimationFrame(scDraw);
+
+  d = fitCanvas(rt);
+  rtg.fillStyle = '#000'; rtg.fillRect(0,0,rt.width,rt.height);
+  for (const [u,v,hz] of cols){
+    rtg.fillStyle = 'rgba(61,255,136,' + Math.max(0.05, Math.min(1,hz)).toFixed(2) + ')';
+    rtg.fillRect(3 + u*(rt.width-6), 3 + v*(rt.height-6), 2.2*d, 2.2*d);
+  }
+
+  d = fitCanvas(sp);
+  pg.fillStyle = '#020704'; pg.fillRect(0,0,sp.width,sp.height);
+  if (hist.length > 1){
+    const mx = Math.max.apply(null, hist), mn = Math.min.apply(null, hist);
+    const rng = Math.max(1, mx-mn);
+    pg.strokeStyle = '#3dff88'; pg.lineWidth = 1.2*d; pg.beginPath();
+    hist.forEach(function(v,i){
+      const x = (i/(hist.length-1))*sp.width;
+      const y = sp.height - 3 - ((v-mn)/rng)*(sp.height-6);
+      i ? pg.lineTo(x,y) : pg.moveTo(x,y);
+    });
+    pg.stroke();
+  }
+  requestAnimationFrame(paintPanels);
 }
-scDraw();
+paintPanels();
 
 const nf0 = v => v==null ? '—' : Number(v).toLocaleString();
+let lastEvents = '';
 
+function renderState(d){
+  $$('r-off').hidden = true;
+  roamOn = true;
+  for (const k of ['hops','clicks','steps','vetoes','scrolled']){
+    const el = $$('r-'+k); if (el && d[k] != null) el.textContent = nf0(d[k]);
+  }
+  if (d.url) $$('r-url').textContent = d.url;
+  $$('t-live').classList.add('on');
+  for (const id of ['p-vision','p-motor','p-sim','p-net']) $$(id).classList.add('on');
+
+  const n = d.neural;
+  if (n){
+    $$('n-firing').textContent = nf0(n.firing);
+    $$('n-spikes').textContent = nf0(n.spikes_per_sec);
+    $$('n-mv').textContent = n.mean_mv + ' mV';
+    $$('n-vis').textContent = nf0(n.visual);
+    $$('n-mot').textContent = nf0(n.motor);
+    for (const k in dnBars){
+      const v = (n.dn && n.dn[k]) || 0;
+      dnBars[k].v.textContent = v.toFixed(0);
+      dnBars[k].f.style.width = Math.min(100, v/4.5) + '%';
+    }
+    for (const k in outBars){
+      const v = (n.out && n.out[k]) || 0;
+      outBars[k].v.textContent = v.toFixed(2);
+      outBars[k].f.style.width = Math.min(100, v*100) + '%';
+    }
+    if (n.scatter) points = n.scatter;
+    if (n.history) hist = n.history;
+    if (n.vision){
+      cols = n.vision.cols || [];
+      $$('n-on').textContent  = n.vision.on_hz + ' Hz';
+      $$('n-off').textContent = n.vision.off_hz + ' Hz';
+      $$('n-cols').textContent = nf0(n.vision.columns);
+    }
+  }
+
+  const ev = JSON.stringify(d.events || []);
+  if (d.events && ev !== lastEvents){
+    lastEvents = ev;
+    const host = $$('r-events');
+    host.innerHTML = '';
+    for (const e of d.events.slice().reverse()){
+      const row = document.createElement('div');
+      if (/did not click|veto/.test(e.m)) row.className = 'veto';
+      else if (/blocked/.test(e.m)) row.className = 'blk';
+      const b = document.createElement('b');
+      b.textContent = e.t;
+      const sp2 = document.createElement('span');
+      sp2.textContent = e.m;
+      row.appendChild(b); row.appendChild(sp2);
+      host.appendChild(row);
+    }
+  }
+}
+
+function goOffline(){
+  roamOn = false; points = []; cols = []; hist = [];
+  $$('r-img').removeAttribute('src');
+  $$('r-off').hidden = false;
+  $$('t-live').classList.remove('on');
+  for (const id of ['p-vision','p-motor','p-sim','p-net']) $$(id).classList.remove('on');
+}
+
+/* ---- the live socket --------------------------------------------------
+   Object storage is not a stream. When the fly has a tunnel open, the page
+   talks to it directly and gets a frame the moment the page repaints plus
+   cursor positions as it travels between decisions. The polled feed stays as
+   the fallback for when there is no tunnel. */
+let sock = null, sockUrl = null;
+const frames = [];
+
+function openSocket(url){
+  if (!url || url === sockUrl) return;
+  sockUrl = url;
+  try { if (sock) sock.close(); } catch (e) {}
+  sock = new WebSocket(url.replace(/^http/, 'ws') + '/ws');
+  sock.onmessage = function(ev){
+    const m = JSON.parse(ev.data);
+    if (m.type === 'view'){
+      $$('r-img').src = 'data:image/jpeg;base64,' + m.jpg;
+      rtar = {x: m.cx/1280, y: m.cy/800};
+      frames.push(Date.now());
+      while (frames.length && frames[0] < Date.now()-1000) frames.shift();
+      $$('r-fps').textContent = frames.length + ' fps · socket';
+    } else if (m.type === 'cursor'){
+      rtar = {x: m.cx/1280, y: m.cy/800};
+    } else if (m.type === 'frame'){
+      renderState({neural: m.neural, url: m.url});
+    }
+  };
+  sock.onclose = function(){ sock = null; sockUrl = null; };
+  sock.onerror = function(){ try { sock.close(); } catch (e) {} };
+}
+
+let tickN = 0;
 async function roamTick(){
   if (!FEED) return;
+  tickN++;
+  /* With the socket up, the frames and the neural readout already arrive on
+     it. The polled feed is then only carrying the event stream and the run
+     counters, so it drops to once every three seconds instead of firing five
+     speculative slot requests twice a second and 404-ing most of them. */
+  if (sock && sock.readyState === 1 && tickN % 6 !== 0) return;
   try {
-    const r = await fetch(FEED + '/state.json?t=' + Date.now(), {cache:'no-store'});
-    const d = await r.json();
-    const fresh = d.updated && (Date.now()/1000 - d.updated) < 90;
-    if (!fresh) throw new Error('stale');
-
-    document.getElementById('r-off').hidden = true;
-    document.getElementById('r-img').src = FEED + '/frame.jpg?t=' + (d.updated || 0);
-    roamOn = true;
-
-    for (const k of ['hops','clicks','steps','vetoes','scrolled']){
-      const el = document.getElementById('r-'+k);
-      if (el) el.textContent = nf0(d[k]||0);
+    const slot = Math.floor(Date.now()/500) - 4;
+    let d = null, used = null;
+    const tries = (sock && sock.readyState === 1) ? 2 : 4;
+    for (let k = 0; k < tries; k++){
+      try {
+        const rr = await fetch(FEED + '/t/' + (slot-k) + '.json');
+        if (rr.ok){ d = await rr.json(); used = slot-k; break; }
+      } catch (e) {}
     }
-    document.getElementById('r-url').textContent = d.url || '—';
-
-    const n = d.neural;
-    if (n){
-      document.getElementById('n-firing').textContent = nf0(n.firing);
-      document.getElementById('n-spikes').textContent = nf0(n.spikes_per_sec);
-      document.getElementById('n-mv').textContent = n.mean_mv + ' mV';
-      document.getElementById('n-vis').textContent = nf0(n.visual);
-      document.getElementById('n-mot').textContent = nf0(n.motor);
-      for (const [k, b] of Object.entries(dnBars)){
-        const v = (n.dn && n.dn[k]) || 0;
-        b.v.textContent = v.toFixed(0);
-        b.f.style.width = Math.min(100, v/4.5) + '%';
-      }
-      for (const [k, b] of Object.entries(outBars)){
-        const v = (n.out && n.out[k]) || 0;
-        b.v.textContent = v.toFixed(2);
-        b.f.style.width = Math.min(100, v*100) + '%';
-      }
-      if (n.scatter) points = n.scatter;
+    if (!d){
+      const rr = await fetch(FEED + '/state.json?t=' + Date.now(), {cache:'no-store'});
+      d = await rr.json();
     }
+    if (!(d.updated && (Date.now()/1000 - d.updated) < 90)) throw new Error('stale');
 
-    const t = document.getElementById('r-trail');
-    t.innerHTML = '';
-    for (const v of (d.visited||[]).slice().reverse().slice(0,8)){
-      const el = document.createElement('span');
-      el.textContent = v.title || v.url;
-      t.appendChild(el);
+    renderState(d);
+    if (d.stream) openSocket(d.stream);
+    if (!sock && used){
+      $$('r-img').src = FEED + '/t/' + used + '.jpg';
+      $$('r-fps').textContent = 'polled';
     }
   } catch (e) {
-    roamOn = false;
-    points = [];
-    document.getElementById('r-img').removeAttribute('src');
-    document.getElementById('r-off').hidden = false;
+    if (!sock) goOffline();
   }
 }
 roamTick();
-setInterval(roamTick, 1000);
+setInterval(roamTick, 500);
 
 tick();
 setInterval(tick, 15000);

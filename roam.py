@@ -113,7 +113,8 @@ VETO = re.compile(
     r"|comment|password|credit card)", re.I)
 
 BLOB_TOKEN = load_env().get("FLY_BLOB_TOKEN", "")
-BLOB_EVERY = 1.0          # seconds between pushes; the run does not wait on it
+BLOB_BASE = load_env().get("FLY_BLOB_BASE", "")
+BLOB_EVERY = 0.5          # seconds between pushes; the run does not wait on it
 _last_push = {"at": 0.0}
 
 
@@ -137,6 +138,60 @@ def blob_put(path, data, ctype):
                  "x-api-version": "7"})
     with urllib.request.urlopen(req, timeout=20) as r:
         return r.status
+
+
+TUNNEL = {"url": None, "proc": None}
+CFD = Path(os.path.expanduser("~/.claude/tools/cloudflared/cloudflared.exe"))
+
+
+def start_tunnel(port):
+    """
+    Put the roamer's WebSocket on the public internet.
+
+    Object storage is not a stream - the site could only ever poll it - so the
+    live screen needs a socket a browser can open. A quick tunnel gives one
+    without an account; the address is random and changes every run, so the fly
+    publishes whatever it got alongside its state and the page reads it from
+    there rather than having it hardcoded anywhere.
+    """
+    import re as _re
+    import subprocess
+    import threading
+
+    if not CFD.exists():
+        say("no cloudflared - the public feed stays on the slow path")
+        return
+
+    proc = subprocess.Popen(
+        [str(CFD), "tunnel", "--no-autoupdate", "--url",
+         f"http://127.0.0.1:{port}"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        encoding="utf-8", errors="replace", bufsize=1)
+    TUNNEL["proc"] = proc
+
+    def watch():
+        for line in proc.stdout:
+            m = _re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+            if m and not TUNNEL["url"]:
+                TUNNEL["url"] = m.group(0)
+                say("tunnel open:", TUNNEL["url"])
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
+def blob_del(path):
+    """Drop one object. Old frames are litter, not history."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            "https://blob.vercel-storage.com/delete", method="POST",
+            data=json.dumps({"urls": [f"{BLOB_BASE}/{path}"]}).encode(),
+            headers={"authorization": f"Bearer {BLOB_TOKEN}",
+                     "content-type": "application/json",
+                     "x-api-version": "7"})
+        urllib.request.urlopen(req, timeout=10)
+    except Exception:
+        pass
 
 
 app = FastAPI()
@@ -275,11 +330,13 @@ async def roam(steps_per_page=26, headful=False, seed=None):
 
     async def log(m):
         say("  " + str(m))
+        stats["events"].append({"t": time.strftime("%H:%M:%S"), "m": str(m)[:110]})
+        stats["events"] = stats["events"][-40:]
         await send({"type": "log", "msg": str(m)})
 
     stats = {"steps": 0, "clicks": 0, "vetoes": 0, "hops": 0,
              "blocked": 0, "scrolled": 0, "started": time.time(),
-             "visited": []}
+             "visited": [], "events": [], "firing": []}
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=not headful)
@@ -328,9 +385,56 @@ async def roam(steps_per_page=26, headful=False, seed=None):
         await goto(rng.choice(SEEDS), "seed")
 
         cx, cy = 640.0, 400.0
+        px_, py_ = cx, cy
         on_page = 0
+
+        # Screencast, not screenshots.
+        #
+        # page.screenshot() in a loop tops out near three frames a second -
+        # each call is a fresh round trip and a fresh encode - which looked
+        # like a slideshow of stills. Chrome's own screencast pushes a frame
+        # whenever the page actually changes, which is both faster and more
+        # honest: a still page emits nothing because nothing happened.
+        latest = {"jpg": None, "n": 0}
+        cdp = await ctx.new_cdp_session(page)
+        loop_ = asyncio.get_running_loop()
+
+        def on_cast(params):
+            try:
+                latest["jpg"] = base64.b64decode(params["data"])
+                latest["n"] += 1
+                asyncio.run_coroutine_threadsafe(
+                    cdp.send("Page.screencastFrameAck",
+                             {"sessionId": params["sessionId"]}), loop_)
+            except Exception:
+                pass
+
+        cdp.on("Page.screencastFrame", on_cast)
+        await cdp.send("Page.startScreencast", {
+            "format": "jpeg", "quality": 55,
+            "maxWidth": 1280, "maxHeight": 800, "everyNthFrame": 1})
+
+        async def pump():
+            """Push the newest frame to watchers, at most ten times a second."""
+            last = -1
+            while STATE["running"]:
+                if latest["jpg"] is not None and latest["n"] != last:
+                    last = latest["n"]
+                    await send({"type": "view",
+                                "jpg": base64.b64encode(latest["jpg"]).decode(),
+                                "cx": cx, "cy": cy})
+                await asyncio.sleep(0.1)
+
+        cap = asyncio.create_task(pump())
+        for _ in range(60):
+            if latest["jpg"] is not None:
+                break
+            await asyncio.sleep(0.1)
+        if latest["jpg"] is None:            # screencast never started
+            latest["jpg"] = await screenshot(page)
+
         while STATE["running"]:
-            raw = await screenshot(page)
+            raw = latest["jpg"]
             img = to_gray(raw)
 
             dx, dy, click, hz, info = pilot.step(
@@ -369,8 +473,13 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                     if not np.isnan(x):
                         scatter.append([round(float(x), 3), round(float(y), 3)])
 
+            stats["firing"].append(info["firing"])
+            stats["firing"] = stats["firing"][-72:]
+
             neural = {
                 "firing": info["firing"], "total": fb.n,
+                "history": stats["firing"],
+                "vision": info.get("vision"),
                 "spikes_per_sec": round(info["spikes_per_sec"]),
                 "mean_mv": round(info["mean_mv"], 1),
                 "visual": info["visual"], "motor": info["motor"],
@@ -380,9 +489,25 @@ async def roam(steps_per_page=26, headful=False, seed=None):
                 "scatter": scatter,
             }
 
-            await page.mouse.move(cx, cy)
+            # The fly decides twice a second - that is 12 ms of brain time per
+            # decision, and cutting it shorter would break the retina-to-DN
+            # path rather than speed anything up. What was wrong was the move
+            # in between: the cursor teleported to the new position and the
+            # page never repainted, so nothing was there to stream. Now it
+            # travels there, hover states fire, and the screen actually moves.
+            steps_ = 9
+            for j in range(1, steps_ + 1):
+                t_ = j / steps_
+                t_ = t_ * t_ * (3 - 2 * t_)
+                await page.mouse.move(px_ + (cx - px_) * t_,
+                                      py_ + (cy - py_) * t_)
+                await send({"type": "cursor",
+                            "cx": px_ + (cx - px_) * t_,
+                            "cy": py_ + (cy - py_) * t_})
+                await asyncio.sleep(0.028)
+            px_, py_ = cx, cy
+
             await send({"type": "frame", "neural": neural,
-                        "jpg": base64.b64encode(raw).decode(),
                         "cx": cx, "cy": cy,
                         "hz": {k: round(v, 1) for k, v in hz.items()},
                         "stats": {k: stats[k] for k in
@@ -435,6 +560,7 @@ async def roam(steps_per_page=26, headful=False, seed=None):
             publish(stats, raw, page.url, hz, neural)
             await asyncio.sleep(0.05)
 
+        cap.cancel()
         await ctx.close()
         await browser.close()
     await send({"type": "done", "stats": stats})
@@ -458,8 +584,10 @@ def publish(stats, jpg, url, hz, neural=None):
             "blocked": stats["blocked"], "scrolled": stats["scrolled"],
             "uptime_s": int(time.time() - stats["started"]),
             "visited": stats["visited"][-12:],
+            "events": stats["events"][-18:],
             "hz": {k: round(v, 1) for k, v in hz.items()},
             "neural": neural,
+            "stream": TUNNEL["url"],
             "updated": int(time.time()),
         }, indent=1)
         (OUT / "roam_state.json").write_text(payload)
@@ -469,11 +597,27 @@ def publish(stats, jpg, url, hz, neural=None):
             _last_push["at"] = now
             import threading
 
+            # Time-addressed frames.
+            #
+            # The store's CDN answers X-Vercel-Cache: HIT with an Age of twenty
+            # seconds even though every upload sets max-age=0, and a query
+            # string does not bust it - public blobs are treated as immutable.
+            # So a fixed pathname can never carry a live feed. Each push gets
+            # its own pathname keyed to the half-second it happened in, and the
+            # page asks for the slot it expects rather than looking anything
+            # up. Every URL is fetched once, so nothing is ever stale.
+            slot = int(now * 2)
+
             def push():
                 try:
-                    blob_put("roam/frame.jpg", jpg, "image/jpeg")
-                    blob_put("roam/state.json", payload.encode(),
+                    blob_put(f"roam/t/{slot}.jpg", jpg, "image/jpeg")
+                    blob_put(f"roam/t/{slot}.json", payload.encode(),
                              "application/json")
+                    blob_put("roam/state.json", payload.encode(),
+                             "application/json")   # slow fallback
+                    for old_slot in range(slot - 240, slot - 200):
+                        blob_del(f"roam/t/{old_slot}.jpg")
+                        blob_del(f"roam/t/{old_slot}.json")
                 except Exception:
                     pass
             threading.Thread(target=push, daemon=True).start()
@@ -539,6 +683,8 @@ async def begin():
         say("FLY_ALLOW_BROWSER is not 1 - not opening a browser")
         return
 
+    start_tunnel(STATE.get("port", 4660))
+
     async def forever():
         while True:
             STATE["running"] = True
@@ -560,6 +706,7 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=4660)
     ap.add_argument("--headful", action="store_true")
     a = ap.parse_args()
+    STATE["port"] = a.port
     load_brain()
     say(f"the fly roams - open http://localhost:{a.port}")
     uvicorn.run(app, host="127.0.0.1", port=a.port, log_level="warning")

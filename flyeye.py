@@ -162,7 +162,26 @@ class FlyPilot:
             "turn_l": float(max(0.0, -turn)), "turn_r": float(max(0.0, turn)),
             "forward": float(max(0.0, speed)), "reverse": float(back),
             "click": float(stop),
-            "drive": drive,
         }
+
+        # what the retina itself is doing: the drive rates that went into L1
+        # and L2, at the hex columns they were sampled from. This is the
+        # fly's actual visual field, not a picture of the screen.
+        try:
+            on_rate = np.asarray(list(drive.values())[0], dtype=np.float32)
+            off_rate = np.asarray(list(drive.values())[1], dtype=np.float32)
+            step_n = max(1, len(self.eye.on_uv[0]) // 190)
+            u, v = self.eye.on_uv
+            cols = [[round(float(u[i]), 3), round(float(v[i]), 3),
+                     round(float(on_rate[i]) / 180.0, 3)]
+                    for i in range(0, len(u), step_n)]
+            info["vision"] = {
+                "on_hz": round(float(on_rate.mean()), 1),
+                "off_hz": round(float(off_rate.mean()), 1),
+                "columns": len(u) + len(self.eye.off_uv[0]),
+                "cols": cols,
+            }
+        except Exception:
+            info["vision"] = None
         return dx, dy, click, hz, info
 

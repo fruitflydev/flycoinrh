@@ -76,6 +76,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <span class="sub">roaming</span>
   <span class="pill"><span class="pip" id="pip"></span><span id="pip-t">idle</span></span>
   <span style="flex:1"></span>
+  <span class="sub" id="fps">0 fps</span>
   <span class="sub" id="since">&nbsp;</span>
 </div>
 
@@ -177,12 +178,22 @@ function log(msg, cls){
 }
 
 let ws;
+const fps = [];
 function connect(){
   ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws');
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
-    if (m.type === 'frame'){
+    if (m.type === 'view'){          // the fast one: just the screen
       $('view').src = 'data:image/jpeg;base64,' + m.jpg;
+      target = {x: m.cx/1280, y: m.cy/800};
+      fps.push(Date.now());
+      while (fps.length && fps[0] < Date.now() - 1000) fps.shift();
+      $('fps').textContent = fps.length + ' fps';
+    }
+    else if (m.type === 'cursor'){   // the fly travelling between decisions
+      target = {x: m.cx/1280, y: m.cy/800};
+    }
+    else if (m.type === 'frame'){    // the slow one: what the brain decided
       target = {x: m.cx/1280, y: m.cy/800};
       for (const [k, r] of Object.entries(rows)){
         const v = m.hz[k] || 0;
