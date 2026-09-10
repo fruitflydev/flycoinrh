@@ -1,0 +1,13 @@
+flybrain
+========
+
+The code in this repository is MIT licensed - see LICENSE.
+This licence covers the code in this repository and nothing else.
+
+The connectome is not ours to license. The male Drosophila CNS dataset is
+© HHMI Janelia FlyEM, the Cambridge Connectomics Group and Google Research,
+released under CC-BY 4.0, and it stays under CC-BY wherever it goes. If you
+fork this, keep that attribution: it is the whole reason any of this is real.
+
+No part of this repository is financial advice, and $FLYBRAIN is an art
+experiment rather than an investment.
