@@ -171,6 +171,75 @@ between two frames. And Playwright's `get_by_role("button", name="GOOGL")`
 never resolves against it; the rows have to be found by `textContent` and
 clicked at coordinates.
 
+### Step 06: it learns now
+
+`mushroom.py` is the one place in this project a weight is allowed to move,
+and it moves where a fly's weights actually move — the Kenyon cell to MBON
+synapse, under dopamine.
+
+The rule is the measured one. A Kenyon cell active shortly before a
+dopaminergic neuron fires has **that synapse depressed**, not strengthened.
+Learning in a fly is subtraction: the mushroom body starts able to drive every
+response and experience carves away the ones that did not pay. So there is no
+potentiation here, only depression with a floor and a slow drift back toward
+baseline standing in for forgetting.
+
+Which MBONs count as reward-side and which as punishment-side is **not
+hardcoded from a table**. For each MBON, total PAM input weight is compared
+against total PPL1 input and the stronger wins. That split puts MBON01, 02 and
+03 on the reward side and MBON04, 10 and 11 on the punishment side, which is
+where the literature puts them — a good sign it is finding real structure
+rather than noise.
+
+```
+44,042 KC->MBON synapses     27,939 reward-side     14,349 punish-side
+```
+
+Measured, with controls — twenty rewarded encounters with one view:
+
+| population | change | expected |
+|---|---|---|
+| reward-side MBONs | **−6.0%** | depressed, it was the addressed compartment |
+| punishment-side MBONs | −0.9% | ~0, never addressed |
+| Kenyon cells | +0.3% | ~0, upstream of the synapse that changed |
+
+**The reward signal is not real, and the module says so in as many words.** A
+fly is rewarded by sugar, not by reaching a web page. Novelty stands in for it
+here, and that is a modelling choice made by a person — the fly has no say in
+it. The circuit, the plasticity site and the direction of the rule are the
+parts that are real.
+
+### Where it roams, and where it does not
+
+Robinhood Chain and pons only: the launchpad, its explore and analytics pages,
+Blockscout, and — as one of the seeds — the fly's own token page.
+
+X and reddit were tried first and dropped. Both serve a login wall to a real
+browser: X answers 623 characters of "Continue with phone", old.reddit blocks
+outright. Neither renders anything a retina could work on. Solana venues were
+dropped too; this fly launched its own token on this chain, so roaming the
+place it lives is the point.
+
+Trade controls are blocked and vetoed now that it roams a launchpad. It has no
+wallet and a trade is impossible, but the claim was that every click is
+checked, and it did once reach a "Buy token" page before that was tightened.
+
+### Why there is no object store in the path
+
+The public feed used to push a frame and a summary to a blob store twice a
+second. That suspended the store on operation count — thirteen megabytes held,
+every read answering `403` — and took the live feed down with it. Before that
+it had a subtler problem: the CDN answered `X-Vercel-Cache: HIT` with an `Age`
+of twenty seconds on a fixed pathname no matter what cache headers went with
+the upload, because public blobs are treated as immutable.
+
+So the fly opens a cloudflared quick tunnel instead and the socket carries
+frames, telemetry and events for free. The only thing published anywhere is
+where the tunnel is — `site/web/live.json`, written when the address changes,
+which the page reads. Quick tunnel addresses are random and change every run,
+so nothing is hardcoded.
+
+
 ### Waiting for the chain, not for the click
 
 A launch that had already succeeded looked exactly like a hang. The run loop
