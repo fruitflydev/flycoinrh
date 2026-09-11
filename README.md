@@ -92,6 +92,27 @@ refuse. The live feed comes from the hosted roaming service over a websocket;
 if that service is unreachable the page falls back to a published tunnel address.
 
 
+### The voice
+
+The fly has no language, so its journal is written for it, and `voice.py` is
+the writer. Observe: pull `/state` from the live roamer, the live token page
+and the on-chain launch constants into one packet. Read: fetch a short
+allowlist of real pages (its own token page, its own site, the pages the fly
+itself walked through, and a few reference pages on memecoins and tokenised
+stocks) and pass excerpts in. Write: a language model drafts a first-person
+entry from that packet and nothing else. Check: every number in the draft must
+appear in the packet, and any trading or hype language fails it; a rejected
+draft is not nudged into compliance, it is dropped. Post, through `xpost.py`,
+which caps posts per day and refuses duplicates. Two things in this project
+are invented, and both are labelled: the reward signal in the mushroom body,
+and the words. Everything else is a measurement.
+
+```bash
+py voice.py --once --dry      # observe, read, write one entry; post nothing
+py voice.py --loop            # every FLY_VOICE_EVERY_H hours
+py voice.py --show            # the journal so far
+```
+
 ## Why Robinhood Chain is the better half of this project
 
 pump.fun's backend answers `401 Unauthorized` to an injected wallet, so its own
@@ -109,21 +130,24 @@ The fly read the form through its retina and typed into it. The rig chose the
 paired asset, opened **Advanced**, set the creator tax, clicked **Launch
 token**, then clicked **Confirm** in the launchpad's own dialog. That click
 produced exactly one `eth_sendTransaction`, which was signed in Python and
-broadcast. Twice:
+broadcast. Three of the launches, including the real one:
 
-| | first launch | paired against GOOGL |
-|---|---|---|
-| token | test (TEST) | test (TEST) |
-| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` | `0xcc80a38afd807bfed1b9c21b6f236ea8ee651dc3` |
-| transaction | `0x1b3cda17…45484932` | `0x9602a50f…00e5aca2` |
-| block | 59557979 | 59581451 |
-| pair | ETH, graduates at 4.2 ETH | **GOOGL**, graduates at 24.2 GOOGL |
-| cost | 0.000973 ETH | 0.000979 ETH |
+| | first launch | paired against GOOGL | **$FLYBRAIN** |
+|---|---|---|---|
+| token | test (TEST) | test (TEST) | flybrain (FLYBRAIN) |
+| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` | `0xcc80a38afd807bfed1b9c21b6f236ea8ee651dc3` | `0x4eb990547bce4a982432ca88cf5fae7eed1a2d35` |
+| transaction | `0x1b3cda17…45484932` | `0x9602a50f…00e5aca2` | `0x63b2164f…0d12a4f1c` |
+| block | 59557979 | 59581451 | 59614342 |
+| creator | `0x739C…bFc3` | `0x739C…bFc3` | `0x6ce4085E…b42A` (a fresh wallet) |
+| pair | ETH, graduates at 4.2 ETH | **GOOGL**, graduates at 24.2 GOOGL | **GOOGL** |
+| tax | 2.00% | 2.00% | 1.00% |
+| cost | 0.000973 ETH | 0.000979 ETH | 0.000977 ETH |
 
-Every `status` `0x1`, every creator `0x739Ccc9dd8Ed6412F00782927dbd087c4e72bFc3`
-— the fly's wallet — every one 2.00% creator tax and 1,000,000,000 supply fixed
-at launch. Five have been launched this way; these two are the first and the
-latest. The first one in full:
+Every `status` `0x1`, every one 1,000,000,000 supply fixed at launch. The
+test launches came from the first wallet; the real one, $FLYBRAIN, from a
+second wallet created for it. Its creator fees accrue as GOOGL and are shown
+on [its token page](https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432ca88cf5fae7eed1a2d35)
+— read them there rather than here, because they move. The first launch in full:
 
 | | |
 |---|---|
@@ -361,8 +385,15 @@ signed edges. If your numbers differ from mine, one of us has a bug.
 - **The fly does not choose the paired asset.** It cannot read `GOOGL` at 892
   columns; picking a row out of a 57-item list is the rig following
   `FLY_RH_PAIR`. The same goes for the creator tax and the X handle.
-- **The token above is a test.** `test (TEST)`, launched to prove the path
+- **The test tokens are tests.** `test (TEST)`, launched to prove the path
   end-to-end. It is not a project and nobody should buy it.
+- **The voice is a narrator.** The fly has no language. Every journal entry
+  and every post on X is written by a language model handed the fly's
+  telemetry and the live numbers from its token page, and asked to write in
+  the first person. Every number in a draft is checked against that packet;
+  a draft with a number that is not in it, or with trading language, is
+  thrown away. The neurons, the pages and the fees are real. The words, and
+  any "confusion" or "curiosity" in them, are the narrator's.
 
 ## Running it
 
