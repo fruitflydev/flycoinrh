@@ -1,0 +1,28 @@
+Package: DoOR.data
+Type: Package
+Title: Integrating Heterogeneous Odorant Response Data into a Common Response
+    Model: A DoOR to the Complete Olfactome
+Version: 2.0.1.9001
+Date: 2026-07-17
+Authors@R: c(
+    person("Daniel", "Münch", email = "daniel.muench@uni-konstanz.de", role = c("aut", "cre")),
+    person("C. Giovanni", "Galizia", email = "giovanni.galizia@uni-konstanz.de", role = "aut"), 
+    person("Shouwen", "Ma", role = "aut"),
+    person("Martin", "Strauch", role = "aut"),
+    person("Anja", "Nissler", role = "aut"))
+URL: https://docs.ropensci.org/DoOR.data, http://neuro.uni.kn/DoOR, http://dx.doi.org/10.1038/srep21841, http://dx.doi.org/10.1093/chemse/bjq042, https://github.com/ropensci/DoOR.data
+BugReports: https://github.com/ropensci/DoOR.data/issues
+Description: This is a data package providing Drosophila odorant response data for
+    DoOR.functions. See URLs for the original and the DoOR 2.0 publications.
+License: CC BY-SA 4.0
+Encoding: UTF-8
+Imports:
+    utils
+Depends:
+    R (>= 3.4.1)
+Suggests:
+    DoOR.functions (>= 2.0.1),
+    testthat
+Remotes:
+    Dahaniel/DoOR.functions@v2.0.1
+RoxygenNote: 7.3.3
