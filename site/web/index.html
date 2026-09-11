@@ -1017,6 +1017,21 @@ let tickN = 0;
    neural readout, the event stream - arrives on the socket itself. There is
    no object store in the path any more: pushing two frames a second to one
    suspended it on operation count and every read started answering 403. */
+/* The fly has a permanent home now: a Railway service that stays up when
+   nobody's desk is on. It is tried first. The tunnel address in live.json is
+   only the fallback, for when the fly is being run from a laptop. */
+const STABLE_STREAM = 'https://flybrain-production-2b26.up.railway.app';
+async function findStableStream(){
+  try {
+    const r = await fetch(STABLE_STREAM + '/status', {cache: 'no-store'});
+    if (r.ok){
+      const d = await r.json();
+      if (d && d.running) return STABLE_STREAM;
+    }
+  } catch (e) {}
+  return await findStream();
+}
+
 async function findStream(){
   try {
     /* Read from the repo, not from this deployment: the fly writes the
@@ -1034,7 +1049,7 @@ async function findStream(){
 
 async function roamTick(){
   if (sock && sock.readyState === 1) return;      // already watching
-  const url = await findStream();
+  const url = await findStableStream();
   if (url) openSocket(url); else goOffline();
 }
 roamTick();

@@ -88,8 +88,8 @@ every existing caller still unpacks four and is unaffected.
 The site itself is in `site/` — a static page on Vercel plus one serverless
 function that proxies the chain, because the public Robinhood node
 intermittently answers `Access-Control-Allow-Origin: *,*`, which browsers
-refuse. The fly publishes its latest frame and summary to a public object
-store, so nothing about the feed needs the machine it runs on to be reachable.
+refuse. The live feed comes from the hosted roaming service over a websocket;
+if that service is unreachable the page falls back to a published tunnel address.
 
 
 ## Why Robinhood Chain is the better half of this project
