@@ -388,7 +388,7 @@ def fetch_token():
     # comes back as a 13-decimal float in the entry
     for k, d in TOKEN_DECIMALS.items():
         if isinstance(t.get(k), float):
-            t[k] = round(t[k], d)
+            t[k] = round(t[k], d) if d else int(round(t[k]))   # 14421514, not 14421514.0
     return t
 
 
@@ -516,6 +516,8 @@ def number_forms(v):
     for d in (0, 1, 2, 3, 4, 6, 8):
         s = f"{x:.{d}f}".rstrip("0").rstrip(".") if d else f"{x:.0f}"
         out.add(s)
+        if d in (1, 2):
+            out.add(f"{x:.{d}f}")          # "1.00" as a page prints it
         try:
             out.add(f"{float(s):,.{d}f}".rstrip("0").rstrip(".") if d else f"{int(round(x)):,}")
         except Exception:

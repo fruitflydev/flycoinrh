@@ -105,6 +105,7 @@ class Validate(unittest.TestCase):
 
     def test_percent_only_the_tax(self):
         self.ok("The launch page says a 1% creator tax, whatever a tax is.")
+        self.ok("The pons page says the creator tax is 1.00 %.")
         self.bad("18% of my clicks were vetoed.", "percentage")
         self.bad("It moved 5 percent.", "percentage")
 
@@ -144,9 +145,10 @@ class Validate(unittest.TestCase):
              "googl_usd": None, "sweeps": 842}
         for k, d in voice.TOKEN_DECIMALS.items():
             if isinstance(t.get(k), float):
-                t[k] = round(t[k], d)
+                t[k] = round(t[k], d) if d else int(round(t[k]))
         self.assertEqual(t["fees_earned_googl"], 1130.04)
-        self.assertEqual(t["fees_usd"], 375913.0)
+        self.assertEqual(t["fees_usd"], 375913)
+        self.assertIsInstance(t["fees_usd"], int)
         self.assertEqual(t["price_googl"], 7.63e-05)
         self.assertEqual(t["sweeps"], 842)
 
