@@ -5,8 +5,8 @@ Detection, then the connect flow, then whether the launch button stops saying
 "Connect wallet". Broadcasting is blocked (allow_send=False), so this cannot
 spend anything.
 
-  py test_rhwallet.py
-  py test_rhwallet.py --headful
+  py check_wallet.py
+  py check_wallet.py --headful
 """
 import argparse
 import asyncio
