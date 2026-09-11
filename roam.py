@@ -59,26 +59,32 @@ OUT = ROOT / "build"
 # Link-rich, text-heavy, safe places to be dropped into. The fly leaves them
 # on its own within a few clicks; these only decide where a life starts.
 SEEDS = [
-    # The open internet, chosen for what a real browser can actually render.
-    # Google, X, reddit and archive.org were all tried and all fail: the first
-    # three serve a consent or login wall (Google answers 335 characters of
-    # "unusual traffic"), and archive.org paints nothing at all headless. What
-    # is left is the link-rich, text-heavy web, which is what a retina can work
-    # on anyway.
+    # Weighted toward Special:Random on purpose. Every time a hop budget runs
+    # out the fly is put back on a seed, so if the seeds are a short fixed
+    # list it lands on the same few pages forever - which is exactly what
+    # happened. Special:Random is a different article every single time, so a
+    # reset becomes somewhere new rather than somewhere familiar.
     "https://en.wikipedia.org/wiki/Special:Random",
-    "https://en.wikipedia.org/wiki/Drosophila_melanogaster",
-    "https://commons.wikimedia.org/wiki/Main_Page",
-    "https://en.wikisource.org/wiki/Main_Page",
-    "https://news.ycombinator.com/",
+    "https://en.wikipedia.org/wiki/Special:Random",
+    "https://en.wikipedia.org/wiki/Special:Random",
+    "https://en.wikipedia.org/wiki/Special:Random",
+    "https://commons.wikimedia.org/wiki/Special:Random",
+    "https://en.wikisource.org/wiki/Special:Random",
+    "https://en.wikiquote.org/wiki/Special:Random",
     "https://www.gutenberg.org/browse/scores/top",
     "https://openlibrary.org/",
     "https://xkcd.com/",
-    "https://arxiv.org/list/q-bio.NC/recent",
     # and the chain it launched its own token on
     "https://www.ponsfamily.com/launchpad/explore",
     "https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432ca88cf5fae7eed1a2d35",
     "https://robinhoodchain.blockscout.com/txs",
 ]
+
+# Hacker News and arXiv were seeds and had to go. Both are link dead ends
+# behind a fence: almost every link on them points at a domain that is not
+# allowed, so a click there goes nowhere, the budget expires and the fly is
+# bounced back to a seed. They looked like rich pages and were traps.
+
 
 # Checked against every URL the browser tries to commit to.
 BLOCK = re.compile(
@@ -399,7 +405,7 @@ def to_gray(raw, w=None, h=None):
 # --------------------------------------------------------------------------
 # the roam
 # --------------------------------------------------------------------------
-async def roam(steps_per_page=26, headful=False, seed=None):
+async def roam(steps_per_page=44, headful=False, seed=None):
     from playwright.async_api import async_playwright
 
     fb, pilot = load_brain()
