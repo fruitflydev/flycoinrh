@@ -132,6 +132,24 @@ class Validate(unittest.TestCase):
     def test_negative_and_tiny_values(self):
         self.ok("It says -91.5 mV. The price is 0.0000763 GOOGL.")
 
+    def test_a_values_own_spelling_is_always_allowed(self):
+        # the first live draft copied the packet float verbatim; that is grounded
+        self.p["token"]["fees_earned_googl"] = 1130.0356346075507
+        self.p["allowed_numbers"] = voice.allowed_numbers(self.p)
+        self.ok("It says 1130.0356346075507 GOOGL.")
+        self.ok("It says 1130.04 GOOGL.")
+
+    def test_token_values_are_rounded_for_the_narrator(self):
+        t = {"fees_earned_googl": 1130.0356346075507, "fees_usd": 375913.2211, "price_googl": 7.63e-05,
+             "googl_usd": None, "sweeps": 842}
+        for k, d in voice.TOKEN_DECIMALS.items():
+            if isinstance(t.get(k), float):
+                t[k] = round(t[k], d)
+        self.assertEqual(t["fees_earned_googl"], 1130.04)
+        self.assertEqual(t["fees_usd"], 375913.0)
+        self.assertEqual(t["price_googl"], 7.63e-05)
+        self.assertEqual(t["sweeps"], 842)
+
     def test_journal_numbers_need_a_backward_glance(self):
         self.p["journal"]["knowledge"] = ["on day 1 the page said 320.6 GOOGL"]
         self.p["allowed_numbers"] = voice.allowed_numbers(self.p)
@@ -337,6 +355,27 @@ class Cycle(unittest.TestCase):
         self.assertEqual(sent, [out["post"]])
         self.assertTrue(res["posted"])
         self.assertEqual(j.data["posts"][-1]["x_id"], "1")
+
+    def test_dropped_draft_retries_sooner_than_the_cadence(self):
+        c = stub_cfg(".", model="fake", every_h=3.0)
+        out = {"post": "It says 1,500 GOOGL earned.", "learned": [], "mood": "x", "wants_to_read": []}
+        res, pub, j = self.run_cycle(c, packet(), reflect_out=out)
+        self.assertTrue(res["dropped"])
+        # before any entry exists the 15-minute first-entry cadence wins
+        self.assertLess(voice.next_wait(j, 3.0, now=1_700_000_000), 0)
+        # once the journal has an entry, a drop retries after 45 minutes, not 3 hours
+        j.data["posts"] = [{"text": "x"}]
+        due = voice.next_wait(j, 3.0, now=1_700_000_000)
+        self.assertGreater(due, voice.RETRY_AFTER_DROP_S - 5)
+        self.assertLessEqual(due, voice.RETRY_AFTER_DROP_S)
+
+    def test_first_entry_is_tried_every_15_minutes(self):
+        with tempfile.TemporaryDirectory() as d:
+            j = voice.Journal(Path(d) / "journal.json")
+            j.data["last_cycle_at"] = 1_700_000_000
+            self.assertAlmostEqual(voice.next_wait(j, 3.0, now=1_700_000_000), voice.FIRST_ENTRY_EVERY_S)
+            j.data["posts"] = [{"text": "x"}]
+            self.assertAlmostEqual(voice.next_wait(j, 3.0, now=1_700_000_000), 3 * 3600)
 
     def test_daily_cap_stops_before_the_model_is_paid(self):
         c = stub_cfg(".", model="fake", dry=False)

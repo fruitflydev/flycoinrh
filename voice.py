@@ -384,7 +384,17 @@ def fetch_token():
             t["fees_usd"] = t["fees_earned_googl"] * t["googl_usd"]
         if t["fees_claimable_googl"] is not None:
             t["claimable_usd"] = t["fees_claimable_googl"] * t["googl_usd"]
+    # rounded before the narrator sees them: a 13-decimal float in the packet
+    # comes back as a 13-decimal float in the entry
+    for k, d in TOKEN_DECIMALS.items():
+        if isinstance(t.get(k), float):
+            t[k] = round(t[k], d)
     return t
+
+
+TOKEN_DECIMALS = {"fees_earned_googl": 2, "fees_claimable_googl": 2, "googl_usd": 2,
+                  "fees_usd": 0, "claimable_usd": 0, "market_cap_usd": 0,
+                  "price_usd": 6, "price_googl": 8}
 
 
 def wallet_eth(rpc, addr):
@@ -423,7 +433,7 @@ def observe(c, now=None):
         "telemetry": tele,
         "token": fetch_token(),
         "launch": dict(LAUNCH),
-        "wallet_eth": wallet_eth(c["rpc"], LAUNCH["creator"]),
+        "wallet_eth": (lambda w: round(w, 6) if isinstance(w, float) else w)(wallet_eth(c["rpc"], LAUNCH["creator"])),
         "pages_read": [],
         "journal": {},
         "allowlist": [a["url"] for a in ALLOWLIST],
@@ -501,7 +511,8 @@ def number_forms(v):
     if abs(x - round(x)) < 1e-9:
         i = int(round(x))
         out.update({str(i), f"{i:,}"})
-    out.add(f"{x:.10g}")             # the value's own shortest spelling
+    # the value's own spellings, however many decimals the packet carried
+    out.update({str(x), repr(x), f"{x:.10g}", f"{x:.15g}"})
     for d in (0, 1, 2, 3, 4, 6, 8):
         s = f"{x:.{d}f}".rstrip("0").rstrip(".") if d else f"{x:.0f}"
         out.add(s)
@@ -929,8 +940,11 @@ def run_once(c, dry=None, now=None):
     post = str(out.get("post", "")).strip()
     ok, reasons = validate(post, check_packet)
     if not ok:
-        # dropped, not fixed: no second draft, and the reasons stay here
+        # dropped, not fixed: no second draft, and the reasons stay here.
+        # A dropped draft gives back most of the cadence so the next try is
+        # sooner than a full interval, bounded by RETRY_AFTER_DROP_S.
         say("entry dropped:", "; ".join(reasons))
+        journal.data["last_cycle_at"] = int(now - c["every_h"] * 3600 + RETRY_AFTER_DROP_S)
         journal.note_read(readings, now)
         journal.save()
         return {"dropped": True, "reasons": reasons, "draft": post}
@@ -966,6 +980,17 @@ def run_once(c, dry=None, now=None):
     return entry
 
 
+RETRY_AFTER_DROP_S = 45 * 60      # a dropped draft tries again after this
+FIRST_ENTRY_EVERY_S = 15 * 60     # until the journal has one entry, try this often
+
+
+def next_wait(journal, every_h, now=None):
+    """Seconds until the next cycle is due, from the stamp on disk."""
+    now = time.time() if now is None else now
+    cadence = every_h * 3600 if journal.data.get("posts") else min(every_h * 3600, FIRST_ENTRY_EVERY_S)
+    return (journal.data.get("last_cycle_at") or 0) + cadence - now
+
+
 def loop(c):
     say(f"voice loop: every {c['every_h']} h, model {c['model']}, dry={c['dry']}")
     sd = str(c["state_dir"])
@@ -975,7 +1000,7 @@ def loop(c):
         system_prompt(c)              # fail now, loudly, if the prompt is missing
     while True:
         j = Journal(c["journal"])
-        wait = (j.data.get("last_cycle_at") or 0) + c["every_h"] * 3600 - time.time()
+        wait = next_wait(j, c["every_h"])
         if wait > 0:
             say(f"next entry in {wait / 60:.0f} min")
             time.sleep(min(wait, 1800))
