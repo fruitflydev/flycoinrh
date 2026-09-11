@@ -16,11 +16,14 @@ forgetting.
 
 Which MBONs count as reward-side and which as punishment-side is not
 hardcoded from a table. It is read out of this connectome: for each MBON,
-total PAM input weight is compared against total PPL1 input weight and the
-stronger one wins. That split puts MBON01, 02 and 03 on the reward side and
-MBON04, 10 and 11 on the punishment side, which is where the literature puts
-them - a reassuring sign the split is finding real structure rather than
-noise.
+total PAM-to-MBON synapse count is compared against total PPL1-to-MBON count
+and the larger one wins; ties are unassigned. These are anatomical counts
+from pairs with at least three synapses, stored separately because dopamine
+has zero fast weight. The male graph gives 39 reward-side MBONs, 56
+punishment-side and 2 unassigned. The literature split holds only partly:
+MBON01, 02 and 03 are reward-side and MBON11 is punishment-side, but both
+MBON04 neurons are reward-side, and MBON10 has eight reward-side neurons
+and one punishment-side neuron.
 
 What is honest about this and what is not:
 
@@ -28,10 +31,9 @@ What is honest about this and what is not:
 * The reward signal is not. A fly is rewarded by sugar, not by reaching a web
   page. Novelty stands in for it here, which is a modelling choice made by a
   person, and the fly has no say in it.
-* The compartments are lopsided in this data - 27,939 KC-to-MBON synapses
-  sit on the reward side against 14,349 on the punishment side - so
-  punishment has about half as much to work with as reward does. That
-  asymmetry is in the measurement, not in the code.
+* Of the 44,042 KC-to-MBON weight positions in the male graph, 22,702 sit on
+  the reward side, 20,044 on the punishment side and 1,296 are unassigned.
+  These positions count connected neuron pairs, not individual synapses.
 """
 import os
 import re
@@ -63,9 +65,17 @@ class MushroomBody:
         self.mbon = sel(r"^MBON")
         pam, ppl1 = sel(r"^PAM"), sel(r"^PPL1")
 
-        W = fb.W                      # CSC: column j = targets of presynaptic j
-        pam_in = np.abs(np.asarray(W[pam][:, self.mbon].sum(axis=0)).ravel())
-        ppl_in = np.abs(np.asarray(W[ppl1][:, self.mbon].sum(axis=0)).ravel())
+        pam_in = np.zeros(len(self.mbon))
+        ppl_in = np.zeros(len(self.mbon))
+        if fb.dop_inputs is None:
+            print("Graph predates the anatomical split and should be rebuilt.")
+        else:
+            dop_pre, dop_post, dop_count = fb.dop_inputs
+            for group, total in ((pam, pam_in), (ppl1, ppl_in)):
+                hit = np.isin(dop_pre, group)
+                total[:] = np.bincount(
+                    dop_post[hit], weights=dop_count[hit], minlength=fb.n
+                )[self.mbon]
         self.reward_side = self.mbon[pam_in > ppl_in]
         self.punish_side = self.mbon[ppl_in > pam_in]
 
