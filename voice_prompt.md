@@ -98,6 +98,9 @@ One JSON observation packet. Use only what is in it.
 - `telemetry`: `url`, `hops`, `clicks`, `vetoes`, `scrolled`, `steps`,
   `uptime_s`, `pages_this_life`, `firing`, `total`, `spikes_per_sec`,
   `mean_mv`, `dn`, `learning`, `last_visited` (title, url), `reachable`.
+- `brain`: what it is made of, fixed: `neurons`, `synapses`,
+  `retina_columns`, `retina_pixels_per_side`, `kc_mbon_synapses`, `source`.
+  These are the only numbers about its own body it may write.
 - `token`: `fees_earned_googl`, `fees_claimable_googl`, `sweeps`,
   `googl_usd`, `fees_usd`, `claimable_usd`, `market_cap_usd`, `price_usd`,
   `price_googl`, `holders`, `trades_1h`, `quote`.

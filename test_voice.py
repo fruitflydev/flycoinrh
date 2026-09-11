@@ -94,14 +94,30 @@ class Validate(unittest.TestCase):
                     "Someone sold their bags.", "lfg", "Cheap, the page says."):
             self.bad(bad, "banned")
 
-    def test_number_words_rejected(self):
+    def test_compound_and_vague_number_words_rejected(self):
         for bad in ("It says fifteen hundred GOOGL.", "Thousands of humans hold it.",
-                    "About a million dollars.", "Half of my neurons fired.",
-                    "I looked at a dozen pages.", "Twice as many sweeps."):
+                    "About a hundred dollars.", "Half of my neurons fired.",
+                    "I looked at a dozen pages.", "Twice as many sweeps.",
+                    "Twenty three vetoes.", "Several humans."):
             self.bad(bad, "number as a word")
+
+    def test_lone_number_words_are_grounded_like_digits(self):
+        self.p["telemetry"]["vetoes"] = 4
+        self.p["allowed_numbers"] = voice.allowed_numbers(self.p)
+        self.ok("My stop neuron fired four times today.")
+        self.bad("My stop neuron fired five times today.", "not in packet")
+        self.bad("About a million dollars.", "number as a word")     # "a million" is a compound
+        self.bad("Million dollars, it says.", "not in packet")
 
     def test_one_is_ordinary_english(self):
         self.ok("One page of light. No one clicked but me.")
+
+    def test_brain_constants_are_grounded(self):
+        self.p["brain"] = dict(voice.BRAIN)
+        self.p["allowed_numbers"] = voice.allowed_numbers(self.p)
+        self.ok("My eye is 892 columns, about 30 by 30 pixels of light. 44,042 synapses may change.")
+        self.ok("10,228,000 synapses, 165,122 neurons.")
+        self.bad("My eye is 900 columns.", "not in packet")
 
     def test_percent_only_the_tax(self):
         self.ok("The launch page says a 1% creator tax, whatever a tax is.")
@@ -370,6 +386,15 @@ class Cycle(unittest.TestCase):
         due = voice.next_wait(j, 3.0, now=1_700_000_000)
         self.assertGreater(due, voice.RETRY_AFTER_DROP_S - 5)
         self.assertLessEqual(due, voice.RETRY_AFTER_DROP_S)
+
+    def test_nudge_file_is_taken_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            n = Path(d) / "nudge"
+            self.assertFalse(voice.take_nudge(n))
+            n.write_text("", encoding="utf-8")
+            self.assertTrue(voice.take_nudge(n))
+            self.assertFalse(n.exists())
+            self.assertFalse(voice.take_nudge(n))
 
     def test_first_entry_is_tried_every_15_minutes(self):
         with tempfile.TemporaryDirectory() as d:

@@ -86,6 +86,17 @@ LAUNCH = {
             "It did not choose to launch anything and it does not control the coin."),
 }
 
+# What the brain is made of. Fixed by the dataset and the model, so constants;
+# in the packet so the narrator may write them and the checker can ground them.
+BRAIN = {
+    "neurons": 165122,
+    "synapses": 10228000,
+    "retina_columns": 892,
+    "retina_pixels_per_side": 30,
+    "kc_mbon_synapses": 44042,
+    "source": "HHMI Janelia FlyEM male CNS, CC-BY",
+}
+
 TOKEN_PAGE = "https://www.ponsfamily.com/launchpad/" + LAUNCH["contract"]
 MARKET_API = "https://www.ponsfamily.com/api/pons-v2-market/" + LAUNCH["contract"]
 
@@ -152,12 +163,19 @@ NUM_RE = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?\s?(?:%|[kKmMbB](?![a-zA-Z]))?
 POST_NUM_RE = re.compile(r"(?<![\d,])\d[\d,]*(?:\.\d+)?\s?(?:[kKmMbB](?![a-zA-Z]))?")
 PCT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s?(?:%|percent\b|per cent\b)", re.I)
 HEX_RE = re.compile(r"0x[0-9a-f]{6,}", re.I)
-# numbers as words: the checker cannot ground these, so they are not allowed
-WORD_NUM_RE = re.compile(
-    r"\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
-    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|"
-    r"eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|halves|half|quarters?|"
-    r"twice|thrice|couple)\b", re.I)
+# Numbers as words. A lone word ("four") is read as its digit and grounded
+# like one; a compound ("fifteen hundred", "twenty three") or a vague
+# quantity ("thousands", "half", "a couple") cannot be grounded and fails.
+WORD_NUMS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+             "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+             "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+             "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+             "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100, "thousand": 1000,
+             "million": 1000000, "billion": 1000000000}
+SINGLE_WORD_RE = re.compile(r"\b(" + "|".join(WORD_NUMS) + r")\b", re.I)
+VAGUE_WORD_RE = re.compile(
+    r"\b(?:hundreds|thousands|millions|billions|dozens?|halves|half|quarters?|twice|thrice|"
+    r"couple|several)\b", re.I)
 EMOJI_RE = re.compile(r"[\U0001F000-\U0001FAFF☀-➿]|(?<!\w)[#@][A-Za-z_]\w*")
 URL_RE = re.compile(r"https?://[^\s<>\"']+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|online|io|xyz|app|dev)\b(?:/[^\s<>\"']*)?", re.I)
 
@@ -431,6 +449,7 @@ def observe(c, now=None):
         "now_utc": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "elapsed_h": round((now - LAUNCH["launched_unix"]) / 3600.0, 1),
         "telemetry": tele,
+        "brain": dict(BRAIN),
         "token": fetch_token(),
         "launch": dict(LAUNCH),
         "wallet_eth": (lambda w: round(w, 6) if isinstance(w, float) else w)(wallet_eth(c["rpc"], LAUNCH["creator"])),
@@ -603,6 +622,7 @@ def allowed_numbers(packet):
     live_raw, page_raw, mem_raw = set(), set(), set()
     _walk_numbers({
         "telemetry": packet.get("telemetry"),
+        "brain": {k: v for k, v in (packet.get("brain") or BRAIN).items() if k != "source"},
         "token": packet.get("token"),
         "launch": {k: launch.get(k) for k in LAUNCH_QUANTITIES},
         "wallet_eth": packet.get("wallet_eth"),
@@ -687,25 +707,42 @@ def validate(post, packet):
             reasons.append(f"url not in packet: {u}")
     body = HEX_RE.sub(" ", URL_RE.sub(" ", post))
 
-    for m in WORD_NUM_RE.findall(body):
+    for m in VAGUE_WORD_RE.findall(body):
         reasons.append(f"number as a word: {m}")
     for m in PCT_RE.findall(body):
         if _norm_num(re.sub(r"(?i)percent|per cent", "", m)) not in allowed["pct"]:
             reasons.append(f"percentage not in packet: {m.strip()}")
     body = PCT_RE.sub(" ", body)
 
+    def grounded(tok, page_ok, memory_ok):
+        if tok in allowed["live"]:
+            return True
+        if page_ok and tok in allowed["page"]:
+            return True
+        return memory_ok and tok in allowed["memory"]
+
     for sentence in re.split(r"(?<=[.!?])\s+", body):
         page_ok = bool(PAGE_CUES.search(sentence))
         memory_ok = bool(MEMORY_CUES.search(sentence))
         for m in POST_NUM_RE.findall(sentence):
             tok = _norm_num(m)
-            if not tok or tok in allowed["live"]:
-                continue
-            if page_ok and tok in allowed["page"]:
-                continue
-            if memory_ok and tok in allowed["memory"]:
-                continue
-            reasons.append(f"number not in packet: {m.strip()}")
+            if tok and not grounded(tok, page_ok, memory_ok):
+                reasons.append(f"number not in packet: {m.strip()}")
+        # number words: a compound or one glued to a digit cannot be grounded;
+        # a lone word is read as its digit ("four" -> "4") and checked the same
+        words = list(SINGLE_WORD_RE.finditer(sentence))
+        for i, w in enumerate(words):
+            before = sentence[max(0, w.start() - 2):w.start()]
+            after = sentence[w.end():w.end() + 2]
+            glued = (i > 0 and not sentence[words[i - 1].end():w.start()].strip(" -")) \
+                or (i + 1 < len(words) and not sentence[w.end():words[i + 1].start()].strip(" -")) \
+                or re.search(r"\d\s?$", before) or re.match(r"^\s?\d", after) \
+                or re.search(r"\ba\s$", sentence[:w.start()], re.I)      # "a hundred"
+            word = w.group(1).lower()
+            if glued:
+                reasons.append(f"number as a word: {w.group(0)}")
+            elif word != "one" and not grounded(str(WORD_NUMS[word]), page_ok, memory_ok):
+                reasons.append(f"number not in packet: {w.group(0)}")
     return (not reasons), reasons
 
 
@@ -986,6 +1023,21 @@ RETRY_AFTER_DROP_S = 45 * 60      # a dropped draft tries again after this
 FIRST_ENTRY_EVERY_S = 15 * 60     # until the journal has one entry, try this often
 
 
+def take_nudge(path):
+    """
+    True once if an operator left a file named `nudge` in the state dir; the
+    file is removed. It only moves the clock: the entry itself is written,
+    checked and posted exactly as every other one.
+    """
+    try:
+        if Path(path).exists():
+            Path(path).unlink()
+            return True
+    except OSError:
+        pass
+    return False
+
+
 def next_wait(journal, every_h, now=None):
     """Seconds until the next cycle is due, from the stamp on disk."""
     now = time.time() if now is None else now
@@ -1000,13 +1052,22 @@ def loop(c):
         f"ledger: {xpost.ledger_path()}")
     if not is_stub(c):
         system_prompt(c)              # fail now, loudly, if the prompt is missing
+    nudge = Path(c["state_dir"]) / "nudge"
+    said = None
     while True:
         j = Journal(c["journal"])
         wait = next_wait(j, c["every_h"])
+        if take_nudge(nudge):
+            say("nudged: writing the next entry now")
+            wait = 0
         if wait > 0:
-            say(f"next entry in {wait / 60:.0f} min")
-            time.sleep(min(wait, 1800))
+            mins = int(wait // 60)
+            if said is None or abs(said - mins) >= 10 or mins < 2:
+                say(f"next entry in {mins} min")
+                said = mins
+            time.sleep(min(wait, 60))
             continue
+        said = None
         try:
             run_once(c)
         except ConfigError as exc:
