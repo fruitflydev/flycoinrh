@@ -741,6 +741,11 @@ def index():
     return FileResponse(str(ROOT / "web" / "roam.html"))
 
 
+@app.get("/stream")
+def stream_deck():
+    return FileResponse(str(ROOT / "web" / "stream.html"))
+
+
 @app.get("/status")
 def status():
     return {"running": STATE["running"],
