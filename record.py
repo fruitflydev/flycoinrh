@@ -1,7 +1,7 @@
 """
 Record the live rig to a video file.
 
-Opens http://localhost:4650 in a Playwright browser that is recording video,
+Opens http://localhost:4651 in a Playwright browser that is recording video,
 presses START, waits for the run to finish, then closes the context so the
 video is finalised and converts it to mp4.
 
@@ -9,7 +9,7 @@ This captures the interface itself - the brain canvas, the streamed pump.fun
 frames, the stepper and telemetry - at full resolution, with no desktop, no
 taskbar and no cursor of yours in shot.
 
-The rig must already be running:  py live.py --port 4650
+The rig must already be running:  py rhlive.py --port 4651
 
   py record.py                 record whatever the rig is armed for
   py record.py --dry           refuse to run if FLY_LIVE=1
@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 OUT = ROOT / "build" / "recordings"
-UI = "http://localhost:4650"   # overridden by --port
+UI = "http://localhost:4651"   # overridden by --port
 
 
 async def main():
@@ -36,8 +36,8 @@ async def main():
                     help="abort if the rig is armed to mint")
     ap.add_argument("--name", default=None)
     ap.add_argument("--ticker", default=None)
-    ap.add_argument("--port", type=int, default=4650,
-                    help="4650 = Solana rig, 4651 = Robinhood Chain rig")
+    ap.add_argument("--port", type=int, default=4651,
+                    help="port the rig listens on; rhlive.py uses 4651")
     a = ap.parse_args()
 
     global UI
