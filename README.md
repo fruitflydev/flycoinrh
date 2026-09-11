@@ -420,6 +420,27 @@ If you build something with it, open an issue — we would rather see it than
 not.
 
 
+## Hosting it
+
+The roaming service runs as a single container. Build the graph first, so
+`build/graph.npz` and `data/body-annotations.feather` exist, then:
+
+```bash
+docker build -t flybrain .
+docker run -p 4660:4660 flybrain      # http://localhost:4660
+```
+
+To host it on Railway, run `railway up` from a checkout that has the graph
+built; the data files are not in git, so a deploy straight from GitHub has
+nothing to load. The service reads `PORT` and binds to every interface.
+
+| variable | purpose |
+|---|---|
+| `PORT` | set by the host |
+| `FLY_STATE_DIR` | where `mb_gains.npz` is kept; point it at a volume such as `/data` so learning survives redeploys |
+
+The container has no wallet and no chain keys, and never signs anything.
+
 ## Credits
 
 Connectome data © HHMI Janelia FlyEM, the Cambridge Connectomics Group and

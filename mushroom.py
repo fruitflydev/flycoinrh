@@ -33,6 +33,7 @@ What is honest about this and what is not:
   less to work with than reward does. That asymmetry is in the measurement,
   not in the code.
 """
+import os
 import re
 import time
 from pathlib import Path
@@ -40,7 +41,10 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).parent
-STORE = ROOT / "build" / "mb_gains.npz"
+# Where learning is kept. On a host with a persistent volume, point
+# FLY_STATE_DIR at it, or every redeploy wipes what the fly has learned.
+STORE = Path(os.environ.get("FLY_STATE_DIR", str(ROOT / "build"))) / "mb_gains.npz"
+SHIPPED = ROOT / "build" / "mb_gains.npz"
 
 
 class MushroomBody:
@@ -174,9 +178,11 @@ class MushroomBody:
         mismatch is discarded rather than misapplied.
         """
         try:
-            if not STORE.exists():
+            # a fresh volume starts from whatever learning shipped with the code
+            src = STORE if STORE.exists() else SHIPPED
+            if not src.exists():
                 return False
-            z = np.load(STORE)
+            z = np.load(src)
             if len(z["gain"]) != len(self.gain) or not np.array_equal(z["pos"], self.pos):
                 return False
             self.gain = z["gain"].astype(np.float32)

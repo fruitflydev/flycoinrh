@@ -1,0 +1,14 @@
+.env
+.env.*
+.git
+__pycache__/
+*.pyc
+*.mp4
+*.webm
+assets/
+site/
+data/*
+!data/body-annotations.feather
+build/*
+!build/graph.npz
+!build/mb_gains.npz

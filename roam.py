@@ -424,7 +424,10 @@ async def roam(steps_per_page=44, headful=False, seed=None):
              "visited": [], "events": [], "firing": []}
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=not headful)
+        browser = await pw.chromium.launch(
+            headless=not headful,
+            # a container gives /dev/shm 64 MB and Chromium crashes on it
+            args=["--disable-dev-shm-usage", "--no-sandbox"])
         # No storage, no wallet, no extension, no downloads. A fresh context
         # with nothing in it: the fly cannot be logged in as anyone.
         ctx = await browser.new_context(
@@ -801,10 +804,14 @@ async def begin():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=4660)
+    # a host that assigns the port says so in PORT
+    ap.add_argument("--port", type=int,
+                    default=int(os.environ.get("PORT", "4660")))
     ap.add_argument("--headful", action="store_true")
     a = ap.parse_args()
     STATE["port"] = a.port
     load_brain()
     say(f"the fly roams - open http://localhost:{a.port}")
-    uvicorn.run(app, host="127.0.0.1", port=a.port, log_level="warning")
+    # loopback on a desk, every interface in a container
+    uvicorn.run(app, host=os.environ.get("FLY_HOST", "127.0.0.1"),
+                port=a.port, log_level="warning")
