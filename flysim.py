@@ -51,6 +51,11 @@ class FlyBrain:
         self.receptor = z["receptor"].astype(str)
         self.fru = z["fru"].astype(str)
         self.nt = z["nt"].astype(str)
+        self.dop_inputs = (
+            tuple(z[key] for key in ("dop_pre", "dop_post", "dop_count"))
+            if all(key in z for key in ("dop_pre", "dop_post", "dop_count"))
+            else None
+        )
         self.p = p
 
         # cell-type codes, for per-type trainable gains

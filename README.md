@@ -214,15 +214,20 @@ potentiation here, only depression with a floor and a slow drift back toward
 baseline standing in for forgetting.
 
 Which MBONs count as reward-side and which as punishment-side is **not
-hardcoded from a table**. For each MBON, total PAM input weight is compared
-against total PPL1 input and the stronger wins. That split puts MBON01, 02 and
-03 on the reward side and MBON04, 10 and 11 on the punishment side, which is
-where the literature puts them — a good sign it is finding real structure
-rather than noise.
+hardcoded from a table**. For each MBON, total PAM-to-MBON synapse count is
+compared against total PPL1-to-MBON count and the larger wins; ties are
+unassigned. These are anatomical counts from pairs with at least three
+synapses, stored separately because dopamine has zero fast weight. The male
+graph gives 39 reward-side MBONs, 56 punishment-side and 2 unassigned. The
+literature split holds only partly: MBON01, 02 and 03 are reward-side and
+MBON11 is punishment-side, but both MBON04 neurons are reward-side, and
+MBON10 has eight reward-side neurons and one punishment-side neuron.
 
 ```
-44,042 KC->MBON synapses     27,939 reward-side     14,349 punish-side
+44,042 KC->MBON weight positions     22,702 reward-side     20,044 punish-side     1,296 unassigned
 ```
+
+These positions count connected neuron pairs, not individual synapses.
 
 Measured, with controls — twenty rewarded encounters with one view:
 
@@ -231,6 +236,9 @@ Measured, with controls — twenty rewarded encounters with one view:
 | reward-side MBONs | **−6.0%** | depressed, it was the addressed compartment |
 | punishment-side MBONs | −0.9% | ~0, never addressed |
 | Kenyon cells | +0.3% | ~0, upstream of the synapse that changed |
+
+These numbers were measured under the MBON-to-dopamine feedback split and
+should be re-run under the anatomical input split; they have not been re-run.
 
 **The reward signal is not real, and the module says so in as many words.** A
 fly is rewarded by sugar, not by reaching a web page. Novelty stands in for it

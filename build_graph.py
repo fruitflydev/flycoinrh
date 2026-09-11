@@ -8,6 +8,7 @@ Inputs (CC-BY, storage.googleapis.com/flyem-male-cns):
 
 Output:
   build/graph.npz   W (CSR, mV per presynaptic spike), body index, sign, type codes
+                    and anatomical PAM/PPL1 -> MBON synapse counts
 
 Sign convention follows Shiu et al. 2024 (Nature): acetylcholine excitatory,
 GABA and glutamate inhibitory. Monoamines are modulatory in reality; they are
@@ -96,6 +97,11 @@ def main():
     print("building sparse matrix ...")
     r = idx.loc[post_a].to_numpy()   # row = postsynaptic
     c = idx.loc[pre_a].to_numpy()    # col = presynaptic
+    # Retain anatomical dopamine inputs separately from zero fast weights.
+    is_dop = np.char.startswith(types, "PAM") | np.char.startswith(types, "PPL1")
+    is_mbon = np.char.startswith(types, "MBON")
+    dop = is_dop[c] & is_mbon[r]
+    dop_pre, dop_post, dop_count = c[dop], r[dop], wt_a[dop]
     v = wt_a * MV_PER_SYNAPSE * sign[c]
 
     keep = v != 0.0
@@ -114,6 +120,7 @@ def main():
         data=W.data, indices=W.indices, indptr=W.indptr, shape=W.shape,
         bodies=bodies, sign=sign, types=types, superclass=superclass,
         subclass=subclass, receptor=receptor, fru=fru, nt=nt_str,
+        dop_pre=dop_pre, dop_post=dop_post, dop_count=dop_count,
     )
     print(f"wrote {BUILD / 'graph.npz'}")
 
