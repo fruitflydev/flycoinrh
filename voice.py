@@ -1057,7 +1057,8 @@ def loop(c):
     while True:
         j = Journal(c["journal"])
         wait = next_wait(j, c["every_h"])
-        if take_nudge(nudge):
+        nudged = take_nudge(nudge)
+        if nudged:
             say("nudged: writing the next entry now")
             wait = 0
         if wait > 0:
@@ -1069,7 +1070,9 @@ def loop(c):
             continue
         said = None
         try:
-            run_once(c)
+            res = run_once(c)
+            if nudged and isinstance(res, dict) and res.get("reasons") == ["roamer unreachable or stale"]:
+                nudge.touch()             # keep the nudge until the roamer can be narrated
         except ConfigError as exc:
             say("voice cannot run until this is fixed:", str(exc)[:200])
             time.sleep(1800)
