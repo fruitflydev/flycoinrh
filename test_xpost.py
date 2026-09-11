@@ -184,7 +184,8 @@ class FakePost:
     def __call__(self, url, **kw):
         self.calls.append((url, kw))
         i = len(self.calls)
-        if url == xpost.UPLOAD_URL:
+        assert kw.get("allow_redirects") is False, "a signed POST must never follow a redirect"
+        if url in (xpost.UPLOAD_URL, xpost.UPLOAD_URL_V1):
             return self.upload(i)
         if url == xpost.TWEET_URL:
             return self.tweet(i)
@@ -322,21 +323,45 @@ class TestPublishNetwork(PublishBase):
         self.assertFalse(self.ledger()[0]["media"])
 
     def test_image_is_uploaded_first_and_attached(self):
+        self.fake.upload = lambda i: FakeResponse(200, {"data": {"id": "m1"}})
         r = xpost.publish("with picture", b"\xff\xd8\xff", "image/jpeg")
         self.assertEqual(r, {"id": "1002"})
         urls = [u for u, _ in self.fake.calls]
         self.assertEqual(urls, [xpost.UPLOAD_URL, xpost.TWEET_URL])
         up = self.fake.calls[0][1]
-        self.assertEqual(up["files"]["media_data"][1], base64.b64encode(b"\xff\xd8\xff").decode())
-        self.assertNotIn("data", up)   # multipart, not urlencoded: nothing to sign
+        self.assertEqual(up["files"]["media"], ("frame.jpg", b"\xff\xd8\xff", "image/jpeg"))
+        self.assertEqual(up["data"], {"media_category": "tweet_image"})   # multipart: not signed
+        self.assertNotIn("json", up)
         self.assertEqual(self.fake.tweets()[0]["json"]["media"], {"media_ids": ["m1"]})
         self.assertTrue(self.ledger()[0]["media"])
 
+    def test_v1_upload_fallback_when_v2_refuses_the_shape(self):
+        def upload(i):
+            url = self.fake.calls[-1][0]
+            if url == xpost.UPLOAD_URL:
+                return FakeResponse(404, {"title": "Not Found"})
+            return FakeResponse(200, {"media_id_string": "m9"})
+        self.fake.upload = upload
+        r = xpost.publish("with picture", b"\xff\xd8\xff", "image/jpeg")
+        self.assertEqual(r, {"id": "1003"})
+        urls = [u for u, _ in self.fake.calls]
+        self.assertEqual(urls, [xpost.UPLOAD_URL, xpost.UPLOAD_URL_V1, xpost.TWEET_URL])
+        self.assertEqual(self.fake.calls[1][1]["files"]["media_data"][1],
+                         base64.b64encode(b"\xff\xd8\xff").decode())
+        self.assertEqual(self.fake.tweets()[0]["json"]["media"], {"media_ids": ["m9"]})
+
     def test_media_failure_does_not_block_text(self):
+        # v2 says 400, the v1 fallback says 400 too: the words still go out
         self.fake.upload = lambda i: FakeResponse(400, {"errors": [{"message": "bad media"}]})
         r = xpost.publish("words survive", b"\x00")
-        self.assertEqual(r, {"id": "1002"})
+        self.assertEqual(r, {"id": "1003"})
         self.assertNotIn("media", self.fake.tweets()[0]["json"])
+
+    def test_redirect_is_an_error_not_a_silent_get(self):
+        self.fake.tweet = lambda i: FakeResponse(301, {})
+        with self.assertRaises(RuntimeError) as cm:
+            xpost.publish("nope")
+        self.assertIn("redirected", str(cm.exception))
 
     def test_media_exception_does_not_block_text(self):
         def boom(i):
@@ -351,7 +376,56 @@ class TestPublishNetwork(PublishBase):
         self.assertIn("403", str(cm.exception))
         self.assertIn("Forbidden", str(cm.exception))
         self.assertLessEqual(len(str(cm.exception)), 240 + 40)
-        self.assertEqual(self.ledger(), [])   # a failed post does not count
+        # write-ahead: the attempt is on record, marked failed, and it counts
+        self.assertEqual(len(self.ledger()), 1)
+        self.assertTrue(self.ledger()[0]["failed"])
+        self.assertIsNone(self.ledger()[0]["id"])
+
+    def test_known_x_problem_types_get_a_hint(self):
+        self.fake.tweet = lambda i: FakeResponse(403, {
+            "title": "Forbidden", "detail": "Your client app is not configured with the appropriate oauth1 app permissions for this endpoint.",
+            "type": "https://api.twitter.com/2/problems/oauth1-permissions"})
+        with self.assertRaises(RuntimeError) as cm:
+            xpost.publish("nope")
+        self.assertIn("Read and write", str(cm.exception))
+
+    def test_ledger_is_written_before_the_post_goes_out(self):
+        seen = {}
+
+        def tweet(i):
+            seen["ledger_at_post_time"] = self.ledger()
+            return FakeResponse(201, {"data": {"id": "77"}})
+        self.fake.tweet = tweet
+        self.assertEqual(xpost.publish("hello fly"), {"id": "77"})
+        pending = seen["ledger_at_post_time"]
+        self.assertEqual(len(pending), 1)
+        self.assertTrue(pending[0]["pending"])
+        self.assertIsNone(pending[0]["id"])
+        final = self.ledger()
+        self.assertEqual(final[0]["id"], "77")
+        self.assertNotIn("pending", final[0])
+
+    def test_unwritable_ledger_stops_the_post(self):
+        saved = xpost._write_ledger
+        xpost._write_ledger = lambda p, posts: (_ for _ in ()).throw(OSError("read-only volume"))
+        try:
+            self.assertEqual(xpost.publish("hello"), {"skipped": "ledger unwritable"})
+        finally:
+            xpost._write_ledger = saved
+        self.assertEqual(self.fake.calls, [])
+
+    def test_near_duplicate_with_fresh_numbers_is_refused(self):
+        a = "The narrator read me my own page today. It says 984.6 GOOGL, earned across 681 sweeps, in 11.5 hours."
+        b = "The narrator read me my own page today. It says 1121.4 GOOGL, earned across 842 sweeps, in 17.9 hours."
+        self.assertEqual(xpost.publish(a), {"id": "1001"})
+        r = xpost.publish(b)
+        self.assertIn("near-duplicate", r.get("skipped", ""))
+        self.assertEqual(len(self.fake.tweets()), 1)
+        c = "40,398 of my 165,122 neurons fired this second. None of them fired about the page. They fired about edges."
+        self.assertEqual(xpost.publish(c), {"id": "1002"})
+
+    def test_short_texts_are_not_judged_for_near_duplicates(self):
+        self.assertIsNone(xpost.near_duplicate("n5", ["n6", "n7"]))
 
     def test_network_error_becomes_runtime_error(self):
         def boom(i):
@@ -359,6 +433,19 @@ class TestPublishNetwork(PublishBase):
         self.fake.tweet = boom
         with self.assertRaises(RuntimeError):
             xpost.publish("nope")
+
+
+class TestNoManualPosting(unittest.TestCase):
+    def test_cli_has_no_post_command(self):
+        with self.assertRaises(SystemExit):
+            xpost.main(["--post", "hello"])
+        self.assertFalse(hasattr(xpost, "_MIME"))
+
+    def test_query_string_is_signed_as_parameters(self):
+        creds = {"key": "k", "secret": "s", "token": "t", "tsecret": "ts"}
+        a = xpost.oauth_header("POST", "https://api.x.com/2/x?b=2&a=1", creds, nonce="n", timestamp=1)
+        b = xpost.oauth_header("POST", "https://api.x.com/2/x", creds, {"a": "1", "b": "2"}, nonce="n", timestamp=1)
+        self.assertEqual(a, b)
 
 
 if __name__ == "__main__":

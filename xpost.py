@@ -11,12 +11,15 @@ words.
 
 Why a ledger: the free tier allows 500 posts a month. A loop that wakes
 every few minutes and posts unconditionally would burn that in a day, so
-every successful post is recorded in a small JSON file and publish()
+every post is recorded in a small JSON file before it is sent and publish()
 refuses once the rolling 24-hour count reaches MAX_PER_DAY, or when the
-text repeats one of the last 50 posts.
+text repeats or nearly repeats one of the last 50 posts.
+
+Why no --post command: the account is the fly's. The only way text reaches
+it is voice.publish -> xpost.publish, after the narrator's draft has passed
+the grounding check. A person with a shell here cannot post as the fly.
 
   py xpost.py --check                        which X_* vars are set (never values)
-  py xpost.py --post "text" [--image path]   respects X_ENABLED
 """
 import argparse
 import base64
@@ -28,9 +31,10 @@ import re
 import secrets
 import sys
 import time
+import difflib
 import unicodedata
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlsplit
 
 import requests
 
@@ -41,9 +45,14 @@ except ImportError:
 
 ROOT = Path(__file__).parent
 
-UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json"
-TWEET_URL = "https://api.twitter.com/2/tweets"
+# api.x.com is the documented host; api.twitter.com still answers but a
+# redirect between them would strip the signed header, so redirects are never
+# followed (see _post).
+UPLOAD_URL = "https://api.x.com/2/media/upload"
+UPLOAD_URL_V1 = "https://upload.twitter.com/1.1/media/upload.json"
+TWEET_URL = "https://api.x.com/2/tweets"
 LIMIT = 280
+NEAR_DUPLICATE = 0.8     # SequenceMatcher ratio, digits removed, at or above which a post is a repeat
 URL_WEIGHT = 23          # every link becomes a t.co link of this length
 LEDGER_KEEP = 500        # entries retained; enough for the cap and the dedupe window
 DEDUPE_WINDOW = 50
@@ -71,7 +80,6 @@ MAX_PER_DAY = _int_env("X_MAX_POSTS_PER_DAY", 12)
 
 
 def _log(msg):
-    # stderr, so `--post` can print its JSON result on stdout alone.
     print(f"[xpost] {msg}", file=sys.stderr, flush=True)
 
 
@@ -104,9 +112,13 @@ def oauth_header(method, url, creds, extra_params=None, nonce=None, timestamp=No
         "oauth_token": creds["token"],
         "oauth_version": "1.0",
     }
-    every = {**oauth, **(extra_params or {})}
+    # RFC 5849 3.4.1: the base URI is scheme://host/path; any query string is
+    # decoded into the signed parameter set instead of staying in the URI.
+    parts = urlsplit(url)
+    base_url = f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path}"
+    every = {**oauth, **dict(parse_qsl(parts.query, keep_blank_values=True)), **(extra_params or {})}
     param_string = "&".join(f"{enc(k)}={enc(every[k])}" for k in sorted(every))
-    base = "&".join([method.upper(), enc(url), enc(param_string)])
+    base = "&".join([method.upper(), enc(base_url), enc(param_string)])
     signing_key = f"{enc(creds['secret'])}&{enc(creds['tsecret'])}"
     digest = hmac.new(signing_key.encode(), base.encode(), hashlib.sha1).digest()
     oauth["oauth_signature"] = base64.b64encode(digest).decode()
@@ -123,7 +135,8 @@ _LIGHT = ((0, 4351), (8192, 8205), (8208, 8223), (8242, 8247))
 # anything with a scheme, plus bare domains on a generic TLD the narrator is
 # likely to write (flybrain.online, ponsfamily.com). X does not link a bare
 # ccTLD domain without a path - roam.py, mushroom.py - so those stay text.
-_GTLDS = "com|net|org|info|biz|xyz|online|app|dev|fun|live|site|tech|finance|money|cloud"
+_GTLDS = ("com|net|org|info|biz|xyz|online|app|dev|fun|live|site|tech|finance|money|cloud"
+          "|co|tv|io|ai|me|gg|wiki|news|blog|market|world|network|exchange|capital|coin|crypto")
 _URL = re.compile(
     r"(?<![\w@$#/.-])(?:https?://[^\s<>\"']+"
     r"|(?:[a-z0-9-]+\.)+(?:" + _GTLDS + r")(?:/[^\s<>\"']*)?(?![\w-]))",
@@ -211,26 +224,63 @@ def credentials():
 
 # -- the two API calls --------------------------------------------------------
 
+_HINTS = {
+    "oauth1-permissions": "the app's user authentication is not Read and write",
+    "duplicate-content": "X already has this text from this account",
+    "usage-capped": "the developer account's monthly cap is reached",
+    "client-forbidden": "the app is not attached to a project with API access",
+    "not-authorized-for-resource": "the access token is for a different app or user",
+}
+
+
+def _explain(r, what):
+    """A one-line reason from X's error body, with a hint for the known ones."""
+    detail = ""
+    try:
+        err = r.json()
+        problem = str(err.get("type") or "").rsplit("/", 1)[-1]
+        detail = " ".join(x for x in (err.get("title"), err.get("detail")) if x)
+        if not detail and err.get("errors"):
+            detail = "; ".join(str(e.get("message") or e) for e in err["errors"])[:200]
+        if problem in _HINTS:
+            detail += f" ({_HINTS[problem]})"
+    except ValueError:
+        detail = r.text[:240]
+    if r.status_code == 429:
+        h = getattr(r, "headers", {})
+        detail += f" (retry after {h.get('x-rate-limit-reset') or h.get('retry-after') or '?'})"
+    return f"{what} {r.status_code}: {detail[:220]}"
+
+
+def _post(url, creds, **kw):
+    """One signed POST. Never follows a redirect: a 3xx would drop the header."""
+    try:
+        r = requests.post(url, headers={"Authorization": oauth_header("POST", url, creds)},
+                          allow_redirects=False, timeout=kw.pop("timeout", 30), **kw)
+    except requests.RequestException as e:
+        raise RuntimeError(f"{url.split('/', 3)[-1]} failed: {str(e)[:240]}") from e
+    if 300 <= r.status_code < 400:
+        where = getattr(r, "headers", {}).get("Location")
+        raise RuntimeError(f"{url} redirected to {where}; the host has moved")
+    return r
+
+
 def upload_media(creds, image_bytes, mime="image/jpeg"):
     """
-    v1.1 media/upload with a base64 form field. Sent as multipart, the one
-    body encoding OAuth 1.0a keeps out of the signature base, so the header
-    is signed over the OAuth fields alone - exactly what the working Node
-    client does. The simple endpoint sniffs the type from the bytes; mime
-    is kept for the log line and for a chunked upload if one is ever needed.
-    Returns the media id as a string.
+    v2 POST /2/media/upload (multipart `media` + media_category), falling
+    back to the v1.1 base64 form if v2 refuses the shape. Multipart is the
+    one body encoding OAuth 1.0a keeps out of the signature base, so the
+    header is signed over the OAuth fields alone. Returns the media id.
     """
-    b64 = base64.b64encode(image_bytes).decode()
-    try:
-        r = requests.post(UPLOAD_URL,
-                          headers={"Authorization": oauth_header("POST", UPLOAD_URL, creds)},
-                          files={"media_data": (None, b64)}, timeout=60)
-    except requests.RequestException as e:
-        raise RuntimeError(f"media/upload failed: {str(e)[:240]}") from e
+    r = _post(UPLOAD_URL, creds, files={"media": ("frame.jpg", image_bytes, mime)},
+              data={"media_category": "tweet_image"}, timeout=60)
+    if r.status_code in (400, 404, 415):
+        b64 = base64.b64encode(image_bytes).decode()
+        r = _post(UPLOAD_URL_V1, creds, files={"media_data": (None, b64)}, timeout=60)
     if r.status_code // 100 != 2:
-        raise RuntimeError(f"media/upload {r.status_code}: {r.text[:240]}")
+        raise RuntimeError(_explain(r, "media/upload"))
     body = r.json()
-    mid = body.get("media_id_string") or body.get("media_id")
+    mid = ((body.get("data") or {}).get("id") or body.get("media_id_string") or body.get("media_id"))
     if not mid:
         raise RuntimeError(f"media/upload: no media id in {r.text[:240]}")
     _log(f"uploaded {len(image_bytes)} bytes of {mime} as media {mid}")
@@ -242,14 +292,9 @@ def post_tweet(creds, text, media_id=None):
     payload = {"text": text}
     if media_id:
         payload["media"] = {"media_ids": [media_id]}
-    try:
-        r = requests.post(TWEET_URL,
-                          headers={"Authorization": oauth_header("POST", TWEET_URL, creds)},
-                          json=payload, timeout=30)
-    except requests.RequestException as e:
-        raise RuntimeError(f"POST /2/tweets failed: {str(e)[:240]}") from e
+    r = _post(TWEET_URL, creds, json=payload, timeout=30)
     if r.status_code // 100 != 2:
-        raise RuntimeError(f"POST /2/tweets {r.status_code}: {r.text[:240]}")
+        raise RuntimeError(_explain(r, "POST /2/tweets"))
     data = r.json().get("data") or {}
     tid = data.get("id")
     if not tid:
@@ -286,10 +331,25 @@ def publish(text, image_bytes=None, mime="image/jpeg"):
         # and the cap is what stands between a stuck loop and the quota.
         _log(f"ledger unreadable, refusing to post: {path}")
         return {"skipped": "ledger unreadable"}
-    if text in [p.get("text") for p in posts[-DEDUPE_WINDOW:]]:
+    recent = posts[-DEDUPE_WINDOW:]
+    if text in [p.get("text") for p in recent]:
         return {"skipped": "duplicate"}
+    twin = near_duplicate(text, [p.get("text") or "" for p in recent])
+    if twin is not None:
+        return {"skipped": f"near-duplicate of a post {twin:.2f} alike"}
     if posted_last_24h(posts) >= MAX_PER_DAY:
         return {"skipped": "daily cap"}
+
+    # Write-ahead: the entry is in the ledger before X sees it, so a crash
+    # between the post and the write cannot make the cap fail open, and a
+    # ledger that cannot be written stops the post rather than the record.
+    entry = {"t": time.time(), "id": None, "text": text, "media": False, "pending": True}
+    posts.append(entry)
+    try:
+        _write_ledger(path, posts)
+    except OSError as e:
+        _log(f"ledger unwritable, refusing to post: {str(e)[:120]}")
+        return {"skipped": "ledger unwritable"}
 
     media_id = None
     if image_bytes:
@@ -298,18 +358,47 @@ def publish(text, image_bytes=None, mime="image/jpeg"):
         except Exception as e:   # the words matter more than the picture
             _log(f"media upload failed, posting text only: {str(e)[:240]}")
 
-    tid = post_tweet(creds, text, media_id)
-    posts.append({"t": time.time(), "id": tid, "text": text, "media": bool(media_id)})
+    try:
+        tid = post_tweet(creds, text, media_id)
+    except Exception:
+        entry["failed"] = True     # stays in the ledger and still counts
+        _write_ledger(path, posts)
+        raise
+    entry.update({"id": tid, "media": bool(media_id)})
+    entry.pop("pending", None)
     _write_ledger(path, posts)
     _log(f"posted {tid} ({n} chars{', with image' if media_id else ''})")
     return {"id": tid}
 
 
+def _skeleton(text):
+    """Text with its numbers, punctuation and case removed: what repeats."""
+    t = unicodedata.normalize("NFC", text).lower()
+    t = re.sub(r"[\d,.]+", " ", t)
+    t = re.sub(r"[^\w\s]", " ", t)
+    return " ".join(t.split())
+
+
+def near_duplicate(text, earlier):
+    """
+    The highest similarity ratio between text and any earlier post, with
+    numbers stripped, if it reaches NEAR_DUPLICATE; else None. The narrator
+    repeating its own sentence with fresh figures is the realistic repeat,
+    and an exact-match check never sees it.
+    """
+    a = _skeleton(text)
+    if len(a) < 40:            # too short to judge; exact-match dedupe still applies
+        return None
+    best = 0.0
+    for e in earlier:
+        b = _skeleton(e)
+        if b:
+            best = max(best, difflib.SequenceMatcher(None, a, b).ratio())
+    return best if best >= NEAR_DUPLICATE else None
+
+
 # -- CLI ----------------------------------------------------------------------
-
-_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-         ".gif": "image/gif", ".webp": "image/webp"}
-
+# --check only. There is deliberately no way to post from the command line.
 
 def _check():
     # Presence only. The values are secrets and must never reach a terminal
@@ -328,22 +417,12 @@ def _check():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="post-only X client for the fly's journal")
+    ap = argparse.ArgumentParser(description="post-only X client for the fly's journal; "
+                                             "posts come from voice.py alone")
     ap.add_argument("--check", action="store_true", help="show which X_* vars are set")
-    ap.add_argument("--post", metavar="TEXT", help="publish TEXT (respects X_ENABLED)")
-    ap.add_argument("--image", metavar="PATH", help="attach an image to --post")
     a = ap.parse_args(argv)
-
     if a.check:
         return _check()
-    if a.post is not None:
-        image, mime = None, "image/jpeg"
-        if a.image:
-            p = Path(a.image)
-            image = p.read_bytes()
-            mime = _MIME.get(p.suffix.lower(), mime)
-        print(json.dumps(publish(a.post, image, mime)))
-        return 0
     ap.print_help()
     return 2
 

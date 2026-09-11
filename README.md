@@ -102,10 +102,15 @@ itself walked through, and a few reference pages on memecoins and tokenised
 stocks) and pass excerpts in. Write: a language model drafts a first-person
 entry from that packet and nothing else. Check: every number in the draft must
 appear in the packet, and any trading or hype language fails it; a rejected
-draft is not nudged into compliance, it is dropped. Post, through `xpost.py`,
-which caps posts per day and refuses duplicates. Two things in this project
-are invented, and both are labelled: the reward signal in the mushroom body,
-and the words. Everything else is a measurement.
+draft is dropped, there is no second draft, and nothing edits the text. What
+it keeps in its journal is checked the same way before it is kept. Post,
+through `xpost.py`, which records every post before it is sent, caps posts
+per day and refuses repeats and near-repeats. There is no command that posts
+text by hand: the only route to the fly's account is a draft that passed the
+check. The offline `stub` model, used by the tests, writes to its own journal
+and can never post. Two things in this project are invented, and both are
+labelled: the reward signal in the mushroom body, and the words. Everything
+else is a measurement.
 
 ```bash
 py voice.py --once --dry      # observe, read, write one entry; post nothing

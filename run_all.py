@@ -21,6 +21,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = os.environ.get("PORT", "4660")
 RESTART_AFTER_S = 10
+RESTART_MAX_S = 600        # backoff ceiling for a child that keeps dying
+HEALTHY_AFTER_S = 300      # a child that lived this long resets its backoff
+GIVE_UP_AFTER = 8          # consecutive fast deaths before the supervisor exits
 
 
 def say(msg):
@@ -32,6 +35,11 @@ def say(msg):
 
 def voice_enabled():
     if os.environ.get("FLY_VOICE_MODEL", "").strip().lower() == "stub":
+        # the stub is a test fixture with hand-written lines; voice.py forces
+        # dry for it, and the supervisor refuses to run it beside real X keys
+        if os.environ.get("X_ENABLED", "").strip().lower() == "true":
+            say("refusing to run the stub voice with X_ENABLED=true")
+            return False
         return True
     if os.environ.get("OPENROUTER_API_KEY", "").strip():
         return True
@@ -50,22 +58,37 @@ class Proc:
         self.name, self.argv, self.env = name, argv, env
         self.p = None
         self.died_at = None
+        self.started_at = None
+        self.fast_deaths = 0       # consecutive exits before HEALTHY_AFTER_S
+        self.gave_up = False
 
     def start(self):
         say(f"starting {self.name}: {' '.join(self.argv[1:])}")
         self.p = subprocess.Popen(self.argv, cwd=HERE, env=self.env)
+        self.started_at = time.time()
         self.died_at = None
 
+    def delay(self):
+        # 10s, 20s, 40s ... capped, so a crash loop cannot peg the CPU by
+        # reloading the connectome every few seconds
+        return min(RESTART_MAX_S, RESTART_AFTER_S * (2 ** max(0, self.fast_deaths - 1)))
+
     def tick(self):
-        if self.p is None:
+        if self.p is None or self.gave_up:
             return
         rc = self.p.poll()
         if rc is None:
             return
         if self.died_at is None:
             self.died_at = time.time()
-            say(f"{self.name} exited with {rc}; restarting in {RESTART_AFTER_S}s")
-        elif time.time() - self.died_at >= RESTART_AFTER_S:
+            lived = self.died_at - (self.started_at or self.died_at)
+            self.fast_deaths = self.fast_deaths + 1 if lived < HEALTHY_AFTER_S else 1
+            if self.fast_deaths >= GIVE_UP_AFTER:
+                self.gave_up = True
+                say(f"{self.name} died {self.fast_deaths} times in a row; giving up so the platform sees it")
+                return
+            say(f"{self.name} exited with {rc} after {lived:.0f}s; restarting in {self.delay()}s")
+        elif time.time() - self.died_at >= self.delay():
             self.start()
 
     def stop(self):
@@ -106,17 +129,28 @@ def main():
         except (ValueError, OSError):
             pass
 
+    sd = os.environ.get("FLY_STATE_DIR")
+    if sd:
+        say(f"state dir {sd}: exists={os.path.isdir(sd)} mount={os.path.ismount(sd)}")
+        if not os.path.ismount(sd):
+            say("WARNING: FLY_STATE_DIR is not a mount point; state will not survive a redeploy")
+
     for pr in procs:
         pr.start()
+    rc = 0
     try:
         while not stopping["now"]:
             for pr in procs:
                 pr.tick()
+            if any(pr.gave_up for pr in procs):
+                rc = 1
+                break
             time.sleep(2)
     finally:
         for pr in procs:
             pr.stop()
         say("stopped")
+    sys.exit(rc)
 
 
 if __name__ == "__main__":

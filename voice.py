@@ -8,7 +8,12 @@ what the fly actually saw and did, the live numbers from its own token page,
 and the text of pages it was allowed to read, and asked to write in the first
 person. Every number in the result is checked against that packet before it
 is kept. A draft with a number that is not in the packet, or with trading
-language, is dropped, not fixed.
+language, is dropped. There is no second draft and nothing edits the text.
+
+Nothing a person wrote can reach the fly's account through this file: the
+offline "stub" model writes only to its own journal and never posts, the
+narrator's memory is validated before it is kept, and xpost.py has no command
+that posts arbitrary text.
 
 Two things in this project are invented, and both are labelled: the reward
 signal in the mushroom body, and these words. The neurons, the pages and the
@@ -48,6 +53,8 @@ from pathlib import Path
 
 import requests
 
+import xpost
+
 try:
     from envcfg import load_env
 except ImportError:                       # the working copy uses launch.py
@@ -72,6 +79,11 @@ LAUNCH = {
     "creator_tax_pct": 1.0,
     "paired_with": "GOOGL",
     "launch_cost_eth": 0.000977,
+    # How it came to exist, so the narrator can say exactly this and no more.
+    "how": ("Its descending neurons moved the cursor over the launch form in a "
+            "separate wallet-holding browser; a script completed the fields it "
+            "missed and pressed the button; humans chose the name and the image. "
+            "It did not choose to launch anything and it does not control the coin."),
 }
 
 TOKEN_PAGE = "https://www.ponsfamily.com/launchpad/" + LAUNCH["contract"]
@@ -118,20 +130,42 @@ READABLE_HOSTS = {
     "robinhoodchain.blockscout.com", "flybrain.online",
 }
 
-# Trading language. Word-boundary, case-insensitive. A draft containing any of
-# these is dropped; the narrator is a journal, not a promoter.
-BANNED = [
-    "buy", "sell", "moon", "mooning", "pump", "dump it", "guaranteed",
-    "will go up", "will rise", "to the moon", "financial advice",
-    "not financial advice", "ape in", "don't miss", "dont miss", "last chance",
-    "100x", "1000x", "get in", "load up", "bullish", "bearish", "price target",
-    "rug", "jeet", "dyor", "nfa", "wagmi", "ngmi", "lambo", "gem", "send it",
-    "fomo", "invest now", "hodl",
-]
+# Trading language, as stems so inflections do not slip past. A draft matching
+# any of these is dropped; the narrator is a journal, not a promoter.
+BANNED_RE = [re.compile(p, re.I) for p in (
+    r"\bbuy(?:s|ing|ers?)?\b", r"\bbought\b", r"\bsell(?:s|ing|ers?)?\b", r"\bsold\b",
+    r"\bpump(?:s|ed|ing)?\b", r"\bdump(?:s|ed|ing)?\b", r"\bmoon(?:s|ed|ing)?\b",
+    r"\bto the moon\b", r"\bape(?:d|s|ing)?\b", r"\brug(?:s|ged|pulls?)?\b", r"\bjeets?\b",
+    r"\bbags?\b", r"\bdips?\b", r"\bcheap\b", r"\bundervalued\b", r"\baccumulat(?:e|es|ed|ing)\b",
+    r"\bath\b", r"\ball[- ]time high\b", r"\bup only\b", r"\bpresale\b", r"\bairdrops?\b",
+    r"\bgiveaways?\b", r"\blink in bio\b", r"\bguaranteed?\b",
+    r"\bwill (?:go up|rise|grow|climb|double|triple|pump|moon)\b", r"\bgoing up\b", r"\bwent up\b",
+    r"\bfinancial advice\b", r"\bdyor\b", r"\bnfa\b", r"\bwagmi\b", r"\bngmi\b", r"\blambo\b",
+    r"\bgems?\b", r"\bsend it\b", r"\bfomo\b", r"\binvest now\b", r"\bhodl\b", r"\bbullish\b",
+    r"\bbearish\b", r"\bprice targets?\b", r"\bdon'?t miss\b", r"\blast chance\b", r"\bget in\b",
+    r"\bload up\b", r"\blfg\b", r"\bgm\b", r"\d+(?:\.\d+)?x\b",
+)]
 
 # a number the way it appears in prose: 1,234  25.4M  327k  0.1%  59614342
 NUM_RE = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?\s?(?:%|[kKmMbB](?![a-zA-Z]))?")
-URL_RE = re.compile(r"https?://\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|online|io|xyz|app|dev)\b\S*", re.I)
+# the same, for checking a draft: a digit after a letter or dot still counts
+POST_NUM_RE = re.compile(r"(?<![\d,])\d[\d,]*(?:\.\d+)?\s?(?:[kKmMbB](?![a-zA-Z]))?")
+PCT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s?(?:%|percent\b|per cent\b)", re.I)
+HEX_RE = re.compile(r"0x[0-9a-f]{6,}", re.I)
+# numbers as words: the checker cannot ground these, so they are not allowed
+WORD_NUM_RE = re.compile(
+    r"\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|"
+    r"eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|halves|half|quarters?|"
+    r"twice|thrice|couple)\b", re.I)
+EMOJI_RE = re.compile(r"[\U0001F000-\U0001FAFF☀-➿]|(?<!\w)[#@][A-Za-z_]\w*")
+URL_RE = re.compile(r"https?://[^\s<>\"']+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|online|io|xyz|app|dev)\b(?:/[^\s<>\"']*)?", re.I)
+
+# Where a number in a sentence may come from. A figure that was only ever in
+# a page excerpt must sit in a sentence that says it came from a page; one
+# from the journal must sit in a sentence that looks back.
+PAGE_CUES = re.compile(r"\b(?:page|pages|read|reads|says|said|article|excerpt|narrator|tells|told|according)\b", re.I)
+MEMORY_CUES = re.compile(r"\b(?:day|earlier|before|yesterday|last|then|was|were|remember|journal|first|ago|once)\b", re.I)
 
 
 def say(*parts):
@@ -149,17 +183,32 @@ def _get(key, default=None):
     return v if v not in (None, "") else default
 
 
+def _truthy(v, default):
+    s = str(v if v is not None else default).strip().lower()
+    if not s:                         # blank is the same as unset
+        s = str(default).strip().lower()
+    return s not in ("0", "false", "no", "off")
+
+
 def cfg():
     state_dir = Path(_get("FLY_STATE_DIR", str(ROOT / "build")))
+    model = _get("FLY_VOICE_MODEL", "anthropic/claude-opus-5").strip()
+    stub = model.lower() == "stub"
+    try:
+        every_h = max(0.5, float(_get("FLY_VOICE_EVERY_H", "3")))
+    except ValueError:
+        every_h = 3.0
     return {
         "key": _get("OPENROUTER_API_KEY"),
-        "model": _get("FLY_VOICE_MODEL", "anthropic/claude-opus-5"),
+        "model": model,
         "stream": (_get("FLY_STREAM", "https://flybrain-production-2b26.up.railway.app")).rstrip("/"),
         "state_dir": state_dir,
-        "journal": state_dir / "journal.json",
+        # the stub's hand-written entries never share a journal with the narrator
+        "journal": state_dir / ("journal.stub.json" if stub else "journal.json"),
         "rpc": _get("FLY_RH_RPC", "https://rpc.mainnet.chain.robinhood.com"),
-        "every_h": float(_get("FLY_VOICE_EVERY_H", "3")),
-        "dry": _get("FLY_VOICE_DRY", "1") == "1",
+        "every_h": every_h,
+        # dry unless FLY_VOICE_DRY is explicitly off; "true", "yes", "on" stay dry
+        "dry": _truthy(_get("FLY_VOICE_DRY"), "1"),
         "prompt": Path(_get("FLY_VOICE_PROMPT", str(ROOT / "voice_prompt.md"))),
     }
 
@@ -172,18 +221,27 @@ class Journal:
 
     def __init__(self, path):
         self.path = Path(path)
+        # no mood until the narrator has written one; nothing is seeded
         self.data = {"born": None, "knowledge": [], "read": [], "posts": [],
-                     "mood": "quiet"}
+                     "mood": None, "last_cycle_at": 0}
         self.load()
 
     def load(self):
+        if not self.path.exists():
+            return
         try:
-            if self.path.exists():
-                d = json.loads(self.path.read_text(encoding="utf-8"))
-                if isinstance(d, dict):
-                    self.data.update(d)
+            d = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                raise ValueError("journal is not an object")
+            self.data.update(d)
         except Exception as exc:
-            say("journal unreadable, starting a fresh one:", str(exc)[:80])
+            # keep the broken file for a person to look at; never write over it
+            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time())}")
+            try:
+                os.replace(self.path, aside)
+            except OSError:
+                pass
+            say("JOURNAL UNREADABLE, moved aside and starting fresh:", str(exc)[:80], "->", aside.name)
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,21 +258,26 @@ class Journal:
             raise
 
     def begin(self, now=None):
+        """Record the birth once. Returns True when this call set it."""
         if not self.data.get("born"):
             self.data["born"] = int(now or time.time())
+            return True
+        return False
 
     def day(self, now=None):
         born = self.data.get("born") or int(now or time.time())
         return 1 + int(((now or time.time()) - born) // 86400)
 
     def summary(self, now=None):
-        return {
+        s = {
             "day": self.day(now),
-            "mood": self.data.get("mood"),
             "knowledge": self.data.get("knowledge", [])[-40:],
             "pages_read_before": [r.get("url") for r in self.data.get("read", [])][-30:],
             "earlier_entries": [p.get("text") for p in self.data.get("posts", [])][-6:],
         }
+        if self.data.get("mood"):
+            s["mood"] = self.data["mood"]
+        return s
 
     def learn(self, facts):
         seen = set(self.data["knowledge"])
@@ -348,8 +411,11 @@ def observe(c, now=None):
         "dn": n.get("dn"),
         "learning": {k: L.get(k) for k in ("synapses", "depressed", "mean_gain", "rewards", "punishments")} if L else None,
         "last_visited": [{"title": v.get("title"), "url": v.get("url")} for v in (st.get("visited") or [])[-8:]],
-        "last_events": [e.get("m") for e in (st.get("events") or [])[-6:]],
-        "reachable": bool(st),
+        # counts, not the roamer's log lines: those are a person's phrasing
+        "blocked": st.get("blocked"),
+        # the roamer stamps every state it publishes; an old stamp means the
+        # browser is not producing frames and there is nothing to narrate
+        "reachable": bool(st) and bool(st.get("updated")) and (now - float(st.get("updated") or 0)) < 180,
     }
     packet = {
         "now_utc": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -430,10 +496,13 @@ def number_forms(v):
         return out
     if x != x or abs(x) > 1e15:
         return out
+    if x < 0:                        # prose drops the sign; the checker sees "91.5"
+        return number_forms(-x)
     if abs(x - round(x)) < 1e-9:
         i = int(round(x))
         out.update({str(i), f"{i:,}"})
-    for d in (0, 1, 2, 3, 4, 6):
+    out.add(f"{x:.10g}")             # the value's own shortest spelling
+    for d in (0, 1, 2, 3, 4, 6, 8):
         s = f"{x:.{d}f}".rstrip("0").rstrip(".") if d else f"{x:.0f}"
         out.add(s)
         try:
@@ -442,7 +511,11 @@ def number_forms(v):
             pass
     ax = abs(x)
     if ax >= 1000:
+        # rounding only to steps at least ten times finer than the value:
+        # 165,122 may be "170,000", never "200,000"
         for step in (10, 100, 1000, 10000, 100000, 1000000):
+            if step * 10 > ax:
+                break
             r = int(round(x / step) * step)
             out.update({str(r), f"{r:,}"})
         for d in (0, 1, 2):
@@ -454,6 +527,15 @@ def number_forms(v):
         for d in (0, 1, 2):
             out.add(f"{x/1e9:.{d}f}B".replace(".0B", "B"))
     return {s.lower() for s in out}
+
+
+def exact_forms(v):
+    """An identifier (a block, a chain id, a timestamp) may only be written as is."""
+    try:
+        i = int(v)
+    except Exception:
+        return set()
+    return {str(i), f"{i:,}"}
 
 
 def _walk_numbers(obj, acc):
@@ -483,116 +565,223 @@ def _walk_numbers(obj, acc):
             _walk_numbers(v, acc)
 
 
+# Identifiers in the launch block: allowed only spelled exactly, never rounded.
+IDENTIFIERS = ("block", "chain_id", "launched_unix")
+# Quantities in the launch block that may be rounded like any other number.
+LAUNCH_QUANTITIES = ("supply", "creator_tax_pct", "launch_cost_eth")
+# Counts that are always fine to write: "one page", "2 clicks".
+FREE = {"1", "2"}
+
+
 def allowed_numbers(packet):
     """
-    Everything the narrator may write a number about: the packet, its own
-    journal (grounded when first written), and the pages read to it.
+    What the narrator may write a number about, in three sets:
+
+      live    measured this cycle: telemetry, the token page, the launch,
+              hours since launch, the day, how many pages were read
+      page    numbers inside the excerpts read to it this cycle
+      memory  numbers in its own journal, grounded when first written
+
+    validate() lets a live number sit anywhere, a page number only in a
+    sentence that says it came from a page, and a memory number only in a
+    sentence that looks back.
     """
-    raw = set()
-    _walk_numbers({k: v for k, v in packet.items() if k != "allowed_numbers"}, raw)
-    # dates in the launch stamp, and hours since launch as an integer too
-    stamp = str(packet.get("launch", {}).get("launched_at", ""))
-    for m in re.findall(r"\d+", stamp):
-        raw.add(float(m))
+    launch = packet.get("launch") or {}
+    live_raw, page_raw, mem_raw = set(), set(), set()
+    _walk_numbers({
+        "telemetry": packet.get("telemetry"),
+        "token": packet.get("token"),
+        "launch": {k: launch.get(k) for k in LAUNCH_QUANTITIES},
+        "wallet_eth": packet.get("wallet_eth"),
+        "elapsed_h": packet.get("elapsed_h"),
+    }, live_raw)
+    # the launch date, and hours since launch as an integer too
+    for m in re.findall(r"\d+", str(launch.get("launched_at", ""))):
+        live_raw.add(float(m))
     if packet.get("elapsed_h") is not None:
-        raw.add(round(float(packet["elapsed_h"])))
-    forms = set()
-    for v in raw:
-        forms |= number_forms(v)
-    forms.update(str(i) for i in range(0, 13))      # ordinary counting words
-    day = (packet.get("journal") or {}).get("day")
-    if day:
-        forms.add(str(day))
-    return forms
+        live_raw.add(round(float(packet["elapsed_h"])))
+    _walk_numbers(packet.get("pages_read") or [], page_raw)
+    j = packet.get("journal") or {}
+    _walk_numbers({"knowledge": j.get("knowledge"), "earlier_entries": j.get("earlier_entries")}, mem_raw)
+
+    live = set()
+    for v in live_raw:
+        live |= number_forms(v)
+    for k in IDENTIFIERS:
+        live |= exact_forms(launch.get(k))
+    if j.get("day"):
+        live.add(str(j["day"]))
+    live.add(str(len(packet.get("pages_read") or [])))
+    page = set()
+    for v in page_raw:
+        page |= number_forms(v)
+    memory = set()
+    for v in mem_raw:
+        memory |= number_forms(v)
+    pct = set()
+    for k, v in launch.items():
+        if k.endswith("_pct"):
+            pct |= number_forms(v)
+    return {"live": live | FREE, "page": page, "memory": memory, "pct": pct}
 
 
 def _norm_num(tok):
     s = tok.strip().lower().replace(",", "").replace(" ", "")
-    s = s.rstrip("%")
-    return s
+    return s.rstrip("%")
 
 
-def x_len(text):
-    n = 0
-    last = 0
-    for m in URL_RE.finditer(text):
-        n += len(text[last:m.start()]) + 23
-        last = m.end()
-    return n + len(text[last:])
+# X's own count: URLs are 23, some code points weigh 2. One definition, in
+# xpost, so what passes here cannot be refused there.
+x_len = xpost.x_length
+
+
+def _known_urls(packet):
+    known = {a["url"] for a in ALLOWLIST} | {"https://flybrain.online"}
+    known |= {r.get("url") for r in (packet.get("pages_read") or []) if r.get("url")}
+    tele = packet.get("telemetry") or {}
+    known |= {v.get("url") for v in (tele.get("last_visited") or []) if v.get("url")}
+    known |= {u for u in (packet.get("allowlist") or []) if u}
+    return {u.lower().rstrip("/") for u in known}
 
 
 def validate(post, packet):
+    """
+    (ok, reasons). Every check is mechanical; nothing here rewrites the draft.
+    """
     reasons = []
     if not isinstance(post, str) or not post.strip():
         return False, ["empty"]
     if x_len(post) > 280:
         reasons.append(f"too long: {x_len(post)} > 280")
-    low = post.lower()
-    for b in BANNED:
-        if re.search(r"(?<![a-z0-9])" + re.escape(b) + r"(?![a-z0-9])", low):
-            reasons.append(f"banned phrase: {b}")
+    if EMOJI_RE.search(post):
+        reasons.append("emoji, hashtag or mention")
+    for rx in BANNED_RE:
+        m = rx.search(post)
+        if m:
+            reasons.append(f"banned phrase: {m.group(0)}")
+
     allowed = packet.get("allowed_numbers") or allowed_numbers(packet)
-    body = URL_RE.sub(" ", post)
-    for m in NUM_RE.findall(body):
-        tok = _norm_num(m)
-        if not tok:
-            continue
-        if tok in allowed:
-            continue
-        # "day 3" style references
-        if re.fullmatch(r"\d{1,3}", tok) and re.search(r"\bday\s+" + tok + r"\b", low):
-            continue
-        reasons.append(f"number not in packet: {m.strip()}")
+    if isinstance(allowed, set):                       # an old-style flat set
+        allowed = {"live": allowed | FREE, "page": set(), "memory": set(), "pct": set()}
+
+    # links: only ones it could actually have been given
+    known = _known_urls(packet)
+    for u in URL_RE.findall(post):
+        u2 = u.rstrip(".,;:!?)]}\"'").lower().rstrip("/")
+        if not u2.startswith("http"):
+            u2 = "https://" + u2
+        if u2 not in known and u2.replace("https://", "http://") not in known:
+            reasons.append(f"url not in packet: {u}")
+    body = HEX_RE.sub(" ", URL_RE.sub(" ", post))
+
+    for m in WORD_NUM_RE.findall(body):
+        reasons.append(f"number as a word: {m}")
+    for m in PCT_RE.findall(body):
+        if _norm_num(re.sub(r"(?i)percent|per cent", "", m)) not in allowed["pct"]:
+            reasons.append(f"percentage not in packet: {m.strip()}")
+    body = PCT_RE.sub(" ", body)
+
+    for sentence in re.split(r"(?<=[.!?])\s+", body):
+        page_ok = bool(PAGE_CUES.search(sentence))
+        memory_ok = bool(MEMORY_CUES.search(sentence))
+        for m in POST_NUM_RE.findall(sentence):
+            tok = _norm_num(m)
+            if not tok or tok in allowed["live"]:
+                continue
+            if page_ok and tok in allowed["page"]:
+                continue
+            if memory_ok and tok in allowed["memory"]:
+                continue
+            reasons.append(f"number not in packet: {m.strip()}")
     return (not reasons), reasons
 
 
 # --------------------------------------------------------------------------
 # the model
 # --------------------------------------------------------------------------
-FALLBACK_PROMPT = """You write the journal of a real simulated fruit fly brain that roams the
-web. First person, plain, curious, tentative. It cannot read; the words are a
-language model's, narrating its telemetry, and it never denies that. Use only
-numbers from the packet. No trading language, predictions, hype or calls to
-action. Output JSON only: {"post": str, "learned": [str], "mood": str,
-"wants_to_read": [url]}. post <= 280 characters."""
-
 RULES_BLOCK = """
-Machine rules, appended:
-- Use ONLY numbers that appear in the packet (telemetry, token, launch,
-  pages_read, journal). A number not in the packet does not exist.
-- No: buy, sell, moon, pump, guaranteed, will go up, financial advice,
-  price targets, calls to action, promises, or claims the fly controls the
-  token.
-- Only mention pages that are in pages_read; only remember what is in journal.
-- post must be under 280 characters; a URL counts as 23.
+Machine rules, appended. A checker enforces every one of these mechanically
+and discards the entry on any failure; there is no second draft.
+- Every number must appear in the packet, as digits. Never a number as a
+  word, never arithmetic on packet numbers, never a percentage except
+  launch.creator_tax_pct, never a multiplier.
+- A value shown as "unmeasured" was not observed: do not mention that
+  quantity at all.
+- A number from a page excerpt may only appear in a sentence that says it
+  came from a page; a number from the journal only in a sentence that looks
+  back.
+- No trading language, predictions, hype, calls to action, promises, or
+  claims that the fly controls or wants anything for the token.
+- Only pages in pages_read were read; only journal is remembered; nothing
+  else happened. No URLs except from pages_read or allowlist; no hashtags,
+  emoji or mentions.
+- Do not reuse any sentence or structure from earlier_entries or from this
+  prompt.
+- post under 280 characters; a URL counts as 23.
 - Reply with JSON only, exactly: {"post": "...", "learned": ["..."],
   "mood": "...", "wants_to_read": ["https://..."]}
 """
 
 
 def system_prompt(c):
+    # No silent fallback: the reviewed prompt is the voice, and a missing
+    # file is a deployment bug that must be loud, not a different narrator.
     try:
         base = c["prompt"].read_text(encoding="utf-8")
-    except Exception:
-        base = FALLBACK_PROMPT
+    except Exception as exc:
+        raise RuntimeError(f"narrator prompt unreadable: {c['prompt']} ({exc})") from exc
+    if len(base.strip()) < 200:
+        raise RuntimeError(f"narrator prompt looks empty: {c['prompt']}")
     return base + "\n" + RULES_BLOCK
+
+
+class ConfigError(RuntimeError):
+    """A failure that a retry cannot fix: bad key, no credit, wrong model."""
 
 
 def call_model(c, system, user, temperature=0.9):
     if not c.get("key"):
-        raise RuntimeError("OPENROUTER_API_KEY is not set")
-    r = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {c['key']}",
-                 "HTTP-Referer": "https://flybrain.online", "X-Title": "flybrain"},
-        json={"model": c["model"], "temperature": temperature, "max_tokens": 600,
-              "messages": [{"role": "system", "content": system},
-                           {"role": "user", "content": user}]},
-        timeout=120)
-    if r.status_code != 200:
-        raise RuntimeError(f"openrouter {r.status_code}: {r.text[:200]}")
-    j = r.json()
-    return j["choices"][0]["message"]["content"]
+        raise ConfigError("OPENROUTER_API_KEY is not set")
+    last = "openrouter: no reply"
+    for pause in (0, 20, 60, 120):
+        if pause:
+            say(f"openrouter retry in {pause}s: {last}")
+            time.sleep(pause)
+        try:
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {c['key']}",
+                         "HTTP-Referer": "https://flybrain.online", "X-Title": "flybrain"},
+                json={"model": c["model"], "temperature": temperature, "max_tokens": 900,
+                      "messages": [{"role": "system", "content": system},
+                                   {"role": "user", "content": user}]},
+                timeout=180)
+        except requests.RequestException as exc:
+            last = f"openrouter request failed: {str(exc)[:120]}"
+            continue
+        if r.status_code in (400, 401, 402, 403, 404):
+            raise ConfigError(f"openrouter {r.status_code}: {r.text[:200]}")
+        if r.status_code != 200:
+            last = f"openrouter {r.status_code}: {r.text[:200]}"
+            continue
+        try:
+            j = r.json()
+        except ValueError:
+            last = "openrouter: body is not JSON"
+            continue
+        if j.get("error"):
+            last = f"openrouter error: {str(j['error'])[:200]}"
+            continue
+        try:
+            content = j["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            last = f"openrouter: unexpected body {str(j)[:200]}"
+            continue
+        if not content or not str(content).strip():
+            last = "openrouter: empty completion"
+            continue
+        return content
+    raise RuntimeError(last)
 
 
 def parse_json_block(s):
@@ -635,31 +824,37 @@ def stub_reflect(packet, readings, menu):
     while x_len(post) > 280 and len(parts) > 1:
         parts.pop()
         post = " ".join(parts)
-    learned = []
-    if t.get("sweeps") is not None:
-        learned.append("a sweep seems to be when the fees are gathered up")
-    if readings:
-        learned.append(f"there is a page called {readings[0]['title'][:60]}")
+    # The stub is a test fixture. It learns nothing and has no mood, so its
+    # hand-written lines never seed a journal - and it has its own journal file.
     unread = [m["url"] for m in menu][:2]
-    return {"post": post, "learned": learned, "mood": "confused" if day == 1 else "curious",
-            "wants_to_read": unread}
+    return {"post": post, "learned": [], "mood": None, "wants_to_read": unread}
 
 
-def reflect(c, journal, packet, readings, menu, extra=""):
+def _mark_unmeasured(o):
+    """None in the packet becomes the word "unmeasured", which the prompt defines."""
+    if isinstance(o, dict):
+        return {k: _mark_unmeasured(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_mark_unmeasured(v) for v in o]
+    return "unmeasured" if o is None else o
+
+
+def reflect(c, journal, packet, readings, menu):
     packet = dict(packet)
     packet["pages_read"] = [{"url": r["url"], "title": r["title"], "excerpt": r["text"][:1800]} for r in readings]
     packet["journal"] = journal.summary()
-    packet["dig_menu"] = menu
+    # the menu's reasons are a person's words; the narrator gets titles only
+    packet["dig_menu"] = [{"url": m["url"], "title": m["title"]} for m in menu]
     packet.pop("allowed_numbers", None)
     if c["model"].strip().lower() == "stub":
         return stub_reflect(packet, readings, menu)
-    user = ("Observation packet:\n" + json.dumps(packet, ensure_ascii=False, indent=0)
-            + ("\n\n" + extra if extra else "")
+    user = ("Observation packet:\n" + json.dumps(_mark_unmeasured(packet), ensure_ascii=False, indent=0)
             + "\n\nWrite the next journal entry. JSON only.")
     text = call_model(c, system_prompt(c), user)
     try:
         return parse_json_block(text)
     except Exception:
+        # a formatting failure, not a content one: ask for the same entry as JSON
         text = call_model(c, system_prompt(c), user + "\n\nYour last reply was not valid JSON. "
                           "Reply with the JSON object only.", temperature=0.6)
         return parse_json_block(text)
@@ -668,13 +863,42 @@ def reflect(c, journal, packet, readings, menu, extra=""):
 # --------------------------------------------------------------------------
 # a cycle
 # --------------------------------------------------------------------------
+def is_stub(c):
+    return str(c.get("model", "")).strip().lower() == "stub"
+
+
+def clean_mood(v):
+    """One or two plain lowercase words, or nothing."""
+    m = " ".join(str(v or "").split()).lower()
+    return m if re.fullmatch(r"[a-z]+(?: [a-z]+)?", m) else None
+
+
 def run_once(c, dry=None, now=None):
     now = now or time.time()
     dry = c["dry"] if dry is None else dry
+    if is_stub(c):
+        dry = True                    # hand-written text never leaves the machine
     journal = Journal(c["journal"])
-    journal.begin(now)
+    if journal.begin(now):
+        journal.save()                # the birth is on disk before anything else
 
     packet = observe(c, now)
+    if not packet["telemetry"]["reachable"]:
+        # nothing to narrate: the browser is loading or the roamer is down.
+        # No model call, no stamp, so the loop tries again shortly.
+        say("roamer not ready; no entry")
+        return {"dropped": True, "reasons": ["roamer unreachable or stale"]}
+    if not dry:
+        posts = xpost.read_ledger()
+        if posts is not None and xpost.posted_last_24h(posts) >= xpost.MAX_PER_DAY:
+            say("daily cap reached; no entry")
+            journal.data["last_cycle_at"] = int(now)
+            journal.save()
+            return {"dropped": True, "reasons": ["daily cap"]}
+    # the cadence is measured from here, on disk, so a restart does not
+    # produce an extra entry
+    journal.data["last_cycle_at"] = int(now)
+    journal.save()
     packet["journal"] = journal.summary(now)
     menu = dig_menu(c, journal, packet)
 
@@ -683,11 +907,13 @@ def run_once(c, dry=None, now=None):
     try:
         first = reflect(c, journal, packet, [], menu)
         wants = [u for u in (first.get("wants_to_read") or []) if isinstance(u, str)]
+    except ConfigError:
+        raise
     except Exception as exc:
         say("first pass failed:", str(exc)[:120])
         wants = []
     allowed_urls = {m["url"] for m in menu}
-    if c["model"].strip().lower() == "stub":
+    if is_stub(c):
         wants = [m["url"] for m in menu][:2]
     for u in wants[:2]:
         if u in allowed_urls:
@@ -702,25 +928,26 @@ def run_once(c, dry=None, now=None):
 
     post = str(out.get("post", "")).strip()
     ok, reasons = validate(post, check_packet)
-    if not ok and c["model"].strip().lower() != "stub":
-        say("draft rejected:", "; ".join(reasons))
-        out = reflect(c, journal, packet, readings, menu,
-                      extra="Your previous draft was rejected for: " + "; ".join(reasons)
-                      + ". Write a different entry that uses only packet numbers and no trading language.")
-        post = str(out.get("post", "")).strip()
-        ok, reasons = validate(post, check_packet)
     if not ok:
+        # dropped, not fixed: no second draft, and the reasons stay here
         say("entry dropped:", "; ".join(reasons))
         journal.note_read(readings, now)
         journal.save()
         return {"dropped": True, "reasons": reasons, "draft": post}
 
+    # what it keeps is checked the same way as what it says
+    learned, dropped = [], []
+    for f in (out.get("learned") or [])[:3]:
+        f = " ".join(str(f).split())[:240]
+        (learned if f and validate(f, check_packet)[0] else dropped).append(f)
+    if dropped:
+        say("not kept (ungrounded):", " | ".join(d[:80] for d in dropped))
+    mood = clean_mood(out.get("mood"))
+
     entry = {"at": int(now), "day": journal.day(now), "text": post, "posted": False, "x_id": None,
-             "mood": out.get("mood"), "learned": out.get("learned") or [],
-             "read": [r["url"] for r in readings]}
+             "mood": mood, "learned": learned, "read": [r["url"] for r in readings]}
     if not dry:
         try:
-            import xpost
             res = xpost.publish(post, fetch_frame(c["stream"]))
             entry["posted"] = bool(res.get("id"))
             entry["x_id"] = res.get("id")
@@ -730,10 +957,10 @@ def run_once(c, dry=None, now=None):
             entry["x_error"] = str(exc)[:200]
             say("x failed:", str(exc)[:200])
     journal.add_post(entry)
-    journal.learn(out.get("learned"))
+    journal.learn(learned)
     journal.note_read(readings, now)
-    if out.get("mood"):
-        journal.data["mood"] = str(out["mood"])[:40]
+    if mood:
+        journal.data["mood"] = mood
     journal.save()
     say(f"[day {entry['day']}] {'posted' if entry['posted'] else 'dry'}: {post}")
     return entry
@@ -741,13 +968,27 @@ def run_once(c, dry=None, now=None):
 
 def loop(c):
     say(f"voice loop: every {c['every_h']} h, model {c['model']}, dry={c['dry']}")
+    sd = str(c["state_dir"])
+    say(f"state_dir: {sd} (mount point: {os.path.ismount(sd)}), journal: {c['journal'].name}, "
+        f"ledger: {xpost.ledger_path()}")
+    if not is_stub(c):
+        system_prompt(c)              # fail now, loudly, if the prompt is missing
     while True:
+        j = Journal(c["journal"])
+        wait = (j.data.get("last_cycle_at") or 0) + c["every_h"] * 3600 - time.time()
+        if wait > 0:
+            say(f"next entry in {wait / 60:.0f} min")
+            time.sleep(min(wait, 1800))
+            continue
         try:
             run_once(c)
+        except ConfigError as exc:
+            say("voice cannot run until this is fixed:", str(exc)[:200])
+            time.sleep(1800)
         except Exception:
             say("cycle failed:")
             traceback.print_exc()
-        time.sleep(max(300, c["every_h"] * 3600))
+        time.sleep(60)
 
 
 def main(argv=None):
@@ -760,6 +1001,8 @@ def main(argv=None):
     ap.add_argument("--live", action="store_true")
     a = ap.parse_args(argv)
     c = cfg()
+    if a.live and is_stub(c):
+        sys.exit("the stub writes test text; it is never posted")
     if a.live:
         c["dry"] = False
     if a.dry:

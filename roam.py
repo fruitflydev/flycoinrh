@@ -56,6 +56,13 @@ from flyeye import FlyPilot
 ROOT = Path(__file__).parent
 OUT = ROOT / "build"
 
+
+def _atomic_write(path, data: bytes):
+    """Write then rename, so /state never reads a half-written file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
 # Link-rich, text-heavy, safe places to be dropped into. The fly leaves them
 # on its own within a few clicks; these only decide where a life starts.
 SEEDS = [
@@ -687,7 +694,7 @@ def publish(stats, jpg, url, hz, neural=None):
     """
     try:
         OUT.mkdir(parents=True, exist_ok=True)
-        (OUT / "roam_frame.jpg").write_bytes(jpg)
+        _atomic_write(OUT / "roam_frame.jpg", jpg)
         payload = json.dumps({
             "url": url,
             "steps": stats["steps"], "clicks": stats["clicks"],
@@ -701,7 +708,7 @@ def publish(stats, jpg, url, hz, neural=None):
             "stream": TUNNEL["url"],
             "updated": int(time.time()),
         }, indent=1)
-        (OUT / "roam_state.json").write_text(payload)
+        _atomic_write(OUT / "roam_state.json", payload.encode("utf-8"))
 
         now = time.time()
         if BLOB_TOKEN and now - _last_push["at"] >= BLOB_EVERY:
