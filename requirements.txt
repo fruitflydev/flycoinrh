@@ -18,4 +18,4 @@ uvicorn[standard]==0.40.0
 playwright==1.62.0       # the real browser the fly drives
 
 eth-account==0.13.7      # signs on Robinhood Chain; never sends a key to a page
-eth-utils==5.4.0
+eth-utils==5.3.1
