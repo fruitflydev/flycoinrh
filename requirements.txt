@@ -19,3 +19,4 @@ playwright==1.62.0       # the real browser the fly drives
 
 eth-account==0.13.7      # signs on Robinhood Chain; never sends a key to a page
 eth-utils==5.3.1
+eth-abi>=5.0,<7            # pons.py encodes contract calls directly; tested with 6.0.0b1
