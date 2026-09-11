@@ -28,10 +28,10 @@ What is honest about this and what is not:
 * The reward signal is not. A fly is rewarded by sugar, not by reaching a web
   page. Novelty stands in for it here, which is a modelling choice made by a
   person, and the fly has no say in it.
-* The compartments are lopsided in this data - 942 KC-to-MBON edges sit on
-  the reward side against 75 on the punishment side - so punishment has far
-  less to work with than reward does. That asymmetry is in the measurement,
-  not in the code.
+* The compartments are lopsided in this data - 27,939 KC-to-MBON synapses
+  sit on the reward side against 14,349 on the punishment side - so
+  punishment has about half as much to work with as reward does. That
+  asymmetry is in the measurement, not in the code.
 """
 import os
 import re
