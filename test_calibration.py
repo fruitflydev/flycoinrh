@@ -89,5 +89,144 @@ class Readout(unittest.TestCase):
         self.assertGreater(after, before)
 
 
+class SynapseReading(unittest.TestCase):
+    """
+    How a look is read: the Kenyon cells that fired, times the weights dopamine
+    changes, summed on each side.
+    """
+
+    class MB:
+        def __init__(self):
+            self.fb = type("FB", (), {"n": 8})()
+            self.pre = np.array([1, 2, 3, 4])          # one Kenyon cell per synapse
+            self.side = np.array([-1, -1, 1, 1])       # approach, approach, avoid, avoid
+            self.base = np.array([2.0, 3.0, 5.0, 7.0])
+            self.gain = np.ones(4)
+
+    def test_only_the_cells_that_fired_are_counted(self):
+        mb = self.MB()
+        self.assertEqual(calibration.syn_drive(mb, np.array([1, 3])), (2.0, 5.0))
+        self.assertEqual(calibration.syn_drive(mb, np.array([2, 4])), (3.0, 7.0))
+        self.assertEqual(calibration.syn_drive(mb, np.array([1, 2, 3, 4])), (5.0, 12.0))
+        self.assertEqual(calibration.syn_drive(mb, None), (0.0, 0.0))
+
+    def test_depression_can_only_lower_the_side_it_touches(self):
+        mb = self.MB()
+        before = calibration.syn_drive(mb, np.array([1, 3]))
+        mb.gain[2] = 0.5                               # reward depresses an avoid synapse
+        after = calibration.syn_drive(mb, np.array([1, 3]))
+        self.assertEqual(after[0], before[0])
+        self.assertLess(after[1], before[1])
+        self.assertGreater(calibration.leaning(after), calibration.leaning(before))
+
+
+class Leaning(unittest.TestCase):
+    """(A - V) / (A + V), the scale-free part of the rule."""
+
+    def test_sign(self):
+        self.assertGreater(calibration.leaning((300.0, 100.0)), 0)
+        self.assertLess(calibration.leaning((100.0, 300.0)), 0)
+        self.assertEqual(calibration.leaning((100.0, 100.0)), 0.0)
+
+    def test_doubling_both_sides_changes_nothing(self):
+        self.assertEqual(calibration.leaning((30.0, 10.0)), calibration.leaning((60.0, 20.0)))
+
+    def test_bounded(self):
+        self.assertEqual(calibration.leaning((1e9, 0.0)), 1.0)
+        self.assertEqual(calibration.leaning((0.0, 1e9)), -1.0)
+
+    def test_silence_leans_nowhere(self):
+        self.assertEqual(calibration.leaning((0.0, 0.0)), 0.0)
+
+
+class Relative(unittest.TestCase):
+    """A card against the other cards, which is the comparison the gate measured."""
+
+    def test_a_card_that_leans_like_the_room_is_zero(self):
+        self.assertEqual(calibration.relative((300.0, 100.0), [(300.0, 100.0)]), 0.0)
+        self.assertEqual(calibration.relative((300.0, 100.0),
+                                              [(30.0, 10.0), (600.0, 200.0)]), 0.0)
+
+    def test_sign(self):
+        self.assertGreater(calibration.relative((300.0, 100.0), [(100.0, 100.0)]), 0)
+        self.assertLess(calibration.relative((100.0, 300.0), [(100.0, 100.0)]), 0)
+
+    def test_it_is_the_mean_of_the_other_cards(self):
+        want = calibration.leaning((300.0, 100.0)) - (calibration.leaning((100.0, 100.0))
+                                                      + calibration.leaning((100.0, 300.0))) / 2.0
+        self.assertAlmostEqual(
+            calibration.relative((300.0, 100.0), [(100.0, 100.0), (100.0, 300.0)]), want)
+
+    def test_bounded(self):
+        self.assertEqual(calibration.relative((1e9, 0.0), [(0.0, 1e9)]), 1.0)
+        self.assertEqual(calibration.relative((0.0, 1e9), [(1e9, 0.0)]), -1.0)
+
+    def test_loudness_does_not_decide_it(self):
+        # a coin that fires five times as many Kenyon cells leans the same way
+        quiet = calibration.relative((30.0, 10.0), [(10.0, 10.0)])
+        loud = calibration.relative((150.0, 50.0), [(10.0, 10.0)])
+        self.assertAlmostEqual(quiet, loud)
+
+    def test_silence_is_zero(self):
+        self.assertEqual(calibration.relative((0.0, 0.0), [(0.0, 0.0)]), 0.0)
+
+    def test_no_other_card_is_no_comparison(self):
+        self.assertEqual(calibration.relative((300.0, 100.0), []), 0.0)
+
+    def test_stored_leanings_give_the_same_answer_as_the_readings(self):
+        """What a replay has in hand, against what the room had."""
+        own, others = (300.0, 100.0), [(100.0, 100.0), (100.0, 300.0)]
+        self.assertEqual(
+            calibration.relative_leaning(calibration.leaning(own),
+                                         [calibration.leaning(o) for o in others]),
+            calibration.relative(own, others))
+
+
+class AnEmptyReading(unittest.TestCase):
+    """
+    A run in which no Kenyon cell fired measured nothing, and 0.0 is not a
+    neutral score for it: every leaning measured in the first paper run was
+    between -0.18 and -0.31, so an empty reading sits about a quarter of the
+    range above every real card. has_reading is how a caller tells the two
+    apart; the room drops them and the offline gate never had one.
+    """
+
+    def test_nothing_fired_is_not_a_reading(self):
+        self.assertFalse(calibration.has_reading((0.0, 0.0)))
+
+    def test_anything_at_all_is(self):
+        for r in ((1e-9, 0.0), (0.0, 1e-9), (300.0, 100.0), (100.0, 100.0)):
+            self.assertTrue(calibration.has_reading(r), r)
+
+    def test_it_is_the_case_leaning_cannot_speak_for(self):
+        self.assertEqual(calibration.leaning((0.0, 0.0)), 0.0)
+        self.assertEqual(calibration.leaning((100.0, 100.0)), 0.0)
+
+    def test_what_an_empty_reference_entry_would_have_done(self):
+        """The recorded look 1789229112324-0009, with and without it."""
+        own, other = -0.27423, -0.20659
+        self.assertAlmostEqual(calibration.relative_leaning(own, [0.0, other]), -0.170935, places=6)
+        self.assertAlmostEqual(calibration.relative_leaning(own, [other]), -0.06764, places=5)
+
+
+class Contrast(unittest.TestCase):
+    def test_zero_when_stimulus_equals_blank(self):
+        self.assertEqual(calibration.contrast((120.0, 80.0), (120.0, 80.0)), 0.0)
+
+    def test_sign(self):
+        self.assertGreater(calibration.contrast((150.0, 80.0), (120.0, 80.0)), 0)
+        self.assertLess(calibration.contrast((120.0, 110.0), (120.0, 80.0)), 0)
+
+    def test_bounded(self):
+        for s, b in (((1e6, 0.0), (0.0, 0.0)), ((0.0, 1e6), (0.0, 0.0)), ((0.0, 0.0), (0.0, 5.0))):
+            self.assertLessEqual(abs(calibration.contrast(s, b)), 1.0)
+
+    def test_fixed_population_imbalance_cancels(self):
+        self.assertEqual(calibration.contrast((300.0, 100.0), (300.0, 100.0)), 0.0)
+
+    def test_silence_is_zero(self):
+        self.assertEqual(calibration.contrast((0.0, 0.0), (0.0, 0.0)), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

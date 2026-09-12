@@ -48,13 +48,43 @@ drive 17-23 Hz lower (2-3x its block noise), with turning asymmetry inside
 stock's own spread.
 
 READING LIKE AND DISLIKE
-mushroom.py names MBONs by which dopamine cluster innervates their compartment:
+mushroom.py names MBONs by which dopamine cluster innervates their compartment,
+counted from the synapses each MBON type receives (build/mb_sides.json):
 `reward_side` (PAM) and `punish_side` (PPL1). Those names are about dopamine,
 not behaviour. Behaviourally (Aso et al. 2014, eLife 3:e04580), MBONs in PAM
 compartments drive AVOIDANCE and MBONs in PPL1 compartments drive APPROACH.
 Reward depresses KC input to avoidance MBONs, so a rewarded smell is approached
-more. Hence: valence = mean rate of PPL1-compartment MBONs minus mean rate of
-PAM-compartment MBONs. The old lander.py read this the other way round.
+more. The old lander.py read this the other way round.
+
+The backroom reads a look off the mushroom body's OUTPUT SYNAPSES rather than
+off those MBONs' firing rates, and it reads it against the other cards in the
+room. Three functions, in this one file because the room (backroom.py) and the
+offline gate (backroom_screen.py) must never drift apart:
+  syn_drive(mb, fired)    the synapses whose Kenyon cell fired, summed per side
+  leaning(reading)        (A - V) / (A + V), scale-free
+  relative(own, others)   leaning(own) minus the mean leaning of the other cards
+
+MEASURED 2026-09-12 (backroom_screen.py, build/backroom_screen.json), and this
+is why the rule is that and not something simpler:
+  * with the MBON firing rates as the readout, BOTH sugar and shock lowered the
+    score - in a whole-brain simulation those cells also carry recurrent input
+    from everything else - so a rewarded coin came out backwards (-0.0042 on
+    its own coin, 2.8 SE, trained alone);
+  * a blank control run on a uniform ground-grey frame is not blank: that frame
+    fired more approach MBONs (13,075) than a card did (6,796), training moved
+    the control more than it moved the cards, and shock inverted;
+  * comparing raw sums instead of leanings let the coin that fires five times
+    as many Kenyon cells decide every other coin's score, which is the other
+    way sugar came out backwards;
+  * with the synaptic readout, per-card leanings and the other cards as the
+    reference, over 60 paired seeds with both signs trained: the coin paired
+    with profit +0.0359 (5.6 SE), the coin paired with loss -0.0399 (5.8 SE),
+    an untouched coin +0.0041 (0.8 SE), leak 0.10. One-sided runs
+    (build/backroom_screen_sugar.json, _shock.json) are 66% and 63%
+    coin-specific.
+valence() and contrast() below are the rate readout and the blank control. The
+room uses neither; they stay for the offline screen's other modes, which is
+where they were measured and failed.
 """
 import re
 
@@ -125,10 +155,155 @@ def gains_for(fb, setting):
 
 
 def readout(mb):
-    """Populations to record for a like/dislike reading: approach vs avoidance MBONs."""
+    """
+    Populations to record for a like/dislike reading: approach vs avoidance MBONs.
+
+    Their rates are recorded and reported. Nothing decides on them: what a look
+    is worth is read off the synapses below.
+    """
     return {"approach": np.asarray(mb.punish_side), "avoid": np.asarray(mb.reward_side)}
 
 
 def valence(run_result):
-    """Approach minus avoidance, in Hz, from a FlyBrain.run recorded with readout(mb)."""
+    """
+    Approach minus avoidance, in Hz, from a FlyBrain.run recorded with readout(mb).
+
+    The first readout, kept for the offline screen and for lander.py. MEASURED
+    2026-09-12: it cannot carry a lesson (see the module docstring), so the room
+    does not use it.
+    """
     return float(np.asarray(run_result["approach"]).mean() - np.asarray(run_result["avoid"]).mean())
+
+
+def syn_drive(mb, fired):
+    """
+    What the mushroom body's output synapses carry for one look: (approach, avoid).
+
+    MEASURED: which Kenyon cells fired in that run, every KC->MBON synapse in
+    the connectome, and which dopamine cluster innervates each MBON's
+    compartment (build/mb_sides.json). CHOSEN: that a look is worth the sum of
+    base * gain over the synapses whose Kenyon cell fired, split by side -
+    approach for the PPL1-input MBONs, avoidance for the PAM-input ones.
+
+    This is the quantity the plasticity rule actually moves, and depressing one
+    side can only lower that side. MBON firing rates were the first readout and
+    are not usable for it: in a whole-brain simulation those cells also receive
+    recurrent input from everything else, and measured 2026-09-12 both sugar and
+    shock lowered the rate-based score, so sugar came out backwards
+    (backroom_screen.py, build/backroom_screen.json).
+    """
+    w = np.asarray(mb.base, dtype=np.float64) * np.asarray(mb.gain, dtype=np.float64)
+    active = np.zeros(int(mb.fb.n), dtype=bool)
+    if fired is not None and len(fired):
+        active[np.asarray(fired, dtype=np.int64)] = True
+    hot = active[np.asarray(mb.pre, dtype=np.int64)]
+    side = np.asarray(mb.side)
+    return float(w[hot & (side == -1)].sum()), float(w[hot & (side == 1)].sum())
+
+
+def has_reading(reading):
+    """
+    True when a look measured something at all: some Kenyon cell's synapses
+    were counted.
+
+    syn_drive returns (0.0, 0.0) for a run in which no Kenyon cell fired, and
+    leaning() scores that 0.0 - which sits about a quarter of the range above
+    every card this project has actually measured (every leaning in the first
+    paper run was between -0.18 and -0.32). An empty reading is not a
+    measurement of a card, so it may not be one card's drive nor another
+    card's reference. MEASURED 2026-09-12: one such reading in the reference
+    of look 1789229112324-0009 moved its drive from -0.068 to -0.171, and the
+    drive is the order size. Both callers check this: the room keeps an empty
+    reading out of the dwell and out of the room behind the fly, and the
+    offline gate never had one.
+    """
+    return float(reading[0]) + float(reading[1]) > 0.0
+
+
+def leaning(reading):
+    """
+    How far one look leans toward approach, in [-1, 1]: (A - V) / (A + V).
+
+    `reading` is one (approach, avoid) pair from syn_drive. A card that fires
+    no Kenyon cell at all leans nowhere, so an empty reading is 0 - which is a
+    number to discard (has_reading), not a score to compare. The formula
+    is CHOSEN; that it has to be a ratio and not a difference is MEASURED: a
+    coin that fires five times as many Kenyon cells as another would otherwise
+    dominate every comparison it takes part in, which is what made sugar look
+    backwards when the offline screen first averaged raw sums (2026-09-12,
+    build/backroom_screen.json).
+    """
+    a, v = (float(x) for x in reading)
+    den = a + v
+    if not den > 0:
+        return 0.0
+    return float(np.clip((a - v) / den, -1.0, 1.0))
+
+
+def relative(own, others):
+    """
+    How far one card leans above the rest of the room, in [-1, 1]. CHOSEN.
+
+    `own` is this look's (approach, avoid) reading; `others` are the readings of
+    the other cards being compared with it - in the offline gate the same seed's
+    look at every other coin, in the room the last look the fly took at each
+    other card during this visit. drive = clip(leaning(own) - mean(leanings of
+    others), -1, 1). It has no constant.
+
+    A fly in a T-maze is offered two arms and chooses between them, and this is
+    the same comparison - which is also the only form the offline gate could
+    measure a lesson in (build/backroom_screen.json). MEASURED 2026-09-12:
+    learning here is partly global, so a lesson about one coin moves every
+    coin's absolute reading the same way and a card read against a blank grey
+    frame carries almost none of it - an untouched coin moved 0.88 to 0.92 as
+    far as a trained one, and the shocked coin moved the wrong way, whether the
+    reading was the output synapses or the MBON firing rates. The difference
+    between two coins carries it.
+
+    With no other card there is no comparison and this is 0. A caller that must
+    tell "nothing to compare with" from "compared and indifferent" - the room
+    does, because a stop with no reference commits nothing - has to check
+    `others` itself.
+    """
+    return relative_leaning(leaning(own), [leaning(x) for x in others])
+
+
+def relative_leaning(own, others):
+    """
+    The same rule, when the other cards' leanings are what is in hand.
+
+    relative() is the way to call this while the readings are still there. A
+    replay of a stored look has only the leanings the other cards gave at the
+    time - they were read at other rectangles and other moments, and re-running
+    them now would be a different measurement - so it calls this instead, and
+    the subtraction and the clip stay in one place either way.
+    """
+    others = [float(x) for x in others]
+    if not others:
+        return 0.0
+    return float(np.clip(float(own) - float(np.mean(others)), -1.0, 1.0))
+
+
+def contrast(stim, blank):
+    """
+    Like or dislike of one look against a blank look, in [-1, 1].
+
+    stim and blank are (approach Hz, avoid Hz), each summed over its MBON
+    population: one from the run that saw the card and smelled the coin, one
+    from a run with the same seed and cursor that saw only the room's ground
+    and smelled nothing. drive = ((A - V) - (A0 - V0)) / (A + V + A0 + V0).
+    Subtracting the blank removes any fixed imbalance between the two MBON
+    populations, so a coin is liked or disliked for what it looks and smells
+    like rather than because one population is larger. The formula is CHOSEN.
+
+    The room does not use this: measured 2026-09-12, a look read against a
+    blank control does not carry a lesson at all, whichever way the two
+    populations are read. `relative()` is what backroom.py asks for. This stays
+    for the offline screen's blank modes, which is where that was measured.
+    """
+    a, v = (float(x) for x in stim)
+    a0, v0 = (float(x) for x in blank)
+    den = a + v + a0 + v0
+    if not den > 0:
+        return 0.0
+    return float(np.clip(((a - v) - (a0 - v0)) / den, -1.0, 1.0))

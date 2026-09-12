@@ -175,8 +175,13 @@ class Nose:
 
     def smell(self, name, symbol="", description=""):
         """
-        What a coin smells of: {"odorants": [{name, weight, why}], "profile": {glomerulus: 0..1}}.
-        "why" says whether the odorant came from a word (and which) or from the hash.
+        What a coin smells of: {"odorants": [{name, weight, why}], "profile":
+        {glomerulus: 0..1}, "loudness": total, "loudness_target": equal_sniff}.
+
+        "why" says whether the odorant came from a word (and which) or from the
+        hash. "loudness" is what the profile adds up to after equal_sniff has
+        scaled it, which is below the target for a coin whose smell lands on
+        few glomeruli - see the note in the body.
         """
         picks = {}
         for text, weight in ((f"{name} {symbol}", 1.0), (description, DESCRIPTION_WEIGHT)):
@@ -200,21 +205,39 @@ class Nose:
                     profile[g] = max(profile.get(g, 0.0), v * weight)
         out = {g: round(v, 4) for g, v in sorted(profile.items()) if v >= MIN_RESPONSE}
         if self.equal_sniff > 0:
-            # Every coin is smelled equally loudly.
+            # Every coin's smell is scaled toward the same total - as far as a
+            # receptor allows.
             #
             # DoOR has no dose axis, so how strong a coin smells is an accident
             # of which odorant its words happen to name. Measured 2026-09-12 on
             # this connectome: geosmin alone fires 42% of the Kenyon cells while
             # isopentyl acetate fires 4.9%, so a lesson about a loud coin lands
             # on five times as many synapses and swamps the quiet ones. Scaling
-            # every coin's profile to the same total takes that accident out,
-            # and it is what made sugar and shock both point the right way in
-            # build/backroom_screen.json. CHOSEN, disclosed.
+            # every coin's profile toward the same total takes most of that
+            # accident out, and it is what made sugar and shock both point the
+            # right way in build/backroom_screen.json. CHOSEN, disclosed.
+            #
+            # It does not reach equality, and saying it does would be false. A
+            # DoOR response is a response, so it is capped at 1.0: a coin whose
+            # smell lands on one glomerulus totals 1.0 however hard it is
+            # sniffed, one on two glomeruli at (0.9, 0.1) totals 1.2, and only
+            # a profile spread over enough of them reaches equal_sniff. In the
+            # first paper run the totals ran 1.00, 1.24, 1.48, 1.49, 2.00. A
+            # coin hitting one glomerulus cannot be made as loud as one hitting
+            # twenty without driving a receptor past its own maximum, which
+            # would be a made-up measurement rather than a chosen scaling. The
+            # profile's achieved total is returned as `loudness` so a caller,
+            # a look record and a reader can see which coins are quiet.
             total = sum(out.values())
             if total > 0:
                 out = {g: round(min(1.0, v * self.equal_sniff / total), 4) for g, v in out.items()}
         return {"odorants": [{"name": o, "weight": w, "why": why} for o, (w, why) in sorted(picks.items())],
-                "profile": out}
+                "profile": out,
+                # how loud this coin actually ends up: the sum of the scaled
+                # responses, against equal_sniff as the target it cannot always
+                # reach (see above)
+                "loudness": round(sum(out.values()), 4),
+                "loudness_target": float(self.equal_sniff)}
 
     def drive(self, smell):
         """The smell as a FlyBrain drive dict: receptor neurons of each glomerulus at response x max_hz."""

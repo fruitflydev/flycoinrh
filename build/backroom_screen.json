@@ -1,0 +1,113 @@
+{
+ "calibration": "pn05_apl10_kc03",
+ "sides_sha": "96f3020d1e733bcfd60ba43abce2075a9b6f0599adcaa0e32c6e92a7dd055be0",
+ "seeds": 60,
+ "pairings": 12,
+ "ground": 0.05,
+ "card": [
+  500,
+  300,
+  280,
+  200
+ ],
+ "synapses_hit": {
+  "sugar": 14524,
+  "shock": 27906
+ },
+ "blank_mode": "others",
+ "odour_max_hz": 200,
+ "equal_sniff_total": 2.0,
+ "readout": "weight",
+ "blank": {
+  "before": [
+   0.0,
+   0.0
+  ],
+  "after": [
+   0.0,
+   0.0
+  ]
+ },
+ "coins": {
+  "A": {
+   "name": "Banana",
+   "paired_with": "sugar",
+   "odorants": [
+    "isopentyl acetate"
+   ],
+   "drive_before": 0.03462667881731388,
+   "drive_before_se": 0.009867569144976947,
+   "drive_after": 0.07051088802066614,
+   "delta": 0.03588420920335226,
+   "delta_se": 0.006391662554895168,
+   "clicks_before": 2,
+   "clicks_after": 2,
+   "A_before": 2408.9588333765664,
+   "V_before": 3902.621348063151,
+   "A_after": 2137.8114172617593,
+   "V_after": 3657.45981725057,
+   "kc_frac": 0.04984826115485564
+  },
+  "B": {
+   "name": "Mud",
+   "paired_with": "shock",
+   "odorants": [
+    "geosmin"
+   ],
+   "drive_before": -0.047967291925432254,
+   "drive_before_se": 0.006859158446965068,
+   "drive_after": -0.08791186907196614,
+   "delta": -0.0399445771465339,
+   "delta_se": 0.0069497786675935145,
+   "clicks_before": 2,
+   "clicks_after": 3,
+   "A_before": 11156.067525227865,
+   "V_before": 19395.768836466472,
+   "A_after": 9961.829889170329,
+   "V_after": 18671.56813252767,
+   "kc_frac": 0.23458415354330703
+  },
+  "C": {
+   "name": "Moon Dog",
+   "paired_with": "nothing",
+   "odorants": [
+    "2-methoxy-3-methylpyrazine",
+    "bromobenzene",
+    "isopentanoic acid"
+   ],
+   "drive_before": 0.013340613108118371,
+   "drive_before_se": 0.008759626216147445,
+   "drive_after": 0.017400981051300012,
+   "delta": 0.004060367943181642,
+   "delta_se": 0.005421632612182009,
+   "clicks_before": 0,
+   "clicks_after": 0,
+   "A_before": 3975.6613489786782,
+   "V_before": 6464.801049296061,
+   "A_after": 3554.727733866374,
+   "V_after": 6120.179737281799,
+   "kc_frac": 0.0817872375328084
+  }
+ },
+ "sugar_raises_paired_drive": true,
+ "shock_lowers_paired_drive": true,
+ "leak_untouched_over_trained": 0.10165004196405597,
+ "sugar_beats_untouched": true,
+ "shock_beats_untouched": true,
+ "commits_per_look_before": 0.02222222222222222,
+ "trained_with": "both",
+ "pass": true,
+ "mb": {
+  "synapses": 44042,
+  "reward_side": 24005,
+  "punish_side": 20037,
+  "depressed": 27568,
+  "mean_gain": 0.9441,
+  "min_gain": 0.4759,
+  "rewards": 12,
+  "punishments": 12,
+  "half_life_h": 6.0,
+  "calibration": "pn05_apl10_kc03"
+ },
+ "runtime_s": 211
+}

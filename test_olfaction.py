@@ -143,10 +143,14 @@ class EqualSniff(unittest.TestCase):
         self.assertGreater(sum(plain["profile"].values()), 0)
         self.assertEqual(plain["profile"], self.nose(0.0).smell("Banana", "BNNA")["profile"])
 
-    def test_every_coin_smells_equally_loudly(self):
+    def test_every_coin_is_scaled_toward_the_same_total_but_not_to_it(self):
         # A glomerulus is never driven above the strongest response DoOR
         # measured for it, so a coin whose smell sits in very few glomeruli
         # cannot reach the target total: it lands at one unit per glomerulus.
+        # "Every coin is smelled equally loudly" was the claim in the module
+        # docstrings and on the site, and this is why it is not true: in the
+        # first paper run the totals were 1.00, 1.24, 1.48, 1.49 and 2.00, and
+        # the quiet looks read 226-239 approach a step against 24,275-29,211.
         n = self.nose(2.0)
         for name, symbol in (("Banana", "BNNA"), ("Mud", "MUD"), ("Moon Dog", "MDOG")):
             profile = n.smell(name, symbol)["profile"]
@@ -171,6 +175,25 @@ class EqualSniff(unittest.TestCase):
     def test_never_above_one(self):
         for g, v in self.nose(50.0).smell("Banana", "BNNA")["profile"].items():
             self.assertLessEqual(v, 1.0, g)
+
+    def test_the_smell_says_how_loud_it_actually_is(self):
+        """
+        The achieved total travels with the smell, so a look record, a panel or
+        a reader can tell a coin that reached the target from one that could
+        not. Nothing decides on it.
+        """
+        for name, symbol in (("Banana", "BNNA"), ("Mud", "MUD")):
+            s = self.nose(2.0).smell(name, symbol)
+            self.assertAlmostEqual(s["loudness"], sum(s["profile"].values()), places=3, msg=name)
+            self.assertEqual(s["loudness_target"], 2.0)
+            self.assertLessEqual(s["loudness"], 2.0 + 1e-6, msg=name)
+
+    def test_a_one_glomerulus_coin_cannot_be_made_as_loud_as_a_wide_one(self):
+        n = self.nose(2.0)
+        narrow = n.smell("Mud", "MUD")
+        wide = n.smell("Banana", "BNNA")
+        self.assertLess(len(narrow["profile"]), len(wide["profile"]))
+        self.assertLessEqual(narrow["loudness"], wide["loudness"])
 
 
 if __name__ == "__main__":
