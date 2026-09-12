@@ -168,3 +168,64 @@ looked at again, the room asks what that position is worth now, and the
 difference since the last look arrives as dopamine at the Kenyon cell
 synapses: better is sugar, worse is shock, and a doubling and a halving weigh
 the same. That is the whole strategy. There is no other one.
+
+## Plume tracking
+
+Account copy for the plume experiment, stated plainly. It is a science
+experiment on the simulated brain, run offline on 2026-09-12: no page, no
+room, no coin, no post. The record is `build/plume_experiment.json`, the
+paths are `build/plume_trajectories.npz`, and the plain-language account is
+`build/plume_report.md`.
+
+- **What the fly was made to do.** Walk in a wind tunnel 0.6 m by 0.3 m,
+  0.40 m downwind of an odour source, for 20 s at a time, with ethyl acetate
+  on its receptor neurons and the wind on the Johnston's organ cells of its
+  antennae, and its walking read off the same descending neurons the roamer
+  uses. A real fly surges upwind when it meets odour and casts crosswind when
+  it loses it. The question was whether that comes out of the wiring by
+  itself, with nothing learned and nothing fitted. Four predictions and every
+  metric were written down before the first trial, and no constant was
+  changed after.
+- **What is real.** The neurons: 2,635 receptor neurons in 53 types, 32 of
+  which respond to ethyl acetate in the DoOR dataset; 335 wind-sensing cells,
+  203 rooting on the left antenna and 132 on the right; ten descending
+  neurons, one steering and one forward cell per side, four backward, two
+  stop. Every number below is a count of spikes or a position in the tunnel,
+  ten seeds by three conditions, and all of it is in the record.
+- **What is chosen by people.** Which descending neuron stands for which
+  movement, and the scale, inherited from the roamer; the brain's calibration
+  gains; that odour is one odorant at 200 Hz at full strength; that wind is a
+  cosine of its angle at each antenna, the antennae 45 degrees apart, 100 Hz
+  at most, the same rate for every cell on a side; that the no-wind control
+  holds both antennae at 50 Hz; the tunnel, the wind speed, the plume's width
+  and wander and a 6 s warm-up; a top speed of 2 cm/s; and the thresholds and
+  windows that define an encounter, a loss, a surge and a cast. Also, by hand
+  before launch, ten seeds instead of twelve, because one brain run took
+  0.31 s and not the 0.2 s estimated.
+- **The numbers.** Surge: upwind speed rose 2.2 +/- 1.4 mm/s in the second
+  after an encounter, 1.5 standard errors, short of the 2 the prediction
+  required. Cast: crosswind speed fell 0.85 +/- 0.26 mm/s in the two seconds
+  after a loss, the opposite of a cast, and the spread of heading change
+  moved 0.06 +/- 0.19 degrees. Upwind progress in 20 s: 46 +/- 5 mm with
+  odour, 59 +/- 7 mm with no odour at all, 8 +/- 14 mm with odour but no wind
+  sense. Source reached: none of thirty trials, in any condition. All four
+  predictions failed.
+- **What the fly did instead.** With wind on its antennae it faced downwind
+  on 91 % of steps with odour and 94 % without, and because its
+  backward-walking neurons outfired its forward ones under the roamer's
+  mapping, it backed upwind at 2 to 3 mm/s either way. That is the whole of
+  the upwind progress, and it happens without any odour. Odour did move the
+  motor neurons - the left forward cell fired at 112 Hz against 61 Hz with no
+  odour, the stop cells at 70 against 99 - but the shift was not organised
+  into a surge, a cast or a path.
+- **The honest limits.** The brain restarts from rest at every 50 ms step, so
+  it has no memory of what it smelled a moment ago, and surge and cast are
+  memories. The receptor neurons do not adapt, every synapse weighs the same
+  0.275 mV, and no spike takes any time to travel. The wind encoding is a
+  stand-in, and its 203 : 132 population split means the brain never receives
+  a symmetric headwind. The fly was born inside the plume on nine seeds of
+  ten, and the source was 0.37 m away at a top speed of 0.02 m/s, so reaching
+  it needed 92.5 % of full speed straight upwind for the whole trial. Any of
+  these could be why it failed; none of them was changed after the result.
+  What the numbers support is "this simulator, driven this way, did not track
+  a plume", and nothing stronger in either direction.
