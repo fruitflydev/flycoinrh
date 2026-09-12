@@ -1,0 +1,1618 @@
+{
+ "confidence_meaning": {
+  "measured": "the dataset's own labels carry the published name and the cited paper describes that population in a male",
+  "uncertain": "the name sits on two distinct types, the count disagrees with the paper, the annotators' labels disagree with each other, or the role was shown only in females; shown on the page with this word"
+ },
+ "groups": {
+  "DA1_PN": {
+   "channel": "smell",
+   "citation": "Datta et al. 2008 Nature 452:473 (DA1 projection neurons, dimorphic targets); Ruta et al. 2010 Nature 468:686; figure not verified in this session. Identity: type names DA1_lPN, DA1_vPN.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 8,
+    "R": 7,
+    "dimorphism": {
+     "": 15
+    },
+    "fruDsx": {
+     "fru_high": 13,
+     "fru_low": 2
+    },
+    "n": 15,
+    "per_type": {
+     "DA1_lPN": 13,
+     "DA1_vPN": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 15
+    }
+   },
+   "motor": false,
+   "name": "DA1 PN",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "cVA projection neurons (DA1 glomerulus to lateral horn)",
+   "types": [
+    "DA1_lPN",
+    "DA1_vPN"
+   ]
+  },
+  "DC1": {
+   "channel": "smell",
+   "citation": "Ruta et al. 2010 Nature 468:686 (DC1 receive DA1 PN input and are tuned to cVA); figure not verified in this session. Identity: the annotators' synonyms column tags these 8 types 'Ruta 2010: DC1'.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 33,
+    "R": 33,
+    "dimorphism": {
+     "": 9,
+     "male-specific": 57
+    },
+    "fruDsx": {
+     "fru_high": 57,
+     "fru_low": 9
+    },
+    "n": 66,
+    "per_type": {
+     "AVLP753m": 12,
+     "LH001m": 4,
+     "LH002m": 9,
+     "LH003m": 6,
+     "LH006m": 7,
+     "LH008m": 11,
+     "PVLP205m": 8,
+     "SLP160": 9
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 66
+    }
+   },
+   "motor": false,
+   "name": "DC1",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "third-order cVA neurons, fru+ (Ruta 2010 DC1)",
+   "types": [
+    "AVLP753m",
+    "LH001m",
+    "LH002m",
+    "LH003m",
+    "LH006m",
+    "LH008m",
+    "PVLP205m",
+    "SLP160"
+   ]
+  },
+  "DNa01": {
+   "channel": "motor",
+   "citation": "Chen et al. 2018 Nat Commun 9:4390 and Rayshubskiy et al. 2020 describe DNa01 as a steering neuron; the roamer reads it as forward. Identity: type DNa01.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "": 2
+    },
+    "fruDsx": {
+     "": 2
+    },
+    "n": 2,
+    "per_type": {
+     "DNa01": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xl": 2
+    }
+   },
+   "motor": true,
+   "name": "DNa01",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "forward walking descending neurons (the roamer's reading)",
+   "types": [
+    "DNa01"
+   ]
+  },
+  "DNa02": {
+   "channel": "motor",
+   "citation": "Rayshubskiy et al. 2020 bioRxiv 2020.04.04.024703 (DNa02 steering); the roamer's mapping, pumpui.FlyPilot. Identity: type DNa02.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "": 2
+    },
+    "fruDsx": {
+     "": 2
+    },
+    "n": 2,
+    "per_type": {
+     "DNa02": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xl": 2
+    }
+   },
+   "motor": true,
+   "name": "DNa02",
+   "note": "DNae001 carries hemibrainType DNa01 and DNp71 carries hemibrainType DNp09; both are excluded, as in the roamer, which matches the type name exactly.",
+   "present": true,
+   "resolved": true,
+   "role": "steering descending neurons (left/right asymmetry)",
+   "types": [
+    "DNa02"
+   ]
+  },
+  "DNp09": {
+   "channel": "motor",
+   "citation": "Bidaye et al. 2020 Neuron 108:469 (DNp09 drives forward walking, freezing at strong activation); the roamer reads it as stop. Identity: type DNp09.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "": 2
+    },
+    "fruDsx": {
+     "": 2
+    },
+    "n": 2,
+    "per_type": {
+     "DNp09": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xl": 2
+    }
+   },
+   "motor": true,
+   "name": "DNp09",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "forward-walking descending neurons that freeze the fly at strong activation; read as stop by the roamer",
+   "types": [
+    "DNp09"
+   ]
+  },
+  "DNp13": {
+   "channel": "smell",
+   "citation": "Ruta et al. 2010 Nature 468:686 (DN1, described there as a male-specific descending neuron excited by DC1 and responding to cVA); Kimura et al. 2015 PLoS ONE 10:e0126445 (pMN1, dsx+, ovipositor extension in females); Mezzera et al. 2020 Curr Biol 30:3736 (DNp13 = pMN1 drives full ovipositor extrusion in females); figure not verified in this session. Identity: type DNp13, whose synonyms column reads 'Kimura 2015: pMN1; Ruta 2010: DN1'; the annotators' dimorphism label is 'sexually dimorphic' (present in both sexes), not male-specific.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "sexually dimorphic": 2
+    },
+    "fruDsx": {
+     "dsx_high": 2
+    },
+    "n": 2,
+    "per_type": {
+     "DNp13": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xn": 2
+    }
+   },
+   "motor": false,
+   "name": "DNp13 (Ruta 2010 DN1)",
+   "note": "The tag says a male-specific cVA descending neuron (Ruta 2010), the annotators' dimorphism label says sexually dimorphic, and the best-documented role of pMN1 / DNp13 is a female motor command (Mezzera 2020): the paper and the labels disagree, so the group is labelled uncertain.",
+   "present": true,
+   "resolved": true,
+   "role": "dsx+ descending neuron tagged Ruta 2010 DN1 (cVA pathway); pMN1, the ovipositor-extrusion command in females (Mezzera 2020)",
+   "types": [
+    "DNp13"
+   ]
+  },
+  "JO_A": {
+   "channel": "sound",
+   "citation": "Kamikouchi et al. 2009 Nature 458:165 (subgroups A and B respond to vibration, C and E to static deflection); Yorozu et al. 2009 Nature 458:201; figure not verified in this session. Identity: type names JO-A1..A4 and JO-A-unclear.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 18,
+    "R": 32,
+    "dimorphism": {
+     "": 50
+    },
+    "fruDsx": {
+     "": 50
+    },
+    "n": 50,
+    "per_type": {
+     "JO-A-unclear": 24,
+     "JO-A1": 8,
+     "JO-A2": 13,
+     "JO-A3": 2,
+     "JO-A4": 3
+    },
+    "side_other": 0,
+    "side_source": "rootSide",
+    "subclass": {
+     "auditory": 49,
+     "wind_gravity": 1
+    }
+   },
+   "motor": false,
+   "name": "JO-A",
+   "note": "Antennal cells: no somaSide; rootSide L 18, R 32. The annotators' subclass calls 49 of the 50 'auditory' and 1 'wind_gravity'. This is the group the room drives with the other fly's song.",
+   "present": true,
+   "resolved": true,
+   "role": "sound-sensitive Johnston's organ neurons, subgroup A",
+   "types": [
+    "^JO-A.*"
+   ]
+  },
+  "JO_B": {
+   "channel": "sound",
+   "citation": "Kamikouchi et al. 2009 Nature 458:165; Yorozu et al. 2009 Nature 458:201; figure not verified in this session. Identity: type names JO-B1_a..B4_b and JO-B-unclear.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 60,
+    "R": 29,
+    "dimorphism": {
+     "": 89
+    },
+    "fruDsx": {
+     "": 89
+    },
+    "n": 89,
+    "per_type": {
+     "JO-B-unclear": 13,
+     "JO-B1_a": 18,
+     "JO-B1_b": 12,
+     "JO-B1_c": 10,
+     "JO-B2": 9,
+     "JO-B3": 12,
+     "JO-B4_a": 3,
+     "JO-B4_b": 12
+    },
+    "side_other": 0,
+    "side_source": "rootSide",
+    "subclass": {
+     "": 1,
+     "auditory": 54,
+     "wind_gravity": 34
+    }
+   },
+   "motor": false,
+   "name": "JO-B",
+   "note": "Antennal cells: no somaSide; rootSide L 60, R 29. The annotators' subclass calls 54 of the 89 'auditory', 34 'wind_gravity' and leaves 1 blank; the group follows the type name, as the FACTS do. The annotators' labels disagree with each other on 35 of 89 cells, so the group is labelled uncertain.",
+   "present": true,
+   "resolved": true,
+   "role": "sound-sensitive Johnston's organ neurons, subgroup B",
+   "types": [
+    "^JO-B.*"
+   ]
+  },
+  "LC1": {
+   "channel": "smell",
+   "citation": "Ruta et al. 2010 Nature 468:686; figure not verified in this session. Identity: the annotators' synonyms column tags these 3 types 'Ruta 2010: LC1'.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 13,
+    "R": 12,
+    "dimorphism": {
+     "male-specific": 25
+    },
+    "fruDsx": {
+     "fru_high": 14,
+     "fru_low": 11
+    },
+    "n": 25,
+    "per_type": {
+     "AVLP743m": 11,
+     "LH004m": 6,
+     "LH007m": 8
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 25
+    }
+   },
+   "motor": false,
+   "name": "LC1",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "third-order cVA neurons, fru+ (Ruta 2010 LC1)",
+   "types": [
+    "AVLP743m",
+    "LH004m",
+    "LH007m"
+   ]
+  },
+  "LC10a": {
+   "channel": "sight",
+   "citation": "Ribeiro et al. 2018 Cell 174:607 (LC10 silencing abolishes orientation toward and pursuit of the female); Hindmarsh Sten et al. 2021 Nature 595:549 (LC10a, gated by P1); figure not verified in this session. Identity: type name LC10a.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 135,
+    "R": 140,
+    "dimorphism": {
+     "": 275
+    },
+    "fruDsx": {
+     "fru_high": 275
+    },
+    "n": 275,
+    "per_type": {
+     "LC10a": 275
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 275
+    }
+   },
+   "motor": false,
+   "name": "LC10a",
+   "note": "LC10b, LC10c-1/2, LC10d, LC10e and LoVP76 (LC10f) exist too (689 more cells) and are not named, since the courtship evidence is for LC10a.",
+   "present": true,
+   "resolved": true,
+   "role": "small-object tracking visual projection neurons used in courtship pursuit, fru+",
+   "types": [
+    "LC10a"
+   ]
+  },
+  "MDN": {
+   "channel": "motor",
+   "citation": "Bidaye et al. 2014 Science 344:97 (MDN). Identity: type MDN (synonym 'Carreira-Rosario 2018: DNp50').",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 2,
+    "R": 2,
+    "dimorphism": {
+     "": 4
+    },
+    "fruDsx": {
+     "": 4
+    },
+    "n": 4,
+    "per_type": {
+     "MDN": 4
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xn": 4
+    }
+   },
+   "motor": true,
+   "name": "MDN",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "backward walking descending neurons (moonwalker)",
+   "types": [
+    "MDN"
+   ]
+  },
+  "ORN_DA1": {
+   "channel": "smell",
+   "citation": "Kurtovic, Widmer & Dickson 2007 Nature 446:542 (Or67d neurons respond to cVA); Couto, Alenius & Dickson 2005 Curr Biol 15:1535 (Or67d projects to DA1); figure not verified in this session. Identity: the type name ORN_DA1.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 51,
+    "R": 105,
+    "dimorphism": {
+     "": 204
+    },
+    "fruDsx": {
+     "fru_high": 204
+    },
+    "n": 204,
+    "per_type": {
+     "ORN_DA1": 204
+    },
+    "side_other": 48,
+    "side_source": "rootSide",
+    "subclass": {
+     "": 204
+    }
+   },
+   "motor": false,
+   "name": "ORN_DA1",
+   "note": "Cell bodies are in the antenna, so there is no somaSide; the annotators' rootSide gives R 105, L 51, unknown 48. This is the group the room drives with the other fly's presence.",
+   "present": true,
+   "resolved": true,
+   "role": "cVA pheromone receptor neurons (Or67d, glomerulus DA1)",
+   "types": [
+    "ORN_DA1"
+   ]
+  },
+  "P1": {
+   "channel": "courtship",
+   "citation": "Kimura et al. 2008 Neuron 59:759 (P1); von Philipsborn et al. 2011 Neuron 69:509 (P1 activation drives song; figure not verified in this session); Hoopfer et al. 2015 eLife 4:e11346 Fig. 1 (P1, 'also known as pMP4/-e', activation promotes wing extension and aggression); Inagaki et al. 2014 Nat Methods 11:325. Identity: the 25 pC1 subtypes the annotators tag 'Cachero 2010: pMP-e; Yu 2010: pMP4'.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 43,
+    "R": 43,
+    "dimorphism": {
+     "male-specific": 76,
+     "potentially male-specific": 10
+    },
+    "fruDsx": {
+     "coexpress_high": 47,
+     "coexpress_low": 39
+    },
+    "n": 86,
+    "per_type": {
+     "pC1_12a": 2,
+     "pC1_13a": 2,
+     "pC1_14a": 6,
+     "pC1_14b": 2,
+     "pC1_15a": 2,
+     "pC1_15b": 2,
+     "pC1_15c": 3,
+     "pC1_16a": 5,
+     "pC1_16b": 8,
+     "pC1_17a": 3,
+     "pC1_17b": 5,
+     "pC1_1a": 7,
+     "pC1_1b": 2,
+     "pC1_2a": 4,
+     "pC1_2a/2b": 1,
+     "pC1_2b": 2,
+     "pC1_2c": 2,
+     "pC1_3a": 2,
+     "pC1_3b": 2,
+     "pC1_3c": 4,
+     "pC1_5a": 2,
+     "pC1_5b": 4,
+     "pC1_6a": 6,
+     "pC1_7a": 4,
+     "pC1_7b": 4
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 86
+    }
+   },
+   "motor": false,
+   "name": "P1",
+   "note": "86 cells here (43 per side) against about 20 per hemisphere in Kimura 2008, so the tag covers more cells than the published P1 cluster; named with the label 'uncertain'.",
+   "present": true,
+   "resolved": true,
+   "role": "courtship command neurons (P1 = pMP4 = pMP-e), fru+ dsx+",
+   "types": [
+    "pC1_12a",
+    "pC1_13a",
+    "pC1_14a",
+    "pC1_14b",
+    "pC1_15a",
+    "pC1_15b",
+    "pC1_15c",
+    "pC1_16a",
+    "pC1_16b",
+    "pC1_17a",
+    "pC1_17b",
+    "pC1_1a",
+    "pC1_1b",
+    "pC1_2a",
+    "pC1_2a/2b",
+    "pC1_2b",
+    "pC1_2c",
+    "pC1_3a",
+    "pC1_3b",
+    "pC1_3c",
+    "pC1_5a",
+    "pC1_5b",
+    "pC1_6a",
+    "pC1_7a",
+    "pC1_7b"
+   ]
+  },
+  "P1_by_name": {
+   "channel": "courtship",
+   "citation": "The only 'P1' string is hemibrainType 'P1-9' on OA-AL2i1, an octopaminergic optic-lobe type, unrelated. P1 is reachable only through the pC1 subtypes tagged pMP-e/pMP4 (group 'P1').",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 0,
+    "R": 0,
+    "dimorphism": {},
+    "fruDsx": {},
+    "n": 0,
+    "per_type": {},
+    "side_other": 0,
+    "side_source": "",
+    "subclass": {}
+   },
+   "motor": false,
+   "name": "P1 (by name)",
+   "note": "",
+   "present": false,
+   "resolved": false,
+   "role": "no type is named P1",
+   "types": []
+  },
+  "PPN1": {
+   "channel": "courtship",
+   "citation": "Kallman, Kim & Scott 2015 eLife 4:e11188; figure not verified in this session. Identity: the annotators' synonyms column tags AN05B102a 'Kallman 2015: PPN1'.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "": 2
+    },
+    "fruDsx": {
+     "": 2
+    },
+    "n": 2,
+    "per_type": {
+     "AN05B102a": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "BA": 2
+    }
+   },
+   "motor": false,
+   "name": "PPN1",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "pheromone processing neuron of the leg-to-brain pathway",
+   "types": [
+    "AN05B102a"
+   ]
+  },
+  "TN1A": {
+   "channel": "song",
+   "citation": "Lillvis et al. 2024 Curr Biol 34:808 Fig. 2 (TN1A necessary and sufficient for sine song); Shiozaki et al. 2024 Nat Neurosci 27:1954 Fig. 1 and 3. Identity: mancType TN1a (types TN1a_a..i).",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 11,
+    "R": 11,
+    "dimorphism": {
+     "": 7,
+     "male-specific": 15
+    },
+    "fruDsx": {
+     "coexpress_high": 22
+    },
+    "n": 22,
+    "per_type": {
+     "TN1a_a": 2,
+     "TN1a_b": 2,
+     "TN1a_c": 2,
+     "TN1a_d": 2,
+     "TN1a_e": 2,
+     "TN1a_f": 4,
+     "TN1a_g": 4,
+     "TN1a_h": 2,
+     "TN1a_i": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 4,
+     "BI": 18
+    }
+   },
+   "motor": false,
+   "name": "TN1A",
+   "note": "TN1c_a..d (13 cells, mancType TN1c) are not in the cited figures and are left out.",
+   "present": true,
+   "resolved": true,
+   "role": "sine-song premotor neurons (also active during pulse)",
+   "types": [
+    "^TN1a_.*"
+   ]
+  },
+  "Tk_FruM": {
+   "channel": "aggression",
+   "citation": "Asahina et al. 2014 Cell 156:221 Fig. 2 (about 4 male-specific Tk-GAL4^FruM cells per hemisphere in the lateral protocerebrum; activation promotes aggression) and Fig. 3 (no effect on courtship). Identity: the annotators' synonyms column tags AVLP727m 'Asahina 2014: TK-FruM'.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 3,
+    "R": 2,
+    "dimorphism": {
+     "male-specific": 5
+    },
+    "fruDsx": {
+     "fru_high": 5
+    },
+    "n": 5,
+    "per_type": {
+     "AVLP727m": 5
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 5
+    }
+   },
+   "motor": false,
+   "name": "Tk-FruM",
+   "note": "5 cells here, 3 left and 2 right, against 4.2 +/- 0.8 per hemisphere (about 8 in all) in the paper: the count disagrees with the paper, so the group is labelled uncertain.",
+   "present": true,
+   "resolved": true,
+   "role": "male-specific tachykinin neurons promoting aggression",
+   "types": [
+    "AVLP727m"
+   ]
+  },
+  "aDN": {
+   "channel": "courtship",
+   "citation": "Types 'ADNM1 MN' and 'ADNM2 MN' are abdominal motor neurons (mancType ADNM1/2), not a courtship descending neuron.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 0,
+    "R": 0,
+    "dimorphism": {},
+    "fruDsx": {},
+    "n": 0,
+    "per_type": {},
+    "side_other": 0,
+    "side_source": "",
+    "subclass": {}
+   },
+   "motor": false,
+   "name": "aDN (courtship descending)",
+   "note": "",
+   "present": false,
+   "resolved": false,
+   "role": "no courtship type is named aDN",
+   "types": []
+  },
+  "aIPg": {
+   "channel": "aggression",
+   "citation": "Schretter et al. 2020 eLife 9:e58942 Fig. 1 (aIPg activation raises female aggression) and Fig. 5 (aIPg in the EM volume); Cachero et al. 2010 Curr Biol 20:1589 (aIP-g, fru+, dimorphic). Identity: type names aIPg1..aIPg10 and aIPg_m1..m4.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 28,
+    "R": 28,
+    "dimorphism": {
+     "": 5,
+     "male-specific": 12,
+     "sexually dimorphic": 39
+    },
+    "fruDsx": {
+     "fru_high": 51,
+     "fru_low": 5
+    },
+    "n": 56,
+    "per_type": {
+     "aIPg1": 8,
+     "aIPg10": 4,
+     "aIPg2": 6,
+     "aIPg4": 2,
+     "aIPg5": 6,
+     "aIPg6": 5,
+     "aIPg7": 7,
+     "aIPg8": 3,
+     "aIPg9": 3,
+     "aIPg_m1": 4,
+     "aIPg_m2": 4,
+     "aIPg_m3": 2,
+     "aIPg_m4": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 56
+    }
+   },
+   "motor": false,
+   "name": "aIPg",
+   "note": "Schretter 2020 saw no expression of two aIPg lines in males and no male effect, so the role is female evidence only.",
+   "present": true,
+   "resolved": true,
+   "role": "aggression neurons (shown in females; fru+ in this male, male role not shown)",
+   "types": [
+    "^aIPg.*"
+   ]
+  },
+  "dMS2": {
+   "channel": "song",
+   "citation": "Lillvis et al. 2024 Curr Biol 34:808 Fig. 2 (dMS2 necessary and sufficient for sine song). Identity: type and mancType dMS2 (synonym 'Yu 2010, Lillvis 2024: dMS2').",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 10,
+    "R": 10,
+    "dimorphism": {
+     "": 20
+    },
+    "fruDsx": {
+     "fru_high": 20
+    },
+    "n": 20,
+    "per_type": {
+     "dMS2": 20
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 12,
+     "BI": 2,
+     "II": 4,
+     "IR": 2
+    }
+   },
+   "motor": false,
+   "name": "dMS2",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "sine-song premotor neurons",
+   "types": [
+    "dMS2"
+   ]
+  },
+  "dMS9": {
+   "channel": "song",
+   "citation": "Lillvis et al. 2024 Curr Biol 34:808 Fig. 3 (dMS9 required for pulse song). Identity: type and mancType dMS9 (synonym 'Lillvis 2024: dMS9').",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "sexually dimorphic": 2
+    },
+    "fruDsx": {
+     "fru_high": 2
+    },
+    "n": 2,
+    "per_type": {
+     "dMS9": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "BA": 2
+    }
+   },
+   "motor": false,
+   "name": "dMS9",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "pulse-song premotor neurons",
+   "types": [
+    "dMS9"
+   ]
+  },
+  "dPR1": {
+   "channel": "song",
+   "citation": "von Philipsborn et al. 2011 Neuron 69:509 (dPR1; figure not verified in this session); Lillvis et al. 2024 Curr Biol 34:808 Fig. 3; Shiozaki et al. 2024 Nat Neurosci 27:1954 Fig. 1 (pulse-selective). Identity: mancType dPR1 on one type and the synonym 'Yu 2010, Lillvis 2024: dPr1' on IN08B001.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 2,
+    "R": 2,
+    "dimorphism": {
+     "": 4
+    },
+    "fruDsx": {
+     "coexpress_high": 4
+    },
+    "n": 4,
+    "per_type": {
+     "IN08B001": 2,
+     "dPR1": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "BI": 4
+    }
+   },
+   "motor": false,
+   "name": "dPR1",
+   "note": "The dataset carries the name on two distinct types (2 cells each); both are included and the group is labelled uncertain.",
+   "present": true,
+   "resolved": true,
+   "role": "pulse-song premotor neuron",
+   "types": [
+    "dPR1",
+    "IN08B001"
+   ]
+  },
+  "mAL": {
+   "channel": "courtship",
+   "citation": "Kimura et al. 2005 Nature 438:229 (mAL, fru+, male-enlarged); Clowney et al. 2015 Neuron 87:1036 Fig. 3-4 (mAL inhibition converges on P1); Kallman, Kim & Scott 2015 eLife 4:e11188. Identity: type names mAL_m1..m11 (fru_high, male-specific).",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 49,
+    "R": 49,
+    "dimorphism": {
+     "male-specific": 98
+    },
+    "fruDsx": {
+     "fru_high": 98
+    },
+    "n": 98,
+    "per_type": {
+     "mAL_m1": 12,
+     "mAL_m10": 2,
+     "mAL_m11": 2,
+     "mAL_m2a": 4,
+     "mAL_m2b": 6,
+     "mAL_m3a": 3,
+     "mAL_m3b": 8,
+     "mAL_m3c": 10,
+     "mAL_m4": 3,
+     "mAL_m5a": 6,
+     "mAL_m5b": 6,
+     "mAL_m5c": 6,
+     "mAL_m6": 8,
+     "mAL_m7": 2,
+     "mAL_m8": 16,
+     "mAL_m9": 4
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 98
+    }
+   },
+   "motor": false,
+   "name": "mAL",
+   "note": "Types mAL4A..mAL6, mALB*, mALD* (hemibrain lineage names, no fru label, synonym 'mAL') are left out.",
+   "present": true,
+   "resolved": true,
+   "role": "fru+ GABAergic neurons inhibiting P1 (contact pheromone pathway)",
+   "types": [
+    "^mAL_m.*"
+   ]
+  },
+  "pC1": {
+   "channel": "courtship",
+   "citation": "Rideout et al. 2010 Nat Neurosci 13:458 (pC1 dsx cluster); Nojima et al. 2021 Curr Biol 31:2276; Sten et al. 2025 (pC1x); figure not verified in this session. Identity: type names pC1_* and pC1x_* (not LPC1/LLPC1, which are optic-lobe types).",
+   "confidence": "measured",
+   "contains": [
+    "P1"
+   ],
+   "counts": {
+    "L": 78,
+    "R": 78,
+    "dimorphism": {
+     "male-specific": 126,
+     "potentially male-specific": 22,
+     "sexually dimorphic": 8
+    },
+    "fruDsx": {
+     "": 6,
+     "coexpress_high": 49,
+     "coexpress_low": 39,
+     "dsx_high": 56,
+     "dsx_low": 6
+    },
+    "n": 156,
+    "per_type": {
+     "pC1_10a": 2,
+     "pC1_10b": 4,
+     "pC1_10c": 4,
+     "pC1_10d": 3,
+     "pC1_11a": 2,
+     "pC1_11b": 2,
+     "pC1_12a": 2,
+     "pC1_12b": 4,
+     "pC1_13a": 2,
+     "pC1_13b": 4,
+     "pC1_13c": 2,
+     "pC1_14a": 6,
+     "pC1_14b": 2,
+     "pC1_15a": 2,
+     "pC1_15b": 2,
+     "pC1_15c": 3,
+     "pC1_16a": 5,
+     "pC1_16b": 8,
+     "pC1_17a": 3,
+     "pC1_17b": 5,
+     "pC1_18a": 2,
+     "pC1_18b": 4,
+     "pC1_19": 7,
+     "pC1_1a": 7,
+     "pC1_1b": 2,
+     "pC1_2a": 4,
+     "pC1_2a/2b": 1,
+     "pC1_2b": 2,
+     "pC1_2c": 2,
+     "pC1_3a": 2,
+     "pC1_3b": 2,
+     "pC1_3c": 4,
+     "pC1_4a": 6,
+     "pC1_4b": 2,
+     "pC1_5a": 2,
+     "pC1_5b": 4,
+     "pC1_6a": 6,
+     "pC1_6b": 2,
+     "pC1_7a": 4,
+     "pC1_7b": 4,
+     "pC1_8a": 2,
+     "pC1_8b": 2,
+     "pC1_8c": 2,
+     "pC1_9a": 4,
+     "pC1_9b": 2,
+     "pC1x_a": 2,
+     "pC1x_b": 2,
+     "pC1x_c": 2,
+     "pC1x_d": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 156
+    }
+   },
+   "motor": false,
+   "name": "pC1",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "dsx+ male courtship and aggression command cluster (contains P1)",
+   "types": [
+    "^pC1_.*",
+    "^pC1x_.*"
+   ]
+  },
+  "pC2_by_name": {
+   "channel": "sound",
+   "citation": "pC2l exists only as the annotators' synonym on 16 types (group 'pC2l').",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 0,
+    "R": 0,
+    "dimorphism": {},
+    "fruDsx": {},
+    "n": 0,
+    "per_type": {},
+    "side_other": 0,
+    "side_source": "",
+    "subclass": {}
+   },
+   "motor": false,
+   "name": "pC2 (by name)",
+   "note": "",
+   "present": false,
+   "resolved": false,
+   "role": "no type is named pC2",
+   "types": []
+  },
+  "pC2l": {
+   "channel": "sound",
+   "citation": "Deutsch et al. 2019 eLife 8:e49890 (pC2l respond to courtship song); figure not verified in this session. Identity: the annotators' synonyms column tags 37 cells on 16 types 'Nojima 2021: pC2l'; the 9 types tagged on every cell are listed (20 cells).",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 10,
+    "R": 10,
+    "dimorphism": {
+     "male-specific": 16,
+     "sexually dimorphic": 4
+    },
+    "fruDsx": {
+     "coexpress_high": 20
+    },
+    "n": 20,
+    "per_type": {
+     "AVLP567": 4,
+     "AVLP713m": 2,
+     "AVLP716m": 2,
+     "AVLP735m": 2,
+     "AVLP736m": 2,
+     "AVLP737m": 2,
+     "AVLP738m": 2,
+     "SIP137m_a": 2,
+     "SIP137m_b": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 20
+    }
+   },
+   "motor": false,
+   "name": "pC2l",
+   "note": "No type is named pC2; the name exists only as a per-cell synonym on 16 AVLP/PVLP/SIP types, 7 of them tagged on only some cells (left out, 17 tagged cells lost). Labelled uncertain for that spread.",
+   "present": true,
+   "resolved": true,
+   "role": "dsx+ song-responsive neurons",
+   "types": [
+    "AVLP567",
+    "AVLP713m",
+    "AVLP716m",
+    "AVLP735m",
+    "AVLP736m",
+    "AVLP737m",
+    "AVLP738m",
+    "SIP137m_a",
+    "SIP137m_b"
+   ]
+  },
+  "pCd": {
+   "channel": "courtship",
+   "citation": "Jung et al. 2020 Neuron 105:322 (male pCd neurons respond to cVA and are required for P1-evoked persistent courtship and aggression; figure not verified in this session); Zhou et al. 2014 Neuron 83:149 (the name pCd: a dsx+ cluster studied there for female receptivity; the source of the annotators' tag, not of the male role). Identity: the annotators' synonyms column tags 66 cells on 16 types 'Zhou 2014: pCd' (Rideout 2010 pC3; Nojima 2021 pCd-1, pCd-2); the 13 types tagged on every cell are listed (62 cells).",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 32,
+    "R": 30,
+    "dimorphism": {
+     "": 19,
+     "male-specific": 21,
+     "potentially male-specific": 20,
+     "sexually dimorphic": 2
+    },
+    "fruDsx": {
+     "coexpress_high": 47,
+     "coexpress_low": 15
+    },
+    "n": 62,
+    "per_type": {
+     "CB0405": 2,
+     "CB0975": 8,
+     "CB1379": 5,
+     "DNpe034": 2,
+     "SCL002m": 10,
+     "SMP285": 2,
+     "SMP286": 2,
+     "SMP700m": 4,
+     "SMP710m": 7,
+     "SMP720m": 2,
+     "SMP721m": 8,
+     "SMP726m": 8,
+     "SMP727m": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 60,
+     "ad": 2
+    }
+   },
+   "motor": false,
+   "name": "pCd",
+   "note": "The tag is spread over many types including one descending neuron (DNpe034, mancType oviDN), is per cell rather than per type on three of them (those are left out, 4 tagged cells lost), and the annotators split it into pCd-1 and pCd-2. Labelled uncertain for that spread. The name comes from a female study (Zhou 2014); the male role is Jung 2020.",
+   "present": true,
+   "resolved": true,
+   "role": "dsx+ cluster; in males cVA-responsive and required for P1-evoked persistent courtship and aggression",
+   "types": [
+    "CB0405",
+    "CB0975",
+    "CB1379",
+    "DNpe034",
+    "SCL002m",
+    "SMP285",
+    "SMP286",
+    "SMP700m",
+    "SMP710m",
+    "SMP720m",
+    "SMP721m",
+    "SMP726m",
+    "SMP727m"
+   ]
+  },
+  "pIP10": {
+   "channel": "song",
+   "citation": "von Philipsborn et al. 2011 Neuron 69:509 (pIP10; figure not verified in this session); Lillvis et al. 2024 Curr Biol 34:808 Fig. 4; Shiozaki et al. 2024 Nat Neurosci 27:1954 Fig. 6. Identity: type and mancType pIP10 (synonyms: Kimura 2008 P2b, Cachero 2010 pIP-a, Yu 2010 pIP1).",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "male-specific": 2
+    },
+    "fruDsx": {
+     "fru_high": 2
+    },
+    "n": 2,
+    "per_type": {
+     "pIP10": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xn": 2
+    }
+   },
+   "motor": false,
+   "name": "pIP10",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "song descending neuron (drives both pulse and sine song)",
+   "types": [
+    "pIP10"
+   ]
+  },
+  "pMP2": {
+   "channel": "song",
+   "citation": "Lillvis et al. 2024 Curr Biol 34:808 Fig. 3 (pMP2 required for pulse song); Shiozaki et al. 2024 Nat Neurosci 27:1954 Fig. 6 (pulse-selective). Identity: type and mancType pMP2.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "male-specific": 2
+    },
+    "fruDsx": {
+     "fru_high": 2
+    },
+    "n": 2,
+    "per_type": {
+     "pMP2": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "xn": 2
+    }
+   },
+   "motor": false,
+   "name": "pMP2",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "pulse-song descending neuron",
+   "types": [
+    "pMP2"
+   ]
+  },
+  "song_ps1": {
+   "channel": "song",
+   "citation": "Shirangi, Stern & Truman 2013 Cell Rep 5:678 Fig. 4; Lillvis et al. 2024 Curr Biol 34:808 Fig. 8D. Identity: type 'ps1 MN'.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "": 2
+    },
+    "fruDsx": {
+     "fru_high": 2
+    },
+    "n": 2,
+    "per_type": {
+     "ps1 MN": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "wm": 2
+    }
+   },
+   "motor": false,
+   "name": "ps1 MN",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "pulse-song wing motor neuron (pleurosternal muscle ps1)",
+   "types": [
+    "ps1 MN"
+   ]
+  },
+  "song_pulse_mn": {
+   "channel": "song",
+   "citation": "Shirangi, Stern & Truman 2013 Cell Rep 5:678 Fig. 4 (inhibiting the ps1 motoneuron lowers pulse carrier frequency and amplitude, sine song intact); Lillvis et al. 2024 Curr Biol 34:808 Fig. 8D (ps1, i1, iii1 and b3 are innervated by pulse-specific neurons). Identity: MANC motor-neuron type names 'ps1 MN', 'i1 MN', 'iii1 MN', 'b3 MN' (subclass wm).",
+   "confidence": "measured",
+   "contains": [
+    "song_ps1"
+   ],
+   "counts": {
+    "L": 4,
+    "R": 4,
+    "dimorphism": {
+     "": 8
+    },
+    "fruDsx": {
+     "": 6,
+     "fru_high": 2
+    },
+    "n": 8,
+    "per_type": {
+     "b3 MN": 2,
+     "i1 MN": 2,
+     "iii1 MN": 2,
+     "ps1 MN": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "wm": 8
+    }
+   },
+   "motor": false,
+   "name": "pulse-song wing motor neurons",
+   "note": "This is the group the room reads as the fly's song. The evidence for i1, iii1 and b3 is wiring (Fig. 8D); for ps1 it is silencing (Shirangi 2013 Fig. 4).",
+   "present": true,
+   "resolved": true,
+   "role": "wing motor neurons wired from pulse-song premotor neurons",
+   "types": [
+    "ps1 MN",
+    "i1 MN",
+    "iii1 MN",
+    "b3 MN"
+   ]
+  },
+  "song_sine_hg1": {
+   "channel": "song",
+   "citation": "Shirangi, Stern & Truman 2013 Cell Rep 5:678 Fig. 1 (hg1 is male-enlarged) and Fig. 2 (silencing the hg1 motoneuron removes sine song, pulse song intact). Identity: type 'hg1 MN'.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 1,
+    "R": 1,
+    "dimorphism": {
+     "sexually dimorphic": 2
+    },
+    "fruDsx": {
+     "fru_high": 2
+    },
+    "n": 2,
+    "per_type": {
+     "hg1 MN": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "wm": 2
+    }
+   },
+   "motor": false,
+   "name": "hg1 MN",
+   "note": "The build's FACTS listed hg1 with ps1 as pulse-song motor neurons; Shirangi 2013 assigns hg1 to sine song, so hg1 is kept out of the pulse group and named here as sine.",
+   "present": true,
+   "resolved": true,
+   "role": "sine-song wing motor neuron (male-enlarged muscle hg1)",
+   "types": [
+    "hg1 MN"
+   ]
+  },
+  "vAB3": {
+   "channel": "courtship",
+   "citation": "Clowney et al. 2015 Neuron 87:1036 Fig. 2-3 (vAB3 excitation onto P1). Identity: the annotators' synonyms column tags these 3 types 'Yu 2010: vAB3' (one also 'von Philipsborn 2011: vAB3').",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 3,
+    "R": 3,
+    "dimorphism": {
+     "male-specific": 6
+    },
+    "fruDsx": {
+     "fru_high": 6
+    },
+    "n": 6,
+    "per_type": {
+     "AN09B017e": 2,
+     "AN09B017f": 2,
+     "AN09B017g": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "BA": 6
+    }
+   },
+   "motor": false,
+   "name": "vAB3",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "ascending pheromone neurons exciting P1 (ppk25 foreleg input)",
+   "types": [
+    "AN09B017e",
+    "AN09B017f",
+    "AN09B017g"
+   ]
+  },
+  "vMS11": {
+   "channel": "song",
+   "citation": "von Philipsborn et al. 2011 Neuron 69:509 (vMS11; figure not verified in this session). Identity: type and mancType vMS11.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 7,
+    "R": 7,
+    "dimorphism": {
+     "": 14
+    },
+    "fruDsx": {
+     "": 14
+    },
+    "n": 14,
+    "per_type": {
+     "vMS11": 14
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 7,
+     "BI": 7
+    }
+   },
+   "motor": false,
+   "name": "vMS11",
+   "note": "The published vMS11 is fru+; the 14 cells named vMS11 here carry no fruDsx label, so the match is labelled uncertain.",
+   "present": true,
+   "resolved": true,
+   "role": "song premotor neurons (von Philipsborn 2011)",
+   "types": [
+    "vMS11"
+   ]
+  },
+  "vMS12": {
+   "channel": "song",
+   "citation": "Lillvis et al. 2024 Curr Biol 34:808 Fig. 3 (required for pulse song) and Fig. 8D (ps1 receives its input mainly from vMS12). Identity: mancType vMS12 (types vMS12_a..e; synonym 'Cachero 2010: vMs-m').",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 9,
+    "R": 9,
+    "dimorphism": {
+     "": 18
+    },
+    "fruDsx": {
+     "fru_high": 18
+    },
+    "n": 18,
+    "per_type": {
+     "vMS12_a": 6,
+     "vMS12_b": 2,
+     "vMS12_c": 4,
+     "vMS12_d": 4,
+     "vMS12_e": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 2,
+     "BI": 16
+    }
+   },
+   "motor": false,
+   "name": "vMS12",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "pulse-song premotor neurons that drive the ps1 wing motor neuron",
+   "types": [
+    "^vMS12_.*"
+   ]
+  },
+  "vPR6": {
+   "channel": "song",
+   "citation": "von Philipsborn et al. 2011 Neuron 69:509 (vPR6; figure not verified in this session); Lillvis et al. 2024 Curr Biol 34:808 supplementary figures. Identity: type and mancType vPR6.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 4,
+    "R": 4,
+    "dimorphism": {
+     "": 8
+    },
+    "fruDsx": {
+     "coexpress_high": 8
+    },
+    "n": 8,
+    "per_type": {
+     "vPR6": 8
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "BI": 8
+    }
+   },
+   "motor": false,
+   "name": "vPR6",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "song premotor neurons (pulse timing in von Philipsborn 2011; not part of the core circuit in Lillvis 2024)",
+   "types": [
+    "vPR6"
+   ]
+  },
+  "vPR9": {
+   "channel": "song",
+   "citation": "Lillvis et al. 2024 Curr Biol 34:808 Fig. 5-6; Shiozaki et al. 2024 Nat Neurosci 27:1954 Extended Data Fig. 8. Identity: mancType vPR9 (types vPR9_a..c) and the synonym 'Yu 2010, Lillvis 2024: vPR9' on IN00A017.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 0,
+    "R": 0,
+    "dimorphism": {
+     "": 14
+    },
+    "fruDsx": {
+     "fru_high": 14
+    },
+    "n": 14,
+    "per_type": {
+     "IN00A017": 5,
+     "vPR9_a": 4,
+     "vPR9_b": 2,
+     "vPR9_c": 3
+    },
+    "side_other": 14,
+    "side_source": "somaSide",
+    "subclass": {
+     "": 2,
+     "BI": 8,
+     "BR": 4
+    }
+   },
+   "motor": false,
+   "name": "vPR9",
+   "note": "Two labels on distinct types, and the vPR9_* cells carry no somaSide (midline cells).",
+   "present": true,
+   "resolved": true,
+   "role": "GABAergic song neurons acting on both song modes",
+   "types": [
+    "^vPR9_.*",
+    "IN00A017"
+   ]
+  },
+  "vpoDN": {
+   "channel": "courtship",
+   "citation": "Wang et al. 2021 Nature 589:577 (vpoDN). vpoEN and vpoIN types exist here (fru+), vpoDN does not.",
+   "confidence": "uncertain",
+   "contains": [],
+   "counts": {
+    "L": 0,
+    "R": 0,
+    "dimorphism": {},
+    "fruDsx": {},
+    "n": 0,
+    "per_type": {},
+    "side_other": 0,
+    "side_source": "",
+    "subclass": {}
+   },
+   "motor": false,
+   "name": "vpoDN",
+   "note": "",
+   "present": false,
+   "resolved": false,
+   "role": "female vaginal-plate-opening descending neuron; not in a male",
+   "types": []
+  },
+  "wing_mn_all": {
+   "channel": "song",
+   "citation": "MANC nomenclature: Takemura et al. 2024 eLife 13:RP97769 and Cheong et al. 2024 eLife 13:RP96084 (male adult nerve cord); Azevedo et al. 2024 Nature 631:360 (wing motor neurons of the female VNC). Identity: vnc_motor types with subclass 'wm'.",
+   "confidence": "measured",
+   "contains": [
+    "song_pulse_mn",
+    "song_ps1",
+    "song_sine_hg1"
+   ],
+   "counts": {
+    "L": 33,
+    "R": 33,
+    "dimorphism": {
+     "": 64,
+     "sexually dimorphic": 2
+    },
+    "fruDsx": {
+     "": 58,
+     "fru_high": 8
+    },
+    "n": 66,
+    "per_type": {
+     "DLMn a, b": 2,
+     "DLMn c-f": 8,
+     "DVMn 1a-c": 6,
+     "DVMn 2a, b": 4,
+     "DVMn 3a, b": 4,
+     "MNwm35": 2,
+     "MNwm36": 2,
+     "STTMm": 4,
+     "TTMn": 2,
+     "b1 MN": 2,
+     "b2 MN": 2,
+     "b3 MN": 2,
+     "hg1 MN": 2,
+     "hg2 MN": 2,
+     "hg3 MN": 2,
+     "hg4 MN": 2,
+     "i1 MN": 2,
+     "i2 MN": 2,
+     "iii1 MN": 2,
+     "iii3 MN": 2,
+     "ps1 MN": 2,
+     "ps2 MN": 2,
+     "tp1 MN": 2,
+     "tp2 MN": 2,
+     "tpn MN": 2
+    },
+    "side_other": 0,
+    "side_source": "somaSide",
+    "subclass": {
+     "wm": 66
+    }
+   },
+   "motor": false,
+   "name": "wing motor neurons",
+   "note": "One wm cell has an empty type string and is left out. The room falls back to this group for the song only if the pulse group were absent; it is not.",
+   "present": true,
+   "resolved": true,
+   "role": "all named wing motor neurons (steering and power muscles)",
+   "types": [
+    "DLMn a, b",
+    "DLMn c-f",
+    "DVMn 1a-c",
+    "DVMn 2a, b",
+    "DVMn 3a, b",
+    "MNwm35",
+    "MNwm36",
+    "STTMm",
+    "TTMn",
+    "b1 MN",
+    "b2 MN",
+    "b3 MN",
+    "hg1 MN",
+    "hg2 MN",
+    "hg3 MN",
+    "hg4 MN",
+    "i1 MN",
+    "i2 MN",
+    "iii1 MN",
+    "iii3 MN",
+    "ps1 MN",
+    "ps2 MN",
+    "tp1 MN",
+    "tp2 MN",
+    "tpn MN"
+   ]
+  }
+ },
+ "motor_readout": {
+  "DNa01": "forward (the roamer's reading)",
+  "DNa02": "steering (left/right asymmetry)",
+  "DNp09": "stop (the roamer's reading; Bidaye 2020 shows forward walking, freezing only at strong activation)",
+  "MDN": "backward walking"
+ },
+ "n_neurons": 165122,
+ "types_syntax": "an entry starting with '^' is a regular expression matched against the whole type string; any other entry is an exact type name",
+ "what": "Which neurons the backrooms page may name, on whose authority, and how many of them this dataset holds. Counts are measured from build/graph.npz and data/body-annotations.feather; identities and role words are chosen and cited per entry."
+}

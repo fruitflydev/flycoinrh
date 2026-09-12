@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>the backrooms</title>
+<style>
+/*
+  Two fly connectome copies in a 20 x 20 mm arena, and the transcript their
+  neurons produce. Nothing on this page can be pressed: no button, no field,
+  no control. Everything drawn here arrives on one websocket from
+  backrooms.py, and every word in the transcript is a template from the
+  dictionary filled with a measured number.
+
+  Layout: the banner stays at the top; fly A's circuit bars on the left, the
+  arena and the transcript in the middle, fly B's bars on the right.
+*/
+:root{
+  --ground:#07080a;      /* the page and the arena */
+  --plate:#0d0f13;
+  --line:#1b1f27;
+  --ink:#dfe5ec;
+  --dim:#8b95a3;
+  --faint:#59626e;
+  --bar:#161a21;
+  --A:#8fd3ff;           /* fly A */
+  --B:#ffc46b;           /* fly B */
+  --room:#b9c2cc;        /* lines about the room, not one fly */
+  --mono:ui-monospace,Consolas,"Cascadia Mono",Menlo,monospace;
+  --sans:system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--ground)}
+body{color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+
+.banner{
+  position:sticky;top:0;z-index:5;background:var(--plate);
+  border-bottom:1px solid var(--line);padding:12px 20px 12px;
+}
+.banner .top{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+.banner h1{font-family:var(--mono);font-weight:500;font-size:15px;letter-spacing:.2em;margin:0}
+.banner .status{font-family:var(--mono);font-size:12px;color:var(--dim);flex:1;min-width:280px}
+.banner .pip{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--faint);margin-right:6px;vertical-align:middle}
+.banner .pip.on{background:#6fdca6}
+.banner .how{font-size:13px;color:var(--ink);margin:8px 0 0;max-width:1400px;line-height:1.45}
+.banner .how a{color:var(--ink)}
+
+.cols{display:grid;grid-template-columns:300px minmax(420px,1fr) 300px;gap:1px;background:var(--line)}
+@media (max-width:1100px){.cols{grid-template-columns:1fr}}
+.col{background:var(--ground);padding:14px 16px 20px;min-width:0}
+.col h2{font-family:var(--mono);font-weight:500;font-size:13px;letter-spacing:.18em;margin:0 0 6px}
+.col.A h2{color:var(--A)}
+.col.B h2{color:var(--B)}
+.pos{font-family:var(--mono);font-size:11.5px;color:var(--dim);display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-bottom:12px}
+.pos b{font-weight:500;color:var(--ink)}
+
+.chan{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:12px 0 5px}
+.row{display:grid;grid-template-columns:104px 1fr 50px;gap:8px;align-items:center;font-family:var(--mono);font-size:11.5px;padding:1px 0}
+.row .nm{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .nm .u{color:var(--faint);font-size:9.5px;letter-spacing:.08em;margin-left:4px}
+.row .nm .d{color:var(--faint)}
+.row .bar{height:6px;background:var(--bar);border-radius:3px;overflow:hidden}
+.row .fill{display:block;height:100%;width:0%;background:var(--dim)}
+.col.A .row .fill{background:var(--A)}
+.col.B .row .fill{background:var(--B)}
+.row .hz{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+
+.mid{display:grid;grid-template-rows:auto auto 1fr;gap:10px;min-height:calc(100vh - 150px)}
+.roomwrap{display:flex;justify-content:center}
+#room{width:min(100%,520px);aspect-ratio:1/1;display:block;background:var(--ground)}
+.legend{font-family:var(--mono);font-size:11px;color:var(--faint);text-align:center}
+.legend .a{color:var(--A)}
+.legend .b{color:var(--B)}
+#transcript{
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;overflow:auto;
+  border:1px solid var(--line);background:var(--plate);padding:10px 12px;
+  height:46vh;min-height:260px;
+}
+#transcript .ln{display:grid;grid-template-columns:66px 74px 1fr;gap:10px;padding:1px 0;color:var(--room)}
+#transcript .ln.A{color:var(--A)}
+#transcript .ln.B{color:var(--B)}
+#transcript .ts{color:var(--faint)}
+#transcript .wt{color:var(--dim);font-variant-numeric:tabular-nums}
+#transcript .tx{white-space:pre-wrap;word-break:break-word}
+#transcript .empty{color:var(--faint)}
+
+footer{border-top:1px solid var(--line);padding:14px 20px 28px;font-size:12.5px;color:var(--dim);display:grid;gap:6px;max-width:1400px}
+footer .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<header class="banner" id="banner">
+  <div class="top">
+    <h1>THE BACKROOMS</h1>
+    <span class="status"><span class="pip" id="pip"></span><span id="status">connecting</span></span>
+  </div>
+  <p class="how" id="how">Every line here is a fixed template filled with measured numbers. No person and no language model writes anything. A line names a fly (A or B), a neuron group by the name and role given in the dictionary (with the paper it comes from), and the number measured from the simulation at that step: a spike rate in Hz, a distance in mm, a bearing in degrees or a speed in mm/s. A line is written only when a rate has stayed at or above twice its 10 s baseline and above the group's floor for 3 consecutive steps (and once more when it falls back), when the summed pulse-song motor rate starts or ends, when a fly's bearing to the other crosses 30 degrees, when the distance drops below 3 mm or exceeds 10 mm, or when a fly backs up or stops. Nothing is written on a flat trace. 'Backs up' and 'stops' are kinematic events of the room, read from positions, so a fly pinned on a wall by its own drive 'stops'; the line names MDN or DNp09 with its rate only when that group fired in the step, and DNp09 is a forward-walking neuron that the roamer's mapping reads as stop. A sensory line ('fires N Hz under M Hz of drive') states the rate the room delivered to those cells and the rate they fired at; it does not say what the fly heard or smelled. The song is the summed rate of the pulse-song wing motor neurons, not a measured pulse pattern: in this simulator those cells fire on every window, so the song is on from the first step, no start or end line is expected, and its level is shown as a number beside each fly; what the other fly's hearing cells receive is that level scaled by distance. The room, the channels, the thresholds and the phrasing are chosen; the neurons, their wiring and their spikes are the measurement. Each brain is run for 12 ms of neural time per 50 ms of arena time, so on the brains' own clock the room, the walking and the one-step sound delay move 4.2 times faster than life; separately, one 50 ms step takes several times longer than 50 ms of wall time, so the run is slower than life by the measured ratio shown in the status line. Groups marked 'uncertain match' are named on evidence the dictionary calls uncertain.</p>
+  <p class="how" id="room-note">The room: two copies of one fruit fly connectome (165,122 neurons, leaky integrate-and-fire, one loaded graph carrying two state vectors) walk a 20 by 20 mm arena, and each fly's walking comes from its own descending neurons. Each fly meets the other as a dark ellipse on a mid-grey ground in its eye (sampled one pixel per lamina column; both optic lobes carry the same column coordinates in this dataset, so both sample one window and there is no left-eye versus right-eye difference), as cVA on its ORN_DA1 receptor neurons and as song on its JO-A and JO-B hearing neurons, each by a mapping chosen by the people who built this and disclosed in the code. Smell and sound are delivered at the same total per antenna (each cell's rate scaled by its side's cell count), so they carry no left/right information by construction; how many columns the other fly covers at each distance, and the retinal rates on and off it, are measured and listed in the state. No synapse changes during the run: no dopamine is delivered and no weight is updated; the two brains do not learn from each other, and the only thing that adapts is the captioner's 10 s baseline. A world step takes longer than 50 ms of wall time; the measured ratio is in the status line. The dictionary the names come from, with the paper, figure and cell count behind each, is linked below. <a href="/dictionary.json">The dictionary (JSON)</a>.</p>
+</header>
+
+<main class="cols">
+  <aside class="col A">
+    <h2>FLY A</h2>
+    <div class="pos" id="posA"></div>
+    <div id="barsA"></div>
+  </aside>
+
+  <section class="col mid">
+    <div class="roomwrap"><canvas id="room" width="520" height="520" aria-label="the arena, 20 by 20 mm, with the two flies"></canvas></div>
+    <div class="legend"><span class="a">A</span> and <span class="b">B</span> are the two flies drawn as triangles pointing where they face; the faint ring around each is 3 mm; the square is 20 mm; the grid is 5 mm</div>
+    <div id="transcript"><div class="empty" id="tempty">no line yet: nothing has crossed a threshold</div></div>
+  </section>
+
+  <aside class="col B">
+    <h2>FLY B</h2>
+    <div class="pos" id="posB"></div>
+    <div id="barsB"></div>
+  </aside>
+</main>
+
+<footer>
+  <div class="k">what the bars are</div>
+  <div>Each bar is the firing rate of one named neuron group in that fly's brain over the last world step, on a 0 to 100 Hz scale, clipped (0 to 200 Hz for the drive rows, which are the input rates the room delivers to the sensory cells). The number beside the bar is the measured rate. A group marked <span style="font-family:var(--mono);font-size:10.5px">UNCERTAIN</span> is one whose identity in this dataset the dictionary could not settle. Hover a name for its role, its citation and its cell count.</div>
+  <div class="k">where the words come from</div>
+  <div>The dictionary: <a href="/dictionary.json">/dictionary.json</a> (the file build/backrooms_dictionary.json, made by backrooms_dictionary.py from the connectome's own type labels; the server refuses to start unless that file is byte-identical to what the code builds). The transcript is also written to build/backrooms_transcript.jsonl and the state to build/backrooms_state.json (served at <a href="/state">/state</a>), every world step to build/backrooms_steps.jsonl. On a restart, stored lines are served again only if every word of them is in the code's templates or dictionary; the rest are dropped and counted in the state. Timestamps on the left are this machine's clock; t is the simulated world time.</div>
+</footer>
+
+<script>
+// One websocket in, nothing out. If it closes the page polls /state and
+// /transcript until it can reconnect. There is no control anywhere here.
+var CH_ORDER = ["smell","sound","sight","courtship","aggression","song","motor"];
+var DRIVES = {smell: [["ORN_DA1","drive ORN_DA1",200]],
+              sound: [["JO_A","drive JO-A",200],["JO_B","drive JO-B",200]]};
+var MOTOR = [["steer_L","DNa02 L","DNa02"],["steer_R","DNa02 R","DNa02"],
+             ["fwd_L","DNa01 L","DNa01"],["fwd_R","DNa01 R","DNa01"],
+             ["back","MDN","MDN"],["stop","DNp09","DNp09"]];
+var GROUP_HZ = 100, MAX_LINES = 400;
+var state = null, groups = {}, rows = {A: {}, B: {}}, seq = 0, built = false;
+var ws = null, lastFlies = null;
+var canvas = document.getElementById('room');
+var ctx = canvas.getContext('2d');
+var tlog = document.getElementById('transcript');
+var known = {};
+
+function el(tag, cls, text){
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function fmt(v, d){
+  if (v === null || v === undefined || !isFinite(v)) return '-';
+  return Number(v).toFixed(d === undefined ? 1 : d);
+}
+
+function row(host, side, key, label, max, meta){
+  var r = el('div', 'row');
+  var nm = el('span', 'nm');
+  nm.appendChild(el('span', null, label));
+  if (meta && meta.confidence === 'uncertain') nm.appendChild(el('span', 'u', 'UNCERTAIN'));
+  if (meta) nm.title = meta.name + ': ' + meta.role + ' (' + meta.citation + '). ' + meta.n + ' cells, L ' + meta.L + ' R ' + meta.R + '.';
+  var bar = el('span', 'bar'); var fill = el('span', 'fill'); bar.appendChild(fill);
+  var hz = el('span', 'hz', '-');
+  r.appendChild(nm); r.appendChild(bar); r.appendChild(hz);
+  host.appendChild(r);
+  rows[side][key] = {fill: fill, hz: hz, max: max};
+}
+
+function buildBars(side){
+  var host = document.getElementById('bars' + side);
+  host.textContent = '';
+  var order = (state && state.channel_order) || CH_ORDER;
+  for (var c = 0; c < order.length; c++){
+    var ch = order[c];
+    var keys = [];
+    for (var k in groups) if (groups[k].channel === ch && !groups[k].motor) keys.push(k);
+    keys.sort();
+    var drives = DRIVES[ch] || [];
+    if (!keys.length && !drives.length && ch !== 'motor') continue;
+    host.appendChild(el('div', 'chan', ch));
+    for (var d = 0; d < drives.length; d++)
+      row(host, side, 'in:' + drives[d][0], drives[d][1], drives[d][2], null);
+    if (ch === 'motor'){
+      for (var m = 0; m < MOTOR.length; m++)
+        row(host, side, 'motor:' + MOTOR[m][0], MOTOR[m][1], GROUP_HZ, groups[MOTOR[m][2]] || null);
+      continue;
+    }
+    for (var i = 0; i < keys.length; i++)
+      row(host, side, 'g:' + keys[i], groups[keys[i]].name, GROUP_HZ, groups[keys[i]]);
+  }
+}
+
+function setRow(side, key, v){
+  var r = rows[side][key];
+  if (!r) return;
+  var n = Number(v);
+  if (!isFinite(n)) { r.fill.style.width = '0%'; r.hz.textContent = '-'; return; }
+  r.fill.style.width = Math.max(0, Math.min(100, 100 * n / r.max)).toFixed(1) + '%';
+  r.hz.textContent = fmt(n, 1);
+}
+
+function paintFly(side, fly){
+  if (!fly) return;
+  var p = document.getElementById('pos' + side);
+  p.textContent = '';
+  var items = [['x', fmt(fly.x, 1) + ' mm'], ['y', fmt(fly.y, 1) + ' mm'],
+               ['heading', fmt(fly.heading, 0) + ' deg'], ['speed', fmt(fly.speed, 1) + ' mm/s'],
+               ['distance', fmt(fly.distance, 1) + ' mm'], ['bearing', fmt(fly.bearing, 0) + ' deg'],
+               ['song', fmt(fly.song, 1) + ' Hz']];
+  for (var i = 0; i < items.length; i++){
+    var d = el('span'); d.appendChild(el('span', null, items[i][0] + ' '));
+    d.appendChild(el('b', null, items[i][1])); p.appendChild(d);
+  }
+  var rates = fly.rates || {}, motor = fly.motor || {}, drive = fly.drive || {};
+  for (var k in rates) setRow(side, 'g:' + k, rates[k]);
+  for (var j in drive) setRow(side, 'in:' + j, drive[j]);
+  for (var m = 0; m < MOTOR.length; m++){
+    var mk = MOTOR[m][0];
+    setRow(side, 'motor:' + mk, (mk in motor) ? motor[mk] : rates[MOTOR[m][2]]);
+  }
+}
+
+function drawRoom(flies){
+  var W = canvas.width, H = canvas.height;
+  var arena = (state && state.arena_mm) || 20, near = (state && state.near_mm) || 3;
+  var ppm = W / arena;
+  ctx.fillStyle = '#07080a'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#141820'; ctx.lineWidth = 1;
+  for (var g = 5; g < arena; g += 5){
+    ctx.beginPath(); ctx.moveTo(g * ppm, 0); ctx.lineTo(g * ppm, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, H - g * ppm); ctx.lineTo(W, H - g * ppm); ctx.stroke();
+  }
+  ctx.strokeStyle = '#2a303a'; ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+  if (!flies) return;
+  var colours = {A: '#8fd3ff', B: '#ffc46b'};
+  for (var name in flies){
+    var f = flies[name];
+    if (!f || !isFinite(f.x) || !isFinite(f.y)) continue;
+    var cx = f.x * ppm, cy = H - f.y * ppm;
+    var th = (f.heading || 0) * Math.PI / 180;     // 0 = +x, counter-clockwise
+    var col = colours[name] || '#b9c2cc';
+    // the 3 mm ring
+    ctx.beginPath(); ctx.arc(cx, cy, near * ppm, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(160,170,185,0.16)'; ctx.stroke();
+    // a triangle 1.4 mm long pointing along the heading (canvas y is down)
+    var L = 1.4 * ppm, Wd = 0.6 * ppm;
+    var ux = Math.cos(th), uy = -Math.sin(th), vx = -uy, vy = ux;
+    ctx.beginPath();
+    ctx.moveTo(cx + ux * L * 0.6, cy + uy * L * 0.6);
+    ctx.lineTo(cx - ux * L * 0.4 + vx * Wd, cy - uy * L * 0.4 + vy * Wd);
+    ctx.lineTo(cx - ux * L * 0.4 - vx * Wd, cy - uy * L * 0.4 - vy * Wd);
+    ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+    ctx.fillStyle = col; ctx.font = '11px ' + 'Consolas, Menlo, monospace';
+    ctx.fillText(name, cx + Wd + 4, cy - Wd - 2);
+  }
+}
+
+function clock(at){
+  if (!at) return '';
+  var d = new Date(at * 1000);
+  function two(n){ return (n < 10 ? '0' : '') + n; }
+  return two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds());
+}
+
+function addLines(lines){
+  if (!lines || !lines.length) return;
+  var pinned = tlog.scrollHeight - tlog.scrollTop - tlog.clientHeight < 40;
+  var empty = document.getElementById('tempty');
+  for (var i = 0; i < lines.length; i++){
+    var ln = lines[i];
+    if (!ln || known[ln.seq]) continue;
+    known[ln.seq] = true;
+    if (ln.seq > seq) seq = ln.seq;
+    if (empty && empty.parentNode) empty.parentNode.removeChild(empty);
+    var d = el('div', 'ln' + (ln.fly === 'A' || ln.fly === 'B' ? ' ' + ln.fly : ''));
+    d.appendChild(el('span', 'ts', clock(ln.at)));
+    d.appendChild(el('span', 'wt', 't ' + fmt(ln.t, 1) + ' s'));
+    d.appendChild(el('span', 'tx', ln.text));
+    tlog.appendChild(d);
+  }
+  while (tlog.childNodes.length > MAX_LINES) tlog.removeChild(tlog.firstChild);
+  if (pinned) tlog.scrollTop = tlog.scrollHeight;
+}
+
+function status(text, live){
+  document.getElementById('status').textContent = text;
+  document.getElementById('pip').className = 'pip' + (live ? ' on' : '');
+}
+
+function statusFrom(f, live){
+  var s = 'step ' + (f.step || 0) + ' - t ' + fmt(f.t, 1) + ' s';
+  // wall seconds per world second: a different ratio from the 12 ms / 50 ms brain under-run the banner states
+  if (f.slowdown) s += ' - wall clock ' + fmt(f.slowdown, 1) + 'x world time (measured)';
+  s += live ? ' - live' : ' - reconnecting';
+  status(s, live);
+}
+
+function takeState(s){
+  state = s;
+  groups = s.groups || {};
+  if (!built){ buildBars('A'); buildBars('B'); built = true; }
+  if (s.flies && (s.flies.A || s.flies.B)){ lastFlies = s.flies; paintFly('A', s.flies.A); paintFly('B', s.flies.B); }
+  drawRoom(lastFlies);
+  if (s.last_lines) addLines(s.last_lines);
+}
+
+function takeFrame(f){
+  lastFlies = f.flies || lastFlies;
+  paintFly('A', f.flies && f.flies.A); paintFly('B', f.flies && f.flies.B);
+  drawRoom(lastFlies);
+  addLines(f.lines);
+  statusFrom(f, true);
+}
+
+function poll(){
+  fetch('/transcript?after=' + seq, {cache: 'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ addLines(d.lines); })
+    .catch(function(){});
+  if (!ws || ws.readyState !== 1){
+    fetch('/state', {cache: 'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(s){ takeState(s); statusFrom(s, false); })
+      .catch(function(){ status('no server', false); });
+  }
+}
+
+function connect(){
+  var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  try { ws = new WebSocket(proto + location.host + '/ws'); } catch (e) { ws = null; return; }
+  ws.onmessage = function(ev){
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.type === 'hello') { takeState(m.state); statusFrom(m.state, true); }
+    else if (m.type === 'frame') takeFrame(m);
+  };
+  ws.onclose = function(){ status('reconnecting', false); setTimeout(connect, 3000); };
+  ws.onerror = function(){ try { ws.close(); } catch (e) {} };
+}
+
+drawRoom(null);
+poll();
+setInterval(poll, 5000);
+connect();
+</script>
+</body>
+</html>
