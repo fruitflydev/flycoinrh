@@ -1,11 +1,16 @@
 import json
+import os
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import scipy.sparse as sp
 
+import mushroom
 from mushroom import MushroomBody, sides_sha
 
 
@@ -221,6 +226,35 @@ class Persistence(Base):
         b = self.mb()
         self.assertTrue(b.loaded)
         self.assertAlmostEqual(self.gain_of(b, 0, 2), 1.0 - (1.0 - g) * 0.5, places=5)
+
+
+class WhereTheGainsLive(unittest.TestCase):
+    """
+    FLY_STATE_DIR decides where everything the fly has learned is kept, and it
+    has to be the same directory the ledger, the room and the looks resolve to.
+    This module used to read the process environment only, so a run started by
+    hand with FLY_STATE_DIR in .env split the two apart silently.
+    """
+
+    def test_a_value_only_in_the_env_file_is_found(self):
+        stub = types.ModuleType("launch")
+        stub.load_env = lambda: {"FLY_STATE_DIR": "C:/only-in-the-file"}
+        with mock.patch.dict(sys.modules, {"launch": stub}):
+            self.assertEqual(mushroom.setting("FLY_STATE_DIR"), "C:/only-in-the-file")
+
+    def test_without_launch_the_environment_still_answers(self):
+        with mock.patch.dict(sys.modules, {"launch": None}), \
+             mock.patch.dict(os.environ, {"FLY_STATE_DIR": "C:/from-the-environment"}):
+            self.assertEqual(mushroom.setting("FLY_STATE_DIR"), "C:/from-the-environment")
+
+    def test_an_unset_name_is_the_default(self):
+        stub = types.ModuleType("launch")
+        stub.load_env = lambda: {}
+        with mock.patch.dict(sys.modules, {"launch": stub}):
+            self.assertEqual(mushroom.setting("FLY_NOT_SET", "fallback"), "fallback")
+
+    def test_the_store_is_named_after_it(self):
+        self.assertEqual(mushroom.STORE.name, "mb_gains.v2.npz")
 
 
 if __name__ == "__main__":

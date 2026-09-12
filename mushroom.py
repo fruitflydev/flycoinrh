@@ -52,15 +52,52 @@ import numpy as np
 
 ROOT = Path(__file__).parent
 SIDES = ROOT / "build" / "mb_sides.json"
+
+
+def setting(name, default=""):
+    """
+    A FLY_* setting, resolved the way the rest of this project resolves them.
+
+    The environment alone is not enough. run_all.py hands every child a fully
+    resolved environment, but a run started by hand - the path executor.py's
+    own docstring exists to make safe - reads .env instead, and this module
+    used to read only os.environ. The ledger, the room and the looks then went
+    to the configured state directory while everything the fly had learned went
+    to the repo's build/: two processes disagreeing about where the fly lives,
+    silently, with the gains file - the one thing that makes one session's
+    decisions differ from another's - shared between every session on the
+    machine. launch.load_env merges .env under the process's own FLY_*
+    variables; if it cannot be imported at all, the environment still answers.
+    """
+    try:
+        try:
+            from launch import load_env
+        except ImportError:                # the public copy calls it envcfg
+            from envcfg import load_env
+        value = load_env().get(name)
+    except Exception:
+        value = os.environ.get(name)
+    return default if value in (None, "") else str(value)
+
+
 # Where learning is kept. On a host with a persistent volume, point
 # FLY_STATE_DIR at it, or every redeploy wipes what the fly has learned. The
 # name is versioned: mb_gains.npz was learned under the old output-based split
 # and on the uncalibrated brain, so it is deliberately never read.
-STORE = Path(os.environ.get("FLY_STATE_DIR", str(ROOT / "build"))) / "mb_gains.v2.npz"
+#
+# The file is trusted on sight: load() checks that it matches this brain, this
+# side table and this calibration, and then believes the gains and the reward
+# and punishment counts it carries. Anything that can write into FLY_STATE_DIR
+# can therefore decide what the fly likes and supply the learning history that
+# would seem to corroborate it. That is the same trust the ledger is given, but
+# the ledger replays and refuses when it does not add up and this does not.
+# Said out loud in disclosure.md rather than fixed with a secret this process
+# has nowhere safe to keep.
+STORE = Path(setting("FLY_STATE_DIR", str(ROOT / "build"))) / "mb_gains.v2.npz"
 # How long a lesson lasts, in wall-clock hours. CHOSEN: one training session
 # leaves a fly a memory that fades over hours and is mostly gone within a day
 # (Tully & Quinn 1985). At 6 h about 6% of a lesson is left after 24 h.
-HALF_LIFE_H = float(os.environ.get("FLY_MB_HALF_LIFE_H", "") or 6.0)
+HALF_LIFE_H = float(setting("FLY_MB_HALF_LIFE_H", "") or 6.0)
 
 
 def sides_sha(table):
