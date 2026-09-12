@@ -53,6 +53,9 @@ class FakeSession:
         self.posts.append(json)
         if json["method"] == "eth_blockNumber":
             return FakeResponse({"jsonrpc": "2.0", "id": 1, "result": hex(60_500_000)})
+        if json["method"] == "eth_gasPrice":
+            return FakeResponse({"jsonrpc": "2.0", "id": 1,
+                                 "result": self.answers.get("eth_gasPrice", hex(365_000_000))})
         tx = json["params"][0]
         ans = self.answers.get(tx["data"][:10])
         if callable(ans):
@@ -331,6 +334,50 @@ class Reads(unittest.TestCase):
         self.assertEqual(out, 39721281065908980248457)
         tx = s.posts[-1]["params"][0]
         self.assertEqual((tx["value"], tx["from"]), (hex(500_000_000_000_000), ME))
+
+
+class ExecutorReads(unittest.TestCase):
+    """The read-only helpers the paper executor needs on top of the quotes."""
+
+    def test_gas_price_comes_from_the_chain(self):
+        s = FakeSession({"eth_gasPrice": hex(365_000_000)})
+        self.assertEqual(pons.gas_price(pons.Chain(session=s)), 365_000_000)
+        self.assertEqual(s.posts[-1]["method"], "eth_gasPrice")
+
+    def test_decimals(self):
+        s = FakeSession({pons.selector("decimals()"): ret(["uint8"], [18])})
+        self.assertEqual(pons.erc20_decimals(pons.Chain(session=s), TOKEN), 18)
+
+    def test_symbol_and_name(self):
+        s = FakeSession({pons.selector("symbol()"): ret(["string"], ["EREBUS"]),
+                         pons.selector("name()"): ret(["string"], ["erebus"])})
+        chain = pons.Chain(session=s)
+        self.assertEqual(pons.erc20_text(chain, TOKEN, "symbol"), "EREBUS")
+        self.assertEqual(pons.erc20_text(chain, TOKEN, "name"), "erebus")
+
+    def test_a_label_in_another_shape_is_empty_not_an_error(self):
+        s = FakeSession({pons.selector("symbol()"): ret(["bytes32"], [b"EREBUS".ljust(32, b"\x00")])})
+        self.assertEqual(pons.erc20_text(pons.Chain(session=s), TOKEN, "symbol"), "")
+
+    def test_only_symbol_and_name(self):
+        with self.assertRaises(ValueError):
+            pons.erc20_text(pons.Chain(session=FakeSession()), TOKEN, "totalSupply")
+
+    def test_quote_pool_side_picks_the_direction_from_the_key(self):
+        seen = {}
+
+        def quoter(tx):
+            (key, zfo, amount, _hook), = decode([pons.QUOTE_PARAMS], bytes.fromhex(tx["data"][10:]))
+            seen.update(zfo=zfo, amount=amount, hook=key[4])
+            return ret(["uint256", "uint256"], [amount * 2, 50_000])
+
+        s = FakeSession({pons.selector(pons.QUOTER_SIG): quoter})
+        chain = pons.Chain(session=s)
+        key = (pons.ZERO, pons.to_checksum_address(TOKEN), 0, 200, pons.MEME_HOOK)
+        out, gas = pons.quote_pool_side(chain, key, TOKEN, "sell", 10 ** 18)
+        self.assertEqual((seen["zfo"], seen["amount"], out, gas), (False, 10 ** 18, 2 * 10 ** 18, 50_000))
+        pons.quote_pool_side(chain, key, TOKEN, "buy", 5)
+        self.assertEqual((seen["zfo"], seen["amount"]), (True, 5))     # native ETH is currency0
 
 
 if __name__ == "__main__":

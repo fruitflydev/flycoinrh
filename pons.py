@@ -407,6 +407,30 @@ def erc20_balance(chain, token, owner, block="latest"):
     return int(chain.read(token, "balanceOf(address)", ["uint256"], [to_checksum_address(owner)], ["address"], block=block))
 
 
+def erc20_decimals(chain, token, block="latest"):
+    """How many raw units make one whole coin. Every pons launch seen so far is 18."""
+    return int(chain.read(token, "decimals()", ["uint8"], block=block))
+
+
+def erc20_text(chain, token, which, block="latest"):
+    """
+    symbol() or name() as a string. Some ERC-20s answer with a bytes32 instead,
+    which this cannot decode; the caller gets "" rather than an exception,
+    because a coin's label is decoration and must never stop a quote.
+    """
+    if which not in ("symbol", "name"):
+        raise ValueError("which must be 'symbol' or 'name'")
+    try:
+        return str(chain.read(token, f"{which}()", ["string"], block=block))
+    except Exception:                                     # noqa: BLE001 - a label is not worth failing on
+        return ""
+
+
+def gas_price(chain):
+    """eth_gasPrice in wei. Robinhood Chain has been running at about 0.365 gwei."""
+    return int(chain.request("eth_gasPrice", []), 16)
+
+
 # --------------------------------------------------------------------------
 # graduated coins: the v4 pool
 # --------------------------------------------------------------------------
@@ -439,6 +463,14 @@ def quote_pool(chain, key, zfo, amount_in, block="latest"):
         raise RuntimeError("quoter returned nothing")
     out, gas = decode(["uint256", "uint256"], bytes.fromhex(raw[2:]))
     return int(out), int(gas)
+
+
+def quote_pool_side(chain, key, token, side, amount_in, block="latest"):
+    """
+    quote_pool for one side of a coin's own pool, with the direction worked out
+    from the key: a buy puts the quote asset in, a sell puts the coin in.
+    """
+    return quote_pool(chain, key, zero_for_one(key, token, side), amount_in, block=block)
 
 
 def pool_swap_tx(key, token, side, amount_in, min_out, deadline):
