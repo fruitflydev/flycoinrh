@@ -11,4 +11,15 @@ data/*
 !data/body-annotations.feather
 build/*
 !build/graph.npz
-!build/mb_gains.npz
+# mb_sides.json is which dopamine cluster reaches each MBON. It is derived and
+# gitignored upstream, and the mushroom body will not build without it - so it
+# has to be let through here. mb_gains.npz was learned under the old output
+# split and mushroom.py deliberately never reads it, so it does not.
+!build/mb_sides.json
+# The offline gate's results: the paired-seed screen the room's decision rule
+# was certified on, and the two one-sided runs. Nothing reads them at run time
+# - they are the evidence for the numbers the site quotes, carried along so
+# they can be read inside the container.
+!build/backroom_screen.json
+!build/backroom_screen_sugar.json
+!build/backroom_screen_shock.json
