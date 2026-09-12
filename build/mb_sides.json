@@ -1,0 +1,370 @@
+{
+ "method": "DAN->MBON input synapses from the raw synapse table, neuron pairs with >= 3 synapses; the cluster giving more input names the side. PAM side = reward dopamine, its MBONs promote avoidance; PPL1 side = punishment dopamine, its MBONs promote approach (Aso et al. 2014)",
+ "min_syn": 3,
+ "scanned_edges": 151856684,
+ "totals": {
+  "pam": 27090,
+  "ppl1": 10819
+ },
+ "types": {
+  "MBON01": {
+   "pam_syn": 2269,
+   "ppl1_syn": 3,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON02": {
+   "pam_syn": 1270,
+   "ppl1_syn": 0,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON03": {
+   "pam_syn": 4690,
+   "ppl1_syn": 3,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON04": {
+   "pam_syn": 1691,
+   "ppl1_syn": 265,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON05": {
+   "pam_syn": 3343,
+   "ppl1_syn": 44,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON06": {
+   "pam_syn": 3870,
+   "ppl1_syn": 41,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON07": {
+   "pam_syn": 2000,
+   "ppl1_syn": 6,
+   "bodies": 4,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON09": {
+   "pam_syn": 3575,
+   "ppl1_syn": 11,
+   "bodies": 4,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON10": {
+   "pam_syn": 233,
+   "ppl1_syn": 24,
+   "bodies": 9,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON11": {
+   "pam_syn": 185,
+   "ppl1_syn": 2451,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON12": {
+   "pam_syn": 0,
+   "ppl1_syn": 840,
+   "bodies": 4,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON13": {
+   "pam_syn": 3,
+   "ppl1_syn": 660,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON14": {
+   "pam_syn": 0,
+   "ppl1_syn": 860,
+   "bodies": 4,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON15": {
+   "pam_syn": 3,
+   "ppl1_syn": 138,
+   "bodies": 4,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON15-like": {
+   "pam_syn": 0,
+   "ppl1_syn": 219,
+   "bodies": 4,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON16": {
+   "pam_syn": 0,
+   "ppl1_syn": 302,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON17": {
+   "pam_syn": 0,
+   "ppl1_syn": 118,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON17-like": {
+   "pam_syn": 0,
+   "ppl1_syn": 59,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON18": {
+   "pam_syn": 0,
+   "ppl1_syn": 434,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON19": {
+   "pam_syn": 0,
+   "ppl1_syn": 98,
+   "bodies": 4,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON20": {
+   "pam_syn": 7,
+   "ppl1_syn": 149,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON21": {
+   "pam_syn": 1024,
+   "ppl1_syn": 14,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON22": {
+   "pam_syn": 10,
+   "ppl1_syn": 0,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": true
+  },
+  "MBON23": {
+   "pam_syn": 0,
+   "ppl1_syn": 128,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON24": {
+   "pam_syn": 540,
+   "ppl1_syn": 4,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON25": {
+   "pam_syn": 0,
+   "ppl1_syn": 121,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON25-like": {
+   "pam_syn": 0,
+   "ppl1_syn": 95,
+   "bodies": 4,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON26": {
+   "pam_syn": 1320,
+   "ppl1_syn": 46,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON27": {
+   "pam_syn": 507,
+   "ppl1_syn": 18,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON28": {
+   "pam_syn": 0,
+   "ppl1_syn": 170,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON29": {
+   "pam_syn": 389,
+   "ppl1_syn": 6,
+   "bodies": 2,
+   "side": "PAM",
+   "weak": false
+  },
+  "MBON30": {
+   "pam_syn": 53,
+   "ppl1_syn": 322,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON31": {
+   "pam_syn": 6,
+   "ppl1_syn": 729,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON32": {
+   "pam_syn": 0,
+   "ppl1_syn": 1068,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON33": {
+   "pam_syn": 102,
+   "ppl1_syn": 353,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  },
+  "MBON34": {
+   "pam_syn": 0,
+   "ppl1_syn": 3,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": true
+  },
+  "MBON35": {
+   "pam_syn": 0,
+   "ppl1_syn": 1017,
+   "bodies": 2,
+   "side": "PPL1",
+   "weak": false
+  }
+ },
+ "bodies": {
+  "10013": "PAM",
+  "10079": "PAM",
+  "10267": "PPL1",
+  "10495": "PAM",
+  "10599": "PPL1",
+  "10704": "PPL1",
+  "10804": "PPL1",
+  "10816": "PPL1",
+  "10826": "PAM",
+  "11145": "PPL1",
+  "11176": "PAM",
+  "11402": "PPL1",
+  "11455": "PPL1",
+  "11777": "PPL1",
+  "11785": "PPL1",
+  "11805": "PPL1",
+  "11873": "PPL1",
+  "11990": "PAM",
+  "12690": "PAM",
+  "12726": "PPL1",
+  "12859": "PAM",
+  "12918": "PAM",
+  "13728": "PPL1",
+  "13768": "PPL1",
+  "14221": "PPL1",
+  "15626": "PAM",
+  "15708": "PAM",
+  "17946": "PPL1",
+  "18406": "PAM",
+  "18603": "PAM",
+  "18713": "PAM",
+  "19267": "PAM",
+  "19366": "PPL1",
+  "20835": "PPL1",
+  "21242": "PAM",
+  "26485": "PPL1",
+  "26853": "PPL1",
+  "28622": "PPL1",
+  "31016": "PPL1",
+  "31083": "PPL1",
+  "33617": "PPL1",
+  "36094": "PPL1",
+  "38853": "PPL1",
+  "38859": "PPL1",
+  "39608": "PAM",
+  "41692": "PPL1",
+  "44619": "PPL1",
+  "47551": "PPL1",
+  "49262": "PAM",
+  "58401": "PPL1",
+  "70924": "PAM",
+  "76585": "PPL1",
+  "87077": "PPL1",
+  "92112": "PPL1",
+  "110448": "PPL1",
+  "133427": "PAM",
+  "160320": "PPL1",
+  "187741": "PPL1",
+  "208566": "PPL1",
+  "394860": "PPL1",
+  "508595": "PPL1",
+  "512788": "PPL1",
+  "512789": "PPL1",
+  "513174": "PPL1",
+  "513387": "PPL1",
+  "513391": "PPL1",
+  "514853": "PPL1",
+  "515015": "PPL1",
+  "515034": "PAM",
+  "515338": "PAM",
+  "519128": "PAM",
+  "519131": "PPL1",
+  "519368": "PPL1",
+  "519371": "PAM",
+  "519373": "PAM",
+  "519619": "PAM",
+  "520151": "PAM",
+  "520186": "PPL1",
+  "520395": "PPL1",
+  "521086": "PPL1",
+  "521526": "PAM",
+  "522444": "PAM",
+  "522749": "PAM",
+  "523043": "PPL1",
+  "523060": "PAM",
+  "523628": "PAM",
+  "523987": "PAM",
+  "524733": "PAM",
+  "524893": "PAM",
+  "525780": "PAM",
+  "530875": "PAM",
+  "531829": "PAM",
+  "540383": "PAM",
+  "556300": "PPL1",
+  "558665": "PAM",
+  "562782": "PPL1",
+  "579919": "PAM"
+ },
+ "sides_sha": "96f3020d1e733bcfd60ba43abce2075a9b6f0599adcaa0e32c6e92a7dd055be0"
+}
