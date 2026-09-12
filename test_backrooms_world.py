@@ -25,6 +25,7 @@ import os
 import re
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -781,6 +782,34 @@ class RealBrain(unittest.TestCase):
                "steps": [strip_timing(r) for r in steps]}
         self.OUT.write_text(json.dumps(out, indent=1, sort_keys=True, default=float) + "\n", encoding="utf-8")
         print(f"wrote {self.OUT}")
+
+
+class FreeRam(unittest.TestCase):
+    """A container has no PowerShell; an unreadable value must not block the brain."""
+
+    def test_meminfo_parser(self):
+        text = chr(10).join(["MemTotal:       32000000 kB", "MemFree:         1000000 kB", "MemAvailable:   15728640 kB"])
+        self.assertAlmostEqual(bw.meminfo_available_gb(text), 15.0, places=3)
+        self.assertIsNone(bw.meminfo_available_gb("MemTotal: 1 kB"))
+
+    def test_unknown_ram_loads_anyway_and_says_so(self):
+        said = []
+        with (mock.patch.object(bw, "free_ram_gb", return_value=float("nan")),
+              mock.patch.object(bw, "brain_class", return_value=lambda: mock.Mock(n=7))):
+            fb = bw.load_brain(say=said.append)
+        self.assertEqual(fb.n, 7)
+        self.assertTrue(any("unknown" in m for m in said))
+
+    def test_measured_shortage_still_refuses(self):
+        with (mock.patch.object(bw, "free_ram_gb", return_value=1.0),
+              mock.patch.object(bw, "brain_class", return_value=lambda: mock.Mock(n=7))):
+            with self.assertRaises(MemoryError):
+                bw.load_brain(say=lambda m: None)
+
+    def test_check_can_be_skipped(self):
+        with (mock.patch.object(bw, "free_ram_gb", return_value=1.0),
+              mock.patch.object(bw, "brain_class", return_value=lambda: mock.Mock(n=7))):
+            self.assertEqual(bw.load_brain(say=lambda m: None, check=False).n, 7)
 
 
 if __name__ == "__main__":

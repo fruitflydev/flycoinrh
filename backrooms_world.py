@@ -508,7 +508,22 @@ class Channels:
 # =============================================================================
 
 def free_ram_gb():
-    """Free physical memory in GB, from PowerShell; nan if it cannot be read."""
+    """
+    Free physical memory in GB; nan if it cannot be read.
+
+    Linux first (/proc/meminfo MemAvailable, which is what a container has),
+    then PowerShell on Windows. The check exists for a shared desk where other
+    processes hold brains; a container has one process and no PowerShell, and
+    the first deploy died on exactly that: the PowerShell path returned nan and
+    nan is not above any threshold.
+    """
+    try:
+        text = Path("/proc/meminfo").read_text(encoding="ascii", errors="ignore")
+        gb = meminfo_available_gb(text)
+        if gb is not None:
+            return gb
+    except Exception:
+        pass
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
@@ -519,6 +534,15 @@ def free_ram_gb():
         return float("nan")
 
 
+def meminfo_available_gb(text):
+    """MemAvailable from a /proc/meminfo text, in GB; None if absent."""
+    for line in text.splitlines():
+        if line.startswith("MemAvailable:"):
+            kb = float(line.split()[1])
+            return kb / (1024 * 1024)
+    return None
+
+
 def brain_class(name=None):
     """Resolve 'module.Class' to the class; BRAIN_CLASS by default."""
     import importlib
@@ -526,16 +550,24 @@ def brain_class(name=None):
     return getattr(importlib.import_module(mod), cls)
 
 
-def load_brain(min_free_gb=MIN_FREE_RAM_GB, cls=None, say=print):
+def load_brain(min_free_gb=MIN_FREE_RAM_GB, cls=None, say=print, check=True):
     """
-    The one brain this process holds. Refuses when free RAM is below
-    min_free_gb (two other workflows on this machine hold a brain at times),
-    so the check is not left to the caller.
+    The one brain this process holds. On a shared desk, refuses when free RAM
+    is measured below min_free_gb (other workflows hold a brain at times), so
+    the check is not left to the caller. When free RAM cannot be measured it
+    says so and loads anyway: an unknown is not a shortage. check=False skips
+    the measurement (a container that runs nothing else).
     """
-    ram = free_ram_gb()
-    say(f"free RAM: {ram:.1f} GB (need > {min_free_gb:.1f})")
-    if not ram > min_free_gb:
-        raise MemoryError(f"free RAM {ram:.1f} GB is not above {min_free_gb:.1f} GB; not loading a brain")
+    if check:
+        ram = free_ram_gb()
+        if ram != ram:                                  # nan: nothing to compare with
+            say("free RAM: unknown on this host; loading the brain anyway")
+        else:
+            say(f"free RAM: {ram:.1f} GB (need > {min_free_gb:.1f})")
+            if not ram > min_free_gb:
+                raise MemoryError(f"free RAM {ram:.1f} GB is not above {min_free_gb:.1f} GB; not loading a brain")
+    else:
+        say("free RAM check skipped")
     t0 = time.time()
     fb = brain_class(cls)()
     say(f"brain ready: {fb.n:,} neurons in {time.time() - t0:.1f} s ({cls or BRAIN_CLASS})")
@@ -945,9 +977,9 @@ class World:
     through to the step log untouched; the loop converts numpy itself.
     """
 
-    def __init__(self, seed=0, room=None, say=print):
+    def __init__(self, seed=0, room=None, say=print, ram_check=True):
         if room is None:
-            fb = load_brain(say=say)
+            fb = load_brain(say=say, check=ram_check)
             room = build_room(fb, room_gains(fb), seed=seed)
         self.room = room
         self.fb = room.fb

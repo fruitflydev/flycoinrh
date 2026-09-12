@@ -1475,29 +1475,10 @@ def make_app(loop, page=PAGE, dictionary=DICT_PATH, autostart=False,
 # ---- memory guard ------------------------------------------------------------
 
 def free_ram_gb():
-    """Free physical memory in GB on Windows via GlobalMemoryStatusEx; None elsewhere."""
-    try:
-        import ctypes
-
-        class MS(ctypes.Structure):
-            _fields_ = [("dwLength", ctypes.c_ulong),
-                        ("dwMemoryLoad", ctypes.c_ulong),
-                        ("ullTotalPhys", ctypes.c_ulonglong),
-                        ("ullAvailPhys", ctypes.c_ulonglong),
-                        ("ullTotalPageFile", ctypes.c_ulonglong),
-                        ("ullAvailPageFile", ctypes.c_ulonglong),
-                        ("ullTotalVirtual", ctypes.c_ulonglong),
-                        ("ullAvailVirtual", ctypes.c_ulonglong),
-                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
-
-        ms = MS()
-        ms.dwLength = ctypes.sizeof(MS)
-        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms)):
-            return None
-        return ms.ullAvailPhys / 2 ** 30
-    except Exception:
-        return None
-
+    """Free RAM in GB (Linux /proc/meminfo, then PowerShell); None if it cannot be read."""
+    import backrooms_world as world_module
+    v = world_module.free_ram_gb()
+    return None if v != v else v
 
 # ---- the plug point ------------------------------------------------------------
 
@@ -1515,7 +1496,7 @@ def dictionary_is_current(path=DICT_PATH):
     return path.read_text(encoding="utf-8") == bd.dumps(bd.build())
 
 
-def build_objects(seed=0):
+def build_objects(seed=0, ram_check=True):
     """
     The world (which loads the one brain) and the captioner. This is the only
     place the parts meet. Sizes come from the groups the world resolved on its
@@ -1523,7 +1504,7 @@ def build_objects(seed=0):
     to the dictionary JSON's counts if the world does not expose them.
     """
     import backrooms_world
-    world = backrooms_world.World(seed=seed)
+    world = backrooms_world.World(seed=seed, ram_check=ram_check)
     groups = getattr(world, "groups", None)
     sizes = sizes_from_groups(groups) if groups else sizes_from_json(DICT_PATH)
     captioner = Captioner(sizes, dt=WORLD_DT_S)
@@ -1557,7 +1538,7 @@ def main(argv=None):
         say(f"free RAM {free:.1f} GB" if free is not None else "free RAM unknown")
 
     import uvicorn
-    world, captioner = build_objects(seed=a.seed)
+    world, captioner = build_objects(seed=a.seed, ram_check=not a.no_ram_check)
     loop = Loop(world, captioner)
     app = make_app(loop, autostart=True, publish=a.publish, port=a.port,
                    steps=a.steps)

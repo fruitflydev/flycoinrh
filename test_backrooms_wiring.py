@@ -33,7 +33,7 @@ def fake_world(seed=5, spont=None):
 class Wiring(unittest.TestCase):
     def test_build_objects_names_world_and_sizes_from_its_groups(self):
         src = inspect.getsource(backrooms.build_objects)
-        self.assertIn("backrooms_world.World(seed=seed)", src)
+        self.assertIn("backrooms_world.World(seed=seed, ram_check=ram_check)", src)
         self.assertIn("sizes_from_groups", src)
         self.assertTrue(hasattr(bw, "World"))
 
