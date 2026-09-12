@@ -15,6 +15,12 @@ offline "stub" model writes only to its own journal and never posts, the
 narrator's memory is validated before it is kept, and xpost.py has no command
 that posts arbitrary text.
 
+The fly also has a room of its own, served by the roamer on loopback. The
+narrator is not shown it: there are no rules yet for how it should report
+what happens in there, so every loopback URL and every /backroom path is
+stripped out of the packet, out of the reading menu and out of the set of
+links an entry may name.
+
 Two things in this project are invented, and both are labelled: the reward
 signal in the mushroom body, and these words. The neurons, the pages and the
 fees are measurements.
@@ -334,6 +340,27 @@ def fetch_state(stream):
 
 
 def fetch_frame(stream):
+    """
+    The picture that goes out with an entry - unless the fly is in its own room.
+
+    /frame.jpg is whatever the fly is looking at this second, and that includes
+    the backroom: a board of coin cards with names, tickers, market caps and a
+    bright marker on every coin the paper book holds. The narrator is never
+    given the room in words, and the image is the one channel that does not go
+    through the packet, so the same blind spot has to be enforced where the
+    picture is taken. Where the fly is, is asked for here rather than read off
+    an older observation, because a post is written minutes after the packet
+    and the fly may have walked in since. If that cannot be established, no
+    picture goes out.
+    """
+    try:
+        st = _json(stream + "/state", timeout=10)
+    except Exception as exc:
+        say("no picture: cannot tell where the fly is -", str(exc)[:70])
+        return None
+    if hidden_url((st or {}).get("url")):
+        say("no picture: the fly is in its own room")
+        return None
     try:
         r = requests.get(stream + "/frame.jpg", timeout=20, headers={"User-Agent": UA})
         if r.ok and r.content[:2] == b"\xff\xd8":
@@ -429,16 +456,28 @@ def observe(c, now=None):
     st = fetch_state(c["stream"]) or {}
     n = st.get("neural") or {}
     L = n.get("learning") or {}
+    # the room is left out of the packet entirely: not as a place it is now,
+    # and not as a place it has been
+    seen = [v for v in (st.get("visited") or []) if not hidden_url(v.get("url"))]
     tele = {
-        "url": st.get("url"),
+        "url": None if hidden_url(st.get("url")) else st.get("url"),
         "hops": st.get("hops"), "clicks": st.get("clicks"), "vetoes": st.get("vetoes"),
         "scrolled": st.get("scrolled"), "steps": st.get("steps"), "uptime_s": st.get("uptime_s"),
         "pages_this_life": st.get("hops"),
         "firing": n.get("firing"), "total": n.get("total"),
         "spikes_per_sec": n.get("spikes_per_sec"), "mean_mv": n.get("mean_mv"),
         "dn": n.get("dn"),
-        "learning": {k: L.get(k) for k in ("synapses", "depressed", "mean_gain", "rewards", "punishments")} if L else None,
-        "last_visited": [{"title": v.get("title"), "url": v.get("url")} for v in (st.get("visited") or [])[-8:]],
+        # what the mushroom body is, not what it has been taught. In a build
+        # with the room on, the only dopamine anywhere is a paper profit or a
+        # paper loss (roam delivers none), so "rewards" and "punishments" are
+        # the counts of winning and losing paper trades and "depressed" and
+        # "mean_gain" are how far those trades have moved the weights. A draft
+        # saying "twelve rewards have reached my mushroom body today" would
+        # pass every check - the numbers would be in the packet and no banned
+        # word is in the sentence - and would be a report of the backroom's
+        # results, which the voice is not given and does not report.
+        "learning": {"synapses": L.get("synapses")} if L else None,
+        "last_visited": [{"title": v.get("title"), "url": v.get("url")} for v in seen[-8:]],
         # counts, not the roamer's log lines: those are a person's phrasing
         "blocked": st.get("blocked"),
         # the roamer stamps every state it publishes; an old stamp means the
@@ -471,6 +510,8 @@ def strip_html(raw):
 
 def read_page(url, limit=3000):
     out = {"url": url, "title": "", "text": ""}
+    if hidden_url(url):            # the fly's own room is not read to it
+        return out
     try:
         r = requests.get(url, timeout=30, headers={"User-Agent": UA})
         m = re.search(r"<title[^>]*>(.*?)</title>", r.text, re.S | re.I)
@@ -491,6 +532,38 @@ def _host(url):
     return m.group(1).lower() if m else ""
 
 
+# The roamer serves the fly's own room on loopback. Until there are rules for
+# how the narrator should report what happens in there, it is not shown it at
+# all - a blind spot is honest, a description with no rules behind it is not.
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
+
+
+def _split_url(url):
+    """(host, path) for a URL that may carry no scheme. Host lowercased, no port."""
+    s = str(url or "").strip()
+    m = re.match(r"(?i)^[a-z][a-z0-9+.-]*:(//.*)$", s)    # a scheme, only with //
+    if m:
+        s = m.group(1)
+    if s.startswith("//"):
+        s = s[2:]
+    if s.startswith("/"):
+        return "", s                                      # a path with no host
+    auth, slash, rest = s.partition("/")
+    host = auth.rsplit("@", 1)[-1]
+    host = re.sub(r":\d+$", "", host).strip("[]").lower()
+    return host, slash + rest
+
+
+def hidden_url(url):
+    """True for a URL the narrator must never be given, or allowed to write."""
+    if not url:
+        return False
+    host, path = _split_url(url)
+    if host in LOOPBACK_HOSTS or host.startswith("127."):
+        return True
+    return path.lower().startswith("/backroom")
+
+
 def dig_menu(c, journal, packet):
     """
     What may be read this cycle: the allowlist, plus wherever the fly itself
@@ -505,12 +578,14 @@ def dig_menu(c, journal, packet):
             menu.append(dict(a))
     for v in packet["telemetry"].get("last_visited") or []:
         u = v.get("url") or ""
+        if hidden_url(u):                          # the room is never on the menu
+            continue
         if _host(u) in READABLE_HOSTS and u not in seen and all(m["url"] != u for m in menu):
             menu.append({"url": u, "title": v.get("title") or u,
                          "why": "a page the fly itself landed on"})
     if not menu:                                   # everything read: start over
         menu = [dict(a) for a in ALLOWLIST]
-    return menu[:14]
+    return [m for m in menu if not hidden_url(m.get("url"))][:14]
 
 
 # --------------------------------------------------------------------------
@@ -674,7 +749,9 @@ def _known_urls(packet):
     tele = packet.get("telemetry") or {}
     known |= {v.get("url") for v in (tele.get("last_visited") or []) if v.get("url")}
     known |= {u for u in (packet.get("allowlist") or []) if u}
-    return {u.lower().rstrip("/") for u in known}
+    # a link to the room could only have come from a packet field that should
+    # not have carried it; either way the narrator may not write it
+    return {u.lower().rstrip("/") for u in known if u and not hidden_url(u)}
 
 
 def validate(post, packet):
@@ -966,7 +1043,7 @@ def run_once(c, dry=None, now=None):
     if is_stub(c):
         wants = [m["url"] for m in menu][:2]
     for u in wants[:2]:
-        if u in allowed_urls:
+        if u in allowed_urls and not hidden_url(u):
             readings.append(read_page(u))
     readings = [r for r in readings if r["text"]]
 

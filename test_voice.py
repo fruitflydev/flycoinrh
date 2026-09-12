@@ -426,5 +426,140 @@ class Units(unittest.TestCase):
         self.assertEqual(voice.parse_json_block('prose then {"post":"b","learned":[]} trailing')["post"], "b")
 
 
+class BackroomBlindSpot(unittest.TestCase):
+    """
+    The fly has a room of its own on loopback. The narrator is not shown it:
+    no loopback URL and no /backroom path may reach the packet, the reading
+    menu, the pages it is read, or the links an entry may name.
+    """
+
+    ROOM = "http://127.0.0.1:4660/backroom"
+
+    def test_hidden_url_knows_the_room(self):
+        for u in (self.ROOM, "http://127.0.0.1:4660/", "https://localhost/x",
+                  "http://0.0.0.0:4660/state", "http://[::1]:4660/x",
+                  "127.0.0.1:4660/backroom", "/backroom/board.json",
+                  "http://127.0.0.5:4660/x", "https://flybrain.online/backroom"):
+            with self.subTest(u=u):
+                self.assertTrue(voice.hidden_url(u))
+        for u in ("https://en.wikipedia.org/wiki/Cape_Irozaki", voice.TOKEN_PAGE,
+                  "https://flybrain.online", "https://www.ponsfamily.com/launchpad",
+                  "", None):
+            with self.subTest(u=u):
+                self.assertFalse(voice.hidden_url(u))
+
+    def test_the_packet_carries_no_trace_of_the_room(self):
+        st = {"url": self.ROOM, "updated": 1_700_000_000, "hops": 5, "clicks": 2,
+              "vetoes": 0, "scrolled": 1, "steps": 10, "uptime_s": 60, "blocked": 0,
+              "neural": {"firing": 1, "total": 2, "spikes_per_sec": 3, "mean_mv": -60.0,
+                         "dn": {}, "learning": {"mean_gain": 1.0}},
+              "visited": [{"title": "Cape Irozaki - Wikipedia", "at": 1,
+                           "url": "https://en.wikipedia.org/wiki/Cape_Irozaki"},
+                          {"title": "its room", "url": self.ROOM, "at": 2},
+                          {"title": "its room", "url": "http://localhost:4660/backroom", "at": 3},
+                          {"title": "the board", "at": 4,
+                           "url": "http://0.0.0.0:4660/backroom/board.json"}]}
+        with mock.patch.object(voice, "fetch_state", return_value=st), \
+             mock.patch.object(voice, "fetch_token", return_value={}), \
+             mock.patch.object(voice, "wallet_eth", return_value=None):
+            p = voice.observe({"stream": "http://x", "rpc": "http://x"}, now=1_700_000_000)
+        self.assertIsNone(p["telemetry"]["url"])
+        self.assertEqual([v["url"] for v in p["telemetry"]["last_visited"]],
+                         ["https://en.wikipedia.org/wiki/Cape_Irozaki"])
+        blob = json.dumps(p).lower()
+        self.assertNotIn("backroom", blob)
+        self.assertNotIn("127.0.0.1", blob)
+        self.assertNotIn("localhost", blob)
+
+    def test_the_packet_carries_no_count_of_paper_profits_and_losses(self):
+        """
+        In a backroom build the only dopamine anywhere is a paper profit or a
+        paper loss - roam.py hands out none - so learning.rewards and
+        learning.punishments are the counts of winning and losing paper trades,
+        and depressed and mean_gain are how far those trades moved the weights.
+        A draft saying "twelve rewards reached my mushroom body today" carries
+        no banned word and every number in it would be in the packet, so it
+        would pass every check and go out: a report of the room's results, from
+        a narrator that is not given the room.
+        """
+        st = {"url": "https://en.wikipedia.org/wiki/Cape_Irozaki", "updated": 1_700_000_000,
+              "hops": 5, "clicks": 2, "vetoes": 0, "scrolled": 1, "steps": 10, "uptime_s": 60,
+              "blocked": 0,
+              "neural": {"firing": 1, "total": 2, "spikes_per_sec": 3, "mean_mv": -60.0, "dn": {},
+                         "learning": {"synapses": 60755, "depressed": 412, "mean_gain": 0.981,
+                                      "rewards": 12, "punishments": 7}},
+              "visited": []}
+        with mock.patch.object(voice, "fetch_state", return_value=st), \
+             mock.patch.object(voice, "fetch_token", return_value={}), \
+             mock.patch.object(voice, "wallet_eth", return_value=None):
+            p = voice.observe({"stream": "http://x", "rpc": "http://x"}, now=1_700_000_000)
+        self.assertEqual(p["telemetry"]["learning"], {"synapses": 60755})
+        blob = json.dumps(p["telemetry"])
+        for gone in ("rewards", "punishments", "depressed", "mean_gain", "412", "0.981"):
+            self.assertNotIn(gone, blob)
+
+    def test_the_menu_never_offers_the_room(self):
+        p = packet()
+        p["telemetry"]["last_visited"] = [
+            {"title": "its room", "url": self.ROOM},
+            {"title": "Cape Irozaki - Wikipedia", "url": "https://en.wikipedia.org/wiki/Cape_Irozaki"}]
+        room_entry = {"url": self.ROOM, "title": "its room", "why": "should never be here"}
+        with tempfile.TemporaryDirectory() as d:
+            j = voice.Journal(Path(d) / "journal.json")
+            with mock.patch.object(voice, "READABLE_HOSTS", voice.READABLE_HOSTS | {"127.0.0.1:4660"}), \
+                 mock.patch.object(voice, "ALLOWLIST", voice.ALLOWLIST + [room_entry]):
+                menu = voice.dig_menu({}, j, p)
+        urls = [m["url"] for m in menu]
+        self.assertIn("https://en.wikipedia.org/wiki/Cape_Irozaki", urls)
+        self.assertTrue(all(not voice.hidden_url(u) for u in urls), urls)
+
+    def test_no_picture_is_taken_while_the_fly_is_in_the_room(self):
+        """
+        The image is the one channel that does not pass through the packet.
+
+        A frame taken in the room is a photograph of the board: names, tickers,
+        market caps and a bright marker on every coin the paper book holds,
+        under an entry that says nothing about any of it.
+        """
+        with mock.patch.object(voice, "_json", return_value={"url": self.ROOM, "updated": 1}), \
+             mock.patch.object(voice.requests, "get") as g:
+            self.assertIsNone(voice.fetch_frame("http://x"))
+        g.assert_not_called()
+
+    def test_a_picture_is_taken_on_the_open_web(self):
+        class Reply:
+            ok = True
+            content = b"\xff\xd8 a jpeg"
+
+        with mock.patch.object(voice, "_json",
+                               return_value={"url": "https://en.wikipedia.org/wiki/Fly"}), \
+             mock.patch.object(voice.requests, "get", return_value=Reply()):
+            self.assertEqual(voice.fetch_frame("http://x"), b"\xff\xd8 a jpeg")
+
+    def test_no_picture_when_where_it_is_cannot_be_established(self):
+        with mock.patch.object(voice, "_json", side_effect=RuntimeError("roamer down")), \
+             mock.patch.object(voice.requests, "get") as g:
+            self.assertIsNone(voice.fetch_frame("http://x"))
+        g.assert_not_called()
+
+    def test_a_room_url_is_never_readable(self):
+        with mock.patch.object(voice.requests, "get") as g:
+            out = voice.read_page(self.ROOM)
+        g.assert_not_called()
+        self.assertEqual(out["text"], "")
+
+    def test_an_entry_may_not_name_the_room(self):
+        p = packet()
+        # even smuggled into the packet, the room is not a URL it may write
+        p["pages_read"] = [{"url": self.ROOM, "title": "its room", "excerpt": "light"}]
+        p["telemetry"]["last_visited"].append({"title": "its room", "url": self.ROOM})
+        known = voice._known_urls(p)
+        self.assertTrue(all("127.0.0.1" not in u and "backroom" not in u for u in known), known)
+        p["allowed_numbers"] = voice.allowed_numbers(p)
+        ok, why = voice.validate("A room with no light in it. " + self.ROOM, p)
+        self.assertFalse(ok)
+        self.assertTrue(any("url not in packet" in r for r in why), why)
+
+
 if __name__ == "__main__":
     unittest.main()
