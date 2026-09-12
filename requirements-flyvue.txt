@@ -3,3 +3,5 @@ Pillow==12.2.0
 aiohttp==3.13.3
 scipy==1.17.1
 matplotlib==3.10.8
+pandas==3.0.1
+pyarrow==23.0.1
