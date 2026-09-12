@@ -219,6 +219,58 @@ footer .links{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px}
 .tfv{font-size:16px;color:var(--g);font-variant-numeric:tabular-nums}
 @media (max-width:640px){.tfoot{grid-template-columns:repeat(2,1fr)}}
 
+/* ---------- the backroom ----------
+   The paper-trading panel is the same phosphor instrument as the live one, on
+   purpose: money that does not exist should not get a brighter skin than the
+   part that is actually happening. Every selector here is new and prefixed
+   bk-, so nothing above this comment changes size or position. */
+.bkhead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.bkpaper{color:var(--amber);border-color:#4b3a1d;font-size:11px;letter-spacing:.18em;
+  align-self:center}
+.bkclosed[hidden],#bk-body[hidden]{display:none}
+.bkclosed{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;min-height:176px;padding:22px;text-align:center;color:var(--g-dim);
+  letter-spacing:.14em;font-size:11px;line-height:1.9}
+.bkgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#123a24}
+.bkgrid2{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#123a24;
+  border-top:1px solid #123a24}
+.bkgrid2>.tblk{background:var(--g-bg);border-bottom:0}
+@media (max-width:980px){
+  .bkgrid{grid-template-columns:1fr}
+  .bkgrid2{grid-template-columns:1fr}
+}
+.bkcol{background:var(--g-bg);display:grid;align-content:start}
+.bkcol .tblk:last-child{border-bottom:0}
+.bkclip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the drive meter reads from -1 to +1 with the middle marked, because the
+   interesting thing about a dislike is how far past nothing it went */
+.bkmeter{position:relative;height:8px;margin-top:11px;background:#06180e;
+  border:1px solid #0d2c1b}
+.bkmid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--g-faint)}
+.bkfill{position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--g);
+  transition:width .2s linear,left .2s linear}
+.bkfill.dn{background:#e8c15f}
+.bkscale{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  margin-top:5px;font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--g-faint)}
+.bkdv{font-size:11px;letter-spacing:.06em;color:var(--g);
+  font-variant-numeric:tabular-nums}
+.bklist{margin-top:8px;max-height:158px;overflow:auto}
+.bkr{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:11px;
+  border-top:1px solid #0a2416}
+.bkr:first-child{border-top:0}
+.bkt{flex:0 0 auto;color:var(--g-faint);font-variant-numeric:tabular-nums}
+.bks{flex:0 0 auto;color:var(--g);letter-spacing:.05em}
+.bkd{flex:1 1 auto;min-width:0;color:var(--g-dim);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.bkv{flex:0 0 auto;color:var(--g-dim);text-align:right;
+  font-variant-numeric:tabular-nums}
+.bkv.up{color:var(--g)}
+.bkv.dn{color:#e8c15f}
+.bkv.no{color:#ff8b7a}
+.bkempty{padding:7px 0;font-size:11px;color:var(--g-faint)}
+.bkbusy{margin-top:10px;font-size:10px;letter-spacing:.02em;color:var(--g-faint)}
+
 /* ---------- the rig ---------- */
 /* The side column is taller than a 16:10 screenshot, and a stretched grid row
    left a black slab under the view. The view is centred in whatever height the
@@ -455,6 +507,115 @@ footer .links{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px}
     </div>
 
     <p style="margin-top:22px;color:var(--ink-dim);font-size:15px">No wallet, no keyboard, no downloads. Every click is checked before it lands and vetoed if it looks like it commits something &mdash; a submit, a sign-in, a purchase.</p>
+  </div>
+</section>
+
+<section id="backroom">
+  <div class="wrap wide">
+    <div class="eyebrow">paper trading</div>
+    <h2 class="bkhead">The backroom <span class="pill bkpaper">PAPER</span></h2>
+    <p class="lede">The fly walks into a room of real pons coins, smells each card, and its mushroom body decides. Trades are simulated against live on-chain prices with pretend ETH; nobody places its trades.</p>
+
+    <div class="term">
+      <div class="tbar">
+        <span class="tname">BACKROOM</span>
+        <span class="tdim">PONS LISTING &middot; ODOUR &rarr; MUSHROOM BODY</span>
+        <span class="tpills">
+          <span class="pip2 on" id="bk-mode">PAPER</span>
+          <span class="pip2" id="bk-inroom">IN THE ROOM</span>
+          <span class="pip2 off" id="bk-wallet">NO WALLET</span>
+        </span>
+        <span class="tspacer"></span>
+        <span class="tdim" id="bk-updated">&mdash;</span>
+      </div>
+
+      <div class="bkclosed" id="bk-closed">THE BACKROOM IS CLOSED RIGHT NOW<br>
+        <span class="tdim">the fly is not reporting a room</span></div>
+
+      <div id="bk-body" hidden>
+        <div class="bkgrid">
+          <div class="bkcol">
+            <div class="tblk">
+              <div class="tk">The card it is on</div>
+              <div class="tbig bkclip" id="bk-sym">&mdash;</div>
+              <div class="tsub bkclip" id="bk-name">not in the room</div>
+              <div class="bkmeter"><span class="bkmid"></span><span class="bkfill" id="bk-fill"></span></div>
+              <div class="bkscale">
+                <span>&minus;1 dislike</span>
+                <span class="bkdv" id="bk-drive">&mdash;</span>
+                <span>+1 like</span>
+              </div>
+              <div class="tquad">
+                <div><div class="tql">dwell steps</div><div class="tqv" id="bk-dwell">&mdash;</div></div>
+                <div><div class="tql">already held</div><div class="tqv" id="bk-held">&mdash;</div></div>
+                <div><div class="tql">cards on the board</div><div class="tqv" id="bk-board">&mdash;</div></div>
+                <div><div class="tql">dislikes</div><div class="tqv" id="bk-dislikes">&mdash;</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bkcol">
+            <div class="tblk">
+              <div class="tk">Paper book</div>
+              <div class="tbig" id="bk-bal">&mdash;</div>
+              <div class="tsub">ETH <span class="tdim">&middot; of <span id="bk-start">&mdash;</span> pretend ETH at the start</span></div>
+              <div class="tquad">
+                <div><div class="tql">buys</div><div class="tqv" id="bk-buys">&mdash;</div></div>
+                <div><div class="tql">sells</div><div class="tqv" id="bk-sells">&mdash;</div></div>
+                <div><div class="tql">open positions</div><div class="tqv" id="bk-open">&mdash;</div></div>
+                <div><div class="tql">refused</div><div class="tqv" id="bk-crefused">&mdash;</div></div>
+              </div>
+            </div>
+            <div class="tblk">
+              <div class="tk">Open positions</div>
+              <div class="bklist" id="bk-pos"></div>
+            </div>
+          </div>
+
+          <div class="bkcol">
+            <div class="tblk">
+              <div class="tk">Learning &middot; dopamine</div>
+              <div class="tquad" style="margin-top:8px">
+                <div><div class="tql">sugar</div><div class="tqv" id="bk-sugar">&mdash;</div></div>
+                <div><div class="tql">shock</div><div class="tqv" id="bk-shock">&mdash;</div></div>
+              </div>
+              <div class="bklist" id="bk-dop"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bkgrid2">
+          <div class="tblk">
+            <div class="tk">Last paper trades</div>
+            <div class="bklist" id="bk-trades"></div>
+          </div>
+          <div class="tblk">
+            <div class="tk">Last intents</div>
+            <div class="bklist" id="bk-intents"></div>
+            <div class="tsub bkbusy" id="bk-busy">&mdash;</div>
+          </div>
+        </div>
+
+        <div class="tfoot">
+          <div><span class="tql">visits</span><span class="tfv" id="bk-visits">&mdash;</span></div>
+          <div title="steps on which the fly read a card"><span class="tql">looks</span><span class="tfv" id="bk-looks">&mdash;</span></div>
+          <div title="stops that became a decision"><span class="tql">commits</span><span class="tfv" id="bk-commits">&mdash;</span></div>
+          <div><span class="tql">intents</span><span class="tfv" id="bk-intents-n">&mdash;</span></div>
+          <div><span class="tql">booked</span><span class="tfv" id="bk-booked">&mdash;</span></div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="plain" style="margin-top:26px">
+      <li><b>Paper only.</b> There are no real funds and there is no wallet. Every fill is simulated against a live on-chain quote read from the same contracts a real trade would touch, with pretend ETH. Nothing is signed and nothing is sent. <b>The gas it charges itself is an estimate, not a measured fee</b> &mdash; a chosen number of gas units at the chain's current price, never checked against a real trade &mdash; and it comes out of the balance, the cost of every position and every realised figure below.</li>
+      <li><b>It cannot read the card.</b> It sees grey light through 892 hex columns, and it smells the coin: the name and ticker are turned into odorants by a word-to-odorant mapping a person chose, then into receptor drive. The receptor responses are measured; the mapping from a ticker to a smell is invented. The words on the other side of that mapping are not ours either &mdash; they are whatever the coin's launcher typed into the launchpad, so a coin's author chooses which odorant the fly meets. Every coin's smell is scaled toward the same loudness so that no coin shouts, but it does not reach equality: no receptor may respond above its measured maximum, so a coin whose smell lands on one glomerulus stays about half as loud as one spread over twenty, and fires far fewer Kenyon cells.</li>
+      <li><b>People chose which coins it is offered.</b> The room draws the launchpad's sixteen most recently bought coins, refreshed every twenty seconds, minus any that are not quoted in the chain's own coin. The listing offers newest, oldest, market cap and volume too; a person picked recent buying. That is a filter applied before the fly ever sees a card, so what the paper book does is partly the filter's and not the fly's.</li>
+      <li><b>It can lose the paper balance completely.</b> There is no stop, cap, target or limit anywhere in the decision. A single commit can spend everything free, and a single commit can sell a whole position. Nothing it does is advice, a signal or a prediction.</li>
+      <li><b>Sugar and shock are a stand-in.</b> The dopamine circuit and the direction of the depression rule are real and measured. That a paper profit should arrive as sugar and a paper loss as shock is a choice people made &mdash; and the plasticity is partly global, so learning about one coin moves the others a little.</li>
+      <li><b>The like and dislike number is a formula.</b> The mushroom body's output synapses are summed on each of its two sides &mdash; the Kenyon cells that just fired, times the weights dopamine changes &mdash; and the card is compared against the other cards the fly has already walked past in this same visit &mdash; each at the fly&rsquo;s last look at it, which may be a minute earlier, from another position on the page &mdash; the way a fly in a T-maze is offered two arms. The difference is squashed into one number from &minus;1 to +1. That arithmetic was chosen by a person; it is not something a fly computes. Comparing a card against a blank grey screen instead was tried first and dropped: measured on this connectome, an untouched coin moved almost as far as a trained one, so the reading carried the lesson only as a difference between two coins.</li>
+      <li><b>One commit is not the measurement.</b> What learning does was measured as an average over sixty runs with the same picture on every card and the cursor at its centre, so that only smell differed. A single stop has none of that: the spread between one look and the next is larger than the whole lesson, two untrained coins already differ from each other by more than it, and the eye window is wider than a card, so a stop away from a card's centre reads its neighbours too &mdash; between a third and six sevenths of the window was the card being judged over the first paper session. Nothing corrects for any of this, because nothing may stand between the brain and the order. Every stored look now records how much of the window was the card and how much of the brain fired in it.</li>
+      <li><b>Nothing here is advice or a signal.</b> It is a fly brain with a nose, in a room of coins, spending money that does not exist.</li>
+    </ul>
   </div>
 </section>
 
@@ -1004,6 +1165,8 @@ function openSocket(url){
     } else if (m.type === 'frame'){
       renderState({neural: m.neural, url: m.url, events: m.events,
                    visited: m.visited, ...(m.stats || {})});
+      /* the room rides along on the frame when the backroom is switched on */
+      if (m.backroom){ bkFromSocket = Date.now(); renderBackroom(m.backroom); }
     }
   };
   sock.onclose = function(){ sock = null; sockUrl = null; };
@@ -1054,6 +1217,173 @@ async function roamTick(){
 }
 roamTick();
 setInterval(roamTick, 15000);
+
+/* ---------------------------------------------------------------------------
+   The backroom.
+
+   One function owns this panel. Hand renderBackroom the object the fly serves
+   at /backroom/state and the panel becomes that object, closed state included.
+   Nothing else writes into the panel and nothing is remembered between calls,
+   so the same state always paints the same panel.
+
+   Names and tickers are whatever somebody typed into a launchpad, so all of
+   them reach the page through textContent and are cut to a fixed width: a coin
+   called "<img onerror=...>" is an odd piece of text here rather than markup,
+   and a coin with a 200-character ticker cannot push a column open.
+--------------------------------------------------------------------------- */
+const bkFin = v => v != null && v !== '' && isFinite(Number(v));
+const bkN = (v, d) => bkFin(v)
+  ? Number(v).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d})
+  : '—';
+const bkCut = (s, n) => {
+  const x = s == null ? '' : String(s);
+  return x.length > n ? x.slice(0, n-1) + '…' : x;
+};
+const bkDrive = v => bkFin(v) ? (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) : '?';
+function bkTime(v){
+  if (v == null) return '—';
+  const ms = typeof v === 'number' ? (v > 1e11 ? v : v*1000) : Date.parse(v);
+  if (!isFinite(ms)) return '—';
+  return new Date(ms).toISOString().slice(11,19);
+}
+function bkRow(host, cells){
+  const row = document.createElement('div');
+  row.className = 'bkr';
+  for (const c of cells){
+    if (!c) continue;
+    const el = document.createElement('span');
+    el.className = c.c;
+    el.textContent = c.t;          // the only door coin text comes in through
+    row.appendChild(el);
+  }
+  host.appendChild(row);
+}
+function bkList(host, items, empty, fill){
+  host.innerHTML = '';
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length){
+    const e = document.createElement('div');
+    e.className = 'bkempty';
+    e.textContent = empty;
+    host.appendChild(e);
+    return;
+  }
+  for (const it of rows) fill(host, it);
+}
+
+function renderBackroom(state){
+  const room = (state && state.room) || null;
+  const book = (state && state.book) || null;
+  const open = !!(state && state.enabled && (room || book));
+  $$('bk-closed').hidden = open;
+  $$('bk-body').hidden = !open;
+  $$('bk-mode').textContent = bkCut((state && state.mode) || 'paper', 10).toUpperCase();
+  $$('bk-updated').textContent = open ? bkTime(state.updated) + ' UTC' : '—';
+  if (!open){ $$('bk-inroom').classList.remove('on'); return; }
+
+  const R = room || {}, B = book || {}, now = R.now || null;
+  $$('bk-inroom').classList.toggle('on', !!R.in_room);
+
+  /* the card under the cursor, and how far the mushroom body is from neutral */
+  $$('bk-sym').textContent = now ? bkCut(now.symbol || '?', 14) : '—';
+  $$('bk-name').textContent = now ? bkCut(now.name || 'no name', 44)
+    : (R.in_room ? 'in the room, not on a card' : 'not in the room');
+  const d = now && bkFin(now.drive) ? Math.max(-1, Math.min(1, Number(now.drive))) : null;
+  const fill = $$('bk-fill');
+  fill.style.left  = (d == null || d >= 0 ? 50 : 50 + d*50) + '%';
+  fill.style.width = (d == null ? 0 : Math.abs(d)*50) + '%';
+  fill.classList.toggle('dn', d != null && d < 0);
+  $$('bk-drive').textContent = d == null ? 'no reading' : bkDrive(d);
+  $$('bk-dwell').textContent = now ? bkN(now.dwell_steps, 0) : '—';
+  $$('bk-held').textContent = now ? (now.held ? 'yes' : 'no') : '—';
+  $$('bk-board').textContent = bkN(R.board_size, 0);
+  $$('bk-dislikes').textContent = bkN(R.dislikes, 0);
+
+  /* the paper book, as the executor derived it from its ledger */
+  const C = B.counts || {};
+  const pos = Array.isArray(B.positions) ? B.positions : [];
+  $$('bk-bal').textContent = bkN(B.eth_balance, 4);
+  $$('bk-start').textContent = bkN(B.start_eth, 4);
+  $$('bk-buys').textContent = bkN(C.buys, 0);
+  $$('bk-sells').textContent = bkN(C.sells, 0);
+  $$('bk-open').textContent = bkN(pos.length, 0);
+  $$('bk-crefused').textContent = bkN(C.refused, 0);
+  bkList($$('bk-pos'), pos, 'nothing held', (host, p) => bkRow(host, [
+    {c:'bks', t: bkCut(p.symbol || '?', 12)},
+    {c:'bkd', t: bkN(p.tokens, 0) + ' tokens'},
+    {c:'bkv', t: bkN(p.cost_eth, 4) + ' ETH'},
+  ]));
+
+  const trades = (Array.isArray(B.trades) ? B.trades : []).slice(-14).reverse();
+  bkList($$('bk-trades'), trades, 'no paper trades yet', (host, t) => {
+    const sold = t.side === 'sell';
+    const r = bkFin(t.realised_eth) ? Number(t.realised_eth) : null;
+    bkRow(host, [
+      {c:'bkt', t: bkTime(t.at)},
+      {c:'bks', t: bkCut(t.symbol || '?', 10)},
+      {c:'bkd', t: (sold ? 'sold' : 'bought') + ' · drive ' + bkDrive(t.drive)},
+      {c:'bkv', t: bkN(t.eth, 4) + ' ETH'},
+      sold ? {c:'bkv ' + (r != null && r < 0 ? 'dn' : 'up'),
+              t: r == null ? '—' : (r >= 0 ? '+' : '-') + Math.abs(r).toFixed(4)} : null,
+    ]);
+  });
+
+  /* learning: q is what the mark came back as against the last mark */
+  const L = R.learning || {};
+  $$('bk-sugar').textContent = bkN(L.sugar, 0);
+  $$('bk-shock').textContent = bkN(L.shock, 0);
+  bkList($$('bk-dop'), (Array.isArray(L.last) ? L.last : []).slice().reverse(),
+    'no dopamine yet', (host, x) => bkRow(host, [
+      {c:'bkt', t: bkTime(x.at)},
+      {c:'bks', t: bkCut(x.symbol || '?', 10)},
+      {c:'bkd', t: (x.kind === 'sell' ? 'sell' : 'look') + ' · q ' +
+        (bkFin(x.q) ? Number(x.q).toFixed(3) : '?')},
+      {c:'bkv ' + (Number(x.sign) > 0 ? 'up' : 'dn'),
+       t: Number(x.sign) > 0 ? 'sugar' : 'shock'},
+    ]));
+
+  /* intents, refusals included - the refusal is the interesting half */
+  bkList($$('bk-intents'),
+    (Array.isArray(R.last_intents) ? R.last_intents : []).slice().reverse(),
+    'no intents yet', (host, i) => {
+      const st = bkCut(i.status == null ? '?' : i.status, 14);
+      const bad = /refus|busy|error|fail/i.test(st);
+      bkRow(host, [
+        {c:'bkt', t: bkTime(i.at)},
+        {c:'bks', t: bkCut(i.symbol || '?', 10)},
+        {c:'bkd', t: bkCut((i.side || '?') + ' · drive ' + bkDrive(i.drive) +
+          (i.reason ? ' · ' + i.reason : ''), 72)},
+        {c:'bkv ' + (bad ? 'no' : 'up'), t: st},
+      ]);
+    });
+  $$('bk-busy').textContent = bkN(R.busy, 0) +
+    ' commits landed while an intent was already in flight' +
+    (R.board_error ? ' · the coin listing could not be read: ' + R.board_error : '');
+
+  $$('bk-visits').textContent = bkN(R.visits, 0);
+  $$('bk-looks').textContent = bkN(R.looks, 0);
+  $$('bk-commits').textContent = bkN(R.commits, 0);
+  $$('bk-intents-n').textContent = bkN(R.intents, 0);
+  $$('bk-booked').textContent = bkN(R.booked, 0);
+}
+
+/* The room rides along on the socket frame when one is open; this poll covers
+   the rest of the time. A 404, an unreachable fly or a run with the backroom
+   switched off all read as closed - but a poll that fails while the socket is
+   still delivering room state does not blank a working panel. */
+let bkFromSocket = 0;
+async function backroomTick(){
+  const base = sockUrl || STABLE_STREAM;
+  try {
+    const r = await fetch(base + '/backroom/state', {cache:'no-store'});
+    if (!r.ok) throw new Error('no room');
+    renderBackroom(await r.json());
+  } catch (e) {
+    if (Date.now() - bkFromSocket > 30000) renderBackroom(null);
+  }
+}
+backroomTick();
+setInterval(backroomTick, 15000);
 
 tick();
 setInterval(tick, 15000);
