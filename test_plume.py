@@ -283,5 +283,118 @@ class TestTrialDesign(unittest.TestCase):
         self.assertGreaterEqual(above, 10)
 
 
+class TestStartRuleV2(unittest.TestCase):
+    """
+    Protocol v2's start rule, and the promise that v1 is untouched by it: the
+    v1 numbers below were pinned from the module before the v2 code existed.
+    """
+
+    V1_STARTS = {   # seed: (y, heading, c) from World(seed) before protocol v2 was added
+        0: (0.16369616873214543, 1.6951199159934145, 0.09237202306045869),
+        1: (0.1511821624700257, 5.971939531762716, 0.34279521078685415),
+        2: (0.12616121342493164, 1.8754751666228542, 0.1531672654039195),
+        3: (0.10856491671436244, 1.4879242956303682, 0.25117631858190925),
+        4: (0.19430561055723677, 3.212765766999291, 0.12021646704020299),
+    }
+
+    def test_v1_starts_and_trajectory_are_byte_identical(self):
+        for seed, (y, h, c) in self.V1_STARTS.items():
+            for w in (World(seed=seed), World(seed=seed, protocol="v1")):
+                self.assertEqual((w.start["x"], w.start["y"], w.start["heading"], w.start["c"]), (plume.START_X, y, h, c))
+                self.assertIsNone(w.start_side)
+                self.assertEqual(w.start_c_field, c)
+        w = World(seed=0)
+        for _ in range(100):
+            w.step(0.1, 1.0)
+        s = w.state
+        self.assertEqual((s["x"], s["y"], s["heading"], s["c"]),
+                         (0.5058333130895555, 0.23432550052534276, 0.12432358919852682, 0.19137342838703963))
+
+    def test_v2_start_is_0_20_m_downwind_and_at_least_0_08_m_off_the_centreline(self):
+        sides = set()
+        for seed in range(50):
+            w = World(seed=seed, protocol="v2")
+            s = w.start
+            self.assertEqual(s["x"], 0.25)
+            self.assertEqual(s["x"], plume.START_X_V2)
+            self.assertGreaterEqual(abs(s["y"] - SY) + 1e-12, 0.08)
+            in_band = any(lo <= s["y"] <= hi for lo, hi in plume.START_Y_V2)
+            self.assertTrue(in_band, s["y"])
+            self.assertTrue(0.0 <= s["heading"] < 2 * math.pi)
+            self.assertEqual(s["t"], 0.0)
+            self.assertFalse(s["reached"])
+            self.assertIn(w.start_side, ("low", "high"))
+            self.assertEqual(w.start_side == "high", s["y"] > SY)
+            sides.add(w.start_side)
+            self.assertEqual(w.start_c_field, float(w.field(s["x"], s["y"])))
+        self.assertEqual(sides, {"low", "high"})
+        self.assertAlmostEqual(plume.START_OFFSET_MIN_V2, 0.08, places=12)
+
+    def test_v2_start_is_outside_the_plume_on_41_of_50_seeds(self):
+        # MEASURED, not chosen: the rule puts the fly 3.2 sd outside the
+        # meander-free plume (0.004 at the inner edge), but the meander swings
+        # the plume onto the start band on 9 of the first 50 seeds. The rule
+        # was fixed before this was measured and is kept; the count is pinned
+        # here so the runner's report of it can be checked.
+        d = plume.start_rule_v2_check(50)
+        self.assertEqual(d["n_start_above_threshold"], 9)
+        self.assertEqual(d["seeds_above_threshold"], [0, 16, 18, 20, 24, 28, 32, 38, 47])
+        self.assertLess(d["c_start_median"], plume.ODOUR_THRESHOLD / 10)
+        self.assertAlmostEqual(d["c_start_max"], 0.470, places=2)
+        self.assertLess(d["c_straight_plume_inner_edge"], plume.ODOUR_THRESHOLD / 10)
+        self.assertAlmostEqual(d["plume_sd_m_at_start_x"], 0.0247, delta=0.0005)
+        self.assertGreaterEqual(d["min_offset_realised_m"], 0.08)
+        above = [seed for seed in range(50) if World(seed=seed, protocol="v2").start["c"] > plume.ODOUR_THRESHOLD]
+        self.assertEqual(above, d["seeds_above_threshold"])
+        for seed in range(50):
+            if seed not in above:
+                self.assertLess(World(seed=seed, protocol="v2").start["c"], plume.ODOUR_THRESHOLD)
+
+    def test_v2_source_needs_42_percent_of_top_speed(self):
+        self.assertAlmostEqual(plume.REACH_MIN_S_V2, 8.5)
+        self.assertAlmostEqual(plume.REACH_MIN_SPEED_V2, 0.425)
+        self.assertLess(plume.REACH_MIN_S_V2, plume.TRIAL_S / 2)
+        d = plume.start_rule_v2_check(3)
+        self.assertAlmostEqual(d["reach_min_speed_fraction"], 0.425)
+        # the straight line from the band to the reach radius: 0.185-0.203 m, 46-51 % of top speed,
+        # and at least 0.05 m of it must be crosswind, so walking straight upwind passes the source
+        self.assertAlmostEqual(d["reach_straight_line_m"][0], math.hypot(0.20, 0.08) - 0.03, places=12)
+        self.assertAlmostEqual(d["reach_straight_line_m"][1], math.hypot(0.20, 0.12) - 0.03, places=12)
+        self.assertAlmostEqual(d["reach_straight_line_speed_fraction"][0], 0.463, places=2)
+        self.assertAlmostEqual(d["reach_straight_line_speed_fraction"][1], 0.508, places=2)
+        self.assertAlmostEqual(d["reach_needs_crosswind_travel_m_at_least"], 0.05, places=12)
+        w = World(seed=1, odour=False, protocol="v2")
+        w.heading = math.pi
+        for _ in range(plume.TRIAL_STEPS):
+            w.step(0.0, 1.0)
+        self.assertFalse(w.reached)
+        self.assertEqual(w.x, 0.0)
+
+    def test_v2_shares_the_plume_of_its_seed_with_v1(self):
+        # two uniform draws precede the meander under both protocols, so the
+        # wind and the plume are the same for a seed; only the fly's start differs
+        for seed in (0, 7):
+            a, b = World(seed=seed, protocol="v1"), World(seed=seed, protocol="v2")
+            self.assertNotEqual(a.start["x"], b.start["x"])
+            self.assertEqual(float(a.field(0.3, SY)), float(b.field(0.3, SY)))
+            for _ in range(60):
+                a.step(0.0, 0.0)
+                b.step(0.4, 1.0)
+            xs, ys, ca = a.snapshot(20, 10)
+            _, _, cb = b.snapshot(20, 10)
+            np.testing.assert_array_equal(ca, cb)
+
+    def test_v2_paired_conditions_share_start_and_wind(self):
+        on, off = World(seed=9, odour=True, protocol="v2"), World(seed=9, odour=False, protocol="v2")
+        self.assertEqual((on.start["x"], on.start["y"], on.start["heading"]),
+                         (off.start["x"], off.start["y"], off.start["heading"]))
+        self.assertEqual(on.start_c_field, off.start_c_field)
+        self.assertEqual(off.start["c"], 0.0)
+
+    def test_unknown_protocol_is_refused(self):
+        with self.assertRaises(ValueError):
+            World(seed=0, protocol="v3")
+
+
 if __name__ == "__main__":
     unittest.main()

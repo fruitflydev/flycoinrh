@@ -14,6 +14,10 @@ weights. Wiring is fixed anatomy; gains are the trainable parameters.
 
 Spike propagation uses a ragged-gather over CSC columns, so cost scales with
 the number of neurons that actually fired, not with the 160k-neuron population.
+
+A run starts from rest unless it is handed the `_state` a previous run
+returned, in which case it continues where that run stopped. The default is
+what every caller before the plume experiment relied on, and stays so.
 """
 import numpy as np
 import scipy.sparse as sp
@@ -85,21 +89,40 @@ class FlyBrain:
 
     # ---- simulation ------------------------------------------------------
 
-    def run(self, drive, steps, gains=None, record=None, seed=0, spike_log=False):
+    def run(self, drive, steps, gains=None, record=None, seed=0, spike_log=False,
+            state=None):
         """
         drive     : dict {neuron_index_array: rate_hz} external Poisson input
         steps     : number of dt steps
         gains     : (n_types,) float32 multipliers on outgoing weights, or None
         record    : dict {name: neuron_index_array} populations to count spikes for
         spike_log : also return every spike as (step, neuron_indices), for rendering
-        returns   : dict {name: spikes_per_neuron_per_second}, plus '_total'
+        state     : None, or the '_state' dict a previous run returned. With
+                    None every neuron starts at rest with no refractory time
+                    left and a fresh rng seeded by `seed`, exactly as before
+                    this argument existed. With a state the run continues from
+                    it (membrane potentials, refractory counters and the rng's
+                    bit_generator state) and `seed` is ignored, so k chained
+                    runs of N / k steps reproduce one run of N steps spike for
+                    spike. The dict passed in is copied, never modified.
+        returns   : dict {name: spikes_per_neuron_per_second}, plus '_total',
+                    and '_state', the state the run ends in, for the next call
         """
         p = self.p
-        rng = np.random.default_rng(seed)
         n = self.n
 
-        v = np.full(n, p.v_rest, dtype=np.float32)
-        refr = np.zeros(n, dtype=np.int32)
+        if state is None:
+            rng = np.random.default_rng(seed)
+            v = np.full(n, p.v_rest, dtype=np.float32)
+            refr = np.zeros(n, dtype=np.int32)
+        else:
+            v = np.array(state["v"], dtype=np.float32, copy=True)
+            refr = np.array(state["refr"], dtype=np.int32, copy=True)
+            if v.shape != (n,) or refr.shape != (n,):
+                raise ValueError(
+                    f"state is for {v.shape[0]} neurons, this brain has {n}")
+            rng = np.random.default_rng()
+            rng.bit_generator.state = state["rng"]
 
         if gains is None:
             gain_per_neuron = np.ones(n, dtype=np.float32)
@@ -184,6 +207,10 @@ class FlyBrain:
         out["_spikes_per_sec"] = total_spikes / secs
         out["_fired"] = np.flatnonzero(ever)
         out["_mean_mv"] = float(v.mean())
+        # where the brain is when the window ends, so the next call can go on
+        # from here instead of from rest; v and refr are this run's own arrays
+        # and the rng state is a fresh dict, so nothing here aliases the input
+        out["_state"] = {"v": v, "refr": refr, "rng": rng.bit_generator.state}
         if spike_log:
             out["_spikes"] = log
         return out

@@ -40,10 +40,38 @@ CHOSEN, every one of them named in CONSTANTS below so a report can print them
     time, the roamer's convention), top speed 0.02 m/s, top turn rate 180 deg/s.
   * Trial: start at x = 0.45 (0.4 m downwind of the source), y uniform in
     [0.10, 0.20], heading uniform, 400 steps (20 s) or until within 0.03 m of
-    the source.
+    the source. That is protocol "v1", the published run, and World(seed)
+    still reproduces it byte for byte.
+  * Protocol "v2" start rule (World(seed, protocol="v2"); fixed before any v2
+    trial, removing two confounds the v1 report named as follow-up work):
+    x = 0.25, i.e. 0.20 m downwind of the source, so a straight upwind walk
+    to the reach radius needs 8.5 s of the 20 s (42.5 % of top speed) instead
+    of 92.5 %; y uniform on [0.03, 0.07] or [0.23, 0.27], the side chosen at
+    random, so the fly is at least 0.08 m off the centreline (3.2 sd of the
+    meander-free plume there); heading uniform. One uniform draw gives both
+    the side and the position in the band and one gives the heading, the
+    same two draws v1 spends on y and heading, so the meander stream and
+    therefore the plume of a given seed are identical under both protocols.
+    Everything else (arena, wind, plume, warm-up, dt, speeds, trial length,
+    reach radius) is unchanged.
 
 CONSEQUENCES OF THOSE CHOICES (arithmetic, not results; disclosed so a reader
 of the outputs does not mistake them for properties of the brain)
+  * The v2 start is outside the MEANDER-FREE plume (0.004 at the inner band
+    edge against the 0.05 threshold) but the meander can swing the plume
+    toward a wall by a few centimetres, and on some seeds it has done so at
+    t = 0. MEASURED with start_rule_v2_check(): 9 of the first 50 seeds
+    (seeds 0, 16, 18, 20, 24, 28, 32, 38, 47) start above the threshold, the
+    worst at 0.47 (seed 24). The rule was fixed before this was measured and
+    is kept as fixed; the runner reports the count instead of discarding or
+    re-drawing, so v2's "encounters" are onsets from clean air on the other
+    seeds and the record says which ones they are not.
+  * "42.5 % of top speed" is the upwind leg alone. The v2 start is also
+    0.08-0.12 m off the centreline, so the straight line to the reach radius
+    is hypot(0.20, offset) - 0.03 = 0.185-0.203 m, i.e. 9.3-10.2 s at top
+    speed (46-51 %); a fly that only walks upwind passes the source and
+    stops at the upwind wall. Reaching the source needs some crosswind
+    travel as well, which is the point of the offset.
   * The source is only just reachable. The fly must cover 0.45 - 0.05 - 0.03
     = 0.37 m in 20 s at a top speed of 0.02 m/s: 18.5 s of straight upwind
     walking at full speed, 92.5 % of what the trial allows. Any hesitation or
@@ -96,13 +124,18 @@ CONSTANTS = {
     "dt": 0.05,                # s of world time per step
     "v_max": 0.02,             # m/s
     "turn_rate_deg": 180.0,    # deg/s at |turn| = 1
-    # trial
+    # trial (protocol v1, the published run)
     "start_x": 0.45,           # m
     "start_y": (0.10, 0.20),   # m, uniform
     "trial_steps": 400,        # 20 s
     "reach_radius": 0.03,      # m from the source counts as reached
     "odour_threshold": 0.05,   # the encounter/loss threshold the metrics use
+    # trial (protocol v2 start rule; everything not listed here is shared with v1)
+    "start_x_v2": 0.25,                          # m, 0.20 m downwind of the source
+    "start_y_v2": ((0.03, 0.07), (0.23, 0.27)),  # m, uniform within one band, the band at random
 }
+
+PROTOCOLS = ("v1", "v2")
 
 ARENA_X = CONSTANTS["arena_x"]
 ARENA_Y = CONSTANTS["arena_y"]
@@ -133,6 +166,12 @@ RELEASE_EVERY = max(1, int(round(PUFF_INTERVAL / DT)))   # steps between puffs
 TRIAL_S = TRIAL_STEPS * DT                                          # 20 s
 REACH_MIN_S = (START_X - SOURCE[0] - REACH_RADIUS) / V_MAX          # 18.5 s of straight full-speed upwind walking
 REACH_MIN_SPEED = REACH_MIN_S / TRIAL_S                             # 0.925 of top speed, straight, for the whole trial
+# The same arithmetic for the v2 start rule.
+START_X_V2 = CONSTANTS["start_x_v2"]
+START_Y_V2 = tuple(tuple(b) for b in CONSTANTS["start_y_v2"])
+START_OFFSET_MIN_V2 = min(abs(edge - SOURCE[1]) for band in START_Y_V2 for edge in band)   # 0.08 m off the centreline at least
+REACH_MIN_S_V2 = (START_X_V2 - SOURCE[0] - REACH_RADIUS) / V_MAX    # 8.5 s
+REACH_MIN_SPEED_V2 = REACH_MIN_S_V2 / TRIAL_S                       # 0.425 of top speed
 
 
 def _puff_sum(x, y, px, py, age, q):
@@ -183,26 +222,44 @@ def wind_direction_relative(heading):
 class World:
     """One trial's arena, plume and fly.
 
-    World(seed, odour=True, meander=True)
+    World(seed, odour=True, meander=True, protocol="v1")
       concentration(x, y)               plume at points (0 everywhere if odour=False)
       field(x, y)                       plume regardless of the odour flag (for pictures)
       wind_direction_relative(heading)  0 = headwind, +pi/2 = wind from the left
       step(turn, speed) -> state dict   {x, y, heading, c, t, reached, wall_contacts, ...}
       state                             the current state dict (a copy)
       start                             the state before any step
+      start_c_field                     the plume at the start pose whatever the odour flag
+                                        (so a blank trial can still say whether it began in odour)
+      start_side                        "low" / "high" band under v2, None under v1
       log                               one state dict per step() call
       trajectory()                      the log as a dict of numpy arrays
       snapshot(nx, ny)                  (xs, ys, C) grid of the plume right now
     """
 
-    def __init__(self, seed=0, odour=True, meander=True):
+    def __init__(self, seed=0, odour=True, meander=True, protocol="v1"):
+        if protocol not in PROTOCOLS:
+            raise ValueError(f"protocol must be one of {PROTOCOLS}, not {protocol!r}")
         self.seed = int(seed)
         self.odour = bool(odour)
         self.meander = bool(meander)
+        self.protocol = str(protocol)
         self.rng = np.random.default_rng(self.seed)
-        # fly start pose first, so it does not depend on the plume's noise
-        self.x = START_X
-        self.y = float(self.rng.uniform(*START_Y))
+        # fly start pose first, so it does not depend on the plume's noise.
+        # Both protocols spend exactly two uniform draws here, so the meander
+        # stream that follows, and with it the plume, is the same for a seed.
+        self.start_side = None
+        if self.protocol == "v2":
+            self.x = START_X_V2
+            u = float(self.rng.uniform())
+            band = 1 if u >= 0.5 else 0
+            frac = 2.0 * u - math.floor(2.0 * u)                # uniform on [0, 1) given the band
+            lo, hi = START_Y_V2[band]
+            self.y = float(lo + (hi - lo) * frac)
+            self.start_side = "high" if band else "low"
+        else:
+            self.x = START_X
+            self.y = float(self.rng.uniform(*START_Y))
         self.heading = float(self.rng.uniform(0.0, 2.0 * math.pi))
         # plume state
         self._px = np.zeros(0)
@@ -219,6 +276,7 @@ class World:
         self.wall_contacts = 0
         self.reached = self._near_source()
         self.log = []
+        self.start_c_field = float(self.field(self.x, self.y))
         self.start = self._state(turn=0.0, speed=0.0, vx=0.0, vy=0.0)
 
     # ---- plume -------------------------------------------------------------
@@ -362,6 +420,47 @@ def start_band_straight_plume(n=21):
         "fraction_of_band_above_threshold": float(np.mean(c > ODOUR_THRESHOLD)),
         "plume_sd_m_at_start_x": float(math.sqrt(R0 ** 2 + 2.0 * DIFFUSION * age)),
         "reach_min_s": REACH_MIN_S, "trial_s": TRIAL_S, "reach_min_speed_fraction": REACH_MIN_SPEED,
+    }
+
+
+def start_rule_v2_check(n_seeds=50):
+    """
+    The v2 start rule against the plume it actually meets, for disclosure:
+    over the first n_seeds seeds, the start pose's distance from the
+    centreline (never below START_OFFSET_MIN_V2 by construction) and the
+    plume at the start pose at t = 0, which the meander can push above the
+    threshold on some seeds. Returns the count and the seeds that start above
+    the threshold, the worst concentration, and the arithmetic of the rule.
+    Nothing here changes a trial; the runner records it next to the trials.
+    """
+    n_seeds = int(n_seeds)
+    above, c_start, offsets = [], [], []
+    for seed in range(n_seeds):
+        w = World(seed=seed, odour=True, protocol="v2")
+        c_start.append(w.start_c_field)
+        offsets.append(abs(w.y - SOURCE[1]))
+        if w.start_c_field > ODOUR_THRESHOLD:
+            above.append(seed)
+    max_offset = max(abs(edge - SOURCE[1]) for band in START_Y_V2 for edge in band)
+    dx = START_X_V2 - SOURCE[0]
+    line_near = math.hypot(dx, START_OFFSET_MIN_V2) - REACH_RADIUS      # straight line to the reach radius, inner band edge
+    line_far = math.hypot(dx, max_offset) - REACH_RADIUS                # ... outer band edge
+    return {
+        "protocol": "v2", "n_seeds": n_seeds, "x": START_X_V2, "y_bands": [list(b) for b in START_Y_V2],
+        "threshold": ODOUR_THRESHOLD, "min_offset_m": START_OFFSET_MIN_V2,
+        "min_offset_realised_m": float(min(offsets)) if offsets else float("nan"),
+        "n_start_above_threshold": len(above), "seeds_above_threshold": above,
+        "c_start_max": float(max(c_start)) if c_start else float("nan"),
+        "c_start_median": float(np.median(c_start)) if c_start else float("nan"),
+        "c_straight_plume_inner_edge": float(straight_plume_concentration(START_X_V2, START_Y_V2[0][1])),
+        "plume_sd_m_at_start_x": float(math.sqrt(R0 ** 2 + 2.0 * DIFFUSION * (START_X_V2 - SOURCE[0]) / WIND_SPEED)),
+        "reach_min_s": REACH_MIN_S_V2, "trial_s": TRIAL_S, "reach_min_speed_fraction": REACH_MIN_SPEED_V2,
+        # the upwind leg alone is 42.5 %; the straight line from the band to the reach radius needs more,
+        # and a fly that only walks upwind passes the source
+        "reach_straight_line_m": [line_near, line_far],
+        "reach_straight_line_s": [line_near / V_MAX, line_far / V_MAX],
+        "reach_straight_line_speed_fraction": [line_near / V_MAX / TRIAL_S, line_far / V_MAX / TRIAL_S],
+        "reach_needs_crosswind_travel_m_at_least": START_OFFSET_MIN_V2 - REACH_RADIUS,
     }
 
 

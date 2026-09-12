@@ -331,12 +331,15 @@ class FakeWorld:
     dt = DT
 
     def __init__(self, seed, odour=True, x=0.45, y=0.15, heading=math.pi, field=None,
-                 heading_unit="rad"):
-        self.seed, self.odour = seed, odour
+                 heading_unit="rad", protocol="v1"):
+        self.seed, self.odour, self.protocol = seed, odour, protocol
+        if protocol == "v2" and x == 0.45:
+            x = 0.25
         self.x, self.y, self.t = x, y, 0.0
         self.heading_unit = heading_unit
         self._h = heading
         self.field = field or (lambda x, y, t: 0.0)
+        self.start_c_field = float(self.field(self.x, self.y, 0.0))
         self.wall_contacts, self.reached = 0, False
         self.trajectory = []
 
@@ -879,6 +882,802 @@ class PlumeAverage(unittest.TestCase):
             pe._render_pil(trials, Path(d) / "pil.png", np.zeros((30, 60)), pe.ARENA, pe.SOURCE,
                            pe.SOURCE_RADIUS, ["odour"], "a caption")
             self.assertTrue((Path(d) / "pil.png").exists())
+
+
+# ---- protocol v2 ---------------------------------------------------------------------
+
+def born_inside_trial(n=140, zigzag_from=None):
+    """
+    Born inside (30 samples), lost at 30, found at 60, lost at 100 after 40
+    samples inside with 40 steps to go: v1 counts both losses, v2 only the
+    second (the first precedes any encounter and has under 2 s inside).
+    """
+    c = np.zeros(n + 1)
+    c[:30] = 1.0
+    c[60:100] = 1.0
+    y = np.full(n + 1, 0.15)
+    h = np.full(n + 1, math.pi)
+    if zigzag_from is not None:
+        for j in range(zigzag_from + 1, n + 1):
+            if (j - zigzag_from) % 2 == 1:
+                h[j] = math.pi + math.pi / 2
+                y[j] = 0.15 + 0.0005
+    return make_trial(0.45 - 0.0005 * np.arange(n + 1), y, h, c)
+
+
+class V2Windows(unittest.TestCase):
+    """
+    Protocol v2's window rules are the primary P1/P2 values: an encounter
+    without a full window on both sides is excluded, and a loss counts only
+    if it follows an encounter and has full windows; v1's rule stays under
+    its own name for the side-by-side reading.
+    """
+
+    def test_encounter_without_a_full_before_window_is_excluded(self):
+        # cast_trial's encounter is at sample 10: only 10 before-steps, the window needs 20
+        m1, m2 = pe.metrics(cast_trial(), "v1"), pe.metrics(cast_trial(), "v2")
+        self.assertEqual((m1["n_p1_events"], m1["p1_rule"]), (1, "any_window"))
+        self.assertEqual((m2["n_p1_events"], m2["p1_rule"]), (0, "full_window"))
+        self.assertTrue(math.isnan(m2["p1_surge"]))
+        self.assertEqual(m2["n_p1_events_any_window"], 1)
+        self.assertAlmostEqual(m2["p1_surge_any_window"], m1["p1_surge"], places=12)
+        self.assertEqual(m2["n_encounters"], 1)                      # the event itself is still an encounter
+
+    def test_encounter_in_the_last_second_is_excluded_and_full_ones_count(self):
+        n = 55
+        c = np.zeros(n + 1)
+        c[50:] = 1.0
+        v = np.where(np.arange(n) < 50, -0.005, -0.02)
+        x = 0.45 + np.concatenate(([0.0], np.cumsum(v * DT)))
+        m = pe.metrics(make_trial(x, np.full(n + 1, 0.15), np.full(n + 1, math.pi), c), "v2")
+        self.assertEqual(m["n_p1_events"], 0)
+        self.assertTrue(math.isnan(m["p1_surge"]))
+        self.assertAlmostEqual(m["p1_surge_any_window"], 0.015, places=9)
+        # two encounters with full windows: both count, exactly as under v1
+        n = 120
+        c = np.zeros(n + 1)
+        c[20:40] = 1.0
+        c[60:] = 1.0
+        v = np.full(n, -0.005)
+        v[20:40] = -0.015
+        v[60:80] = -0.025
+        x = 0.45 + np.concatenate(([0.0], np.cumsum(v * DT)))
+        m = pe.metrics(make_trial(x, np.full(n + 1, 0.15), np.full(n + 1, math.pi), c), "v2")
+        self.assertEqual(m["n_p1_events"], 2)
+        self.assertAlmostEqual(m["p1_surge"], 0.015, places=9)
+        self.assertAlmostEqual(m["p1_surge"], pe.metrics(make_trial(x, np.full(n + 1, 0.15), np.full(n + 1, math.pi), c), "v1")["p1_surge"])
+
+    def test_loss_before_any_encounter_is_excluded(self):
+        m1, m2 = pe.metrics(born_inside_trial(), "v1"), pe.metrics(born_inside_trial(), "v2")
+        self.assertEqual((m1["n_losses"], m1["n_p2_events"], m1["p2_rule"]), (2, 2, "any_window"))
+        self.assertEqual((m2["n_losses"], m2["n_p2_events"], m2["p2_rule"]), (2, 1, "full_window_after_encounter"))
+        self.assertEqual(m2["n_p2_events_any_window"], 2)
+        self.assertEqual(m2["n_p2_before_first_encounter"], 1)
+        self.assertEqual(m2["n_p2_events_full_post_encounter"], 1)
+        # the one that counts is the found-and-lost one at 100, with full windows: 40 in, 40 after
+        used = [e for e in m2["p2_events"] if e["full_window"] and e["after_first_encounter"]]
+        self.assertEqual([e["k"] for e in used], [100])
+        self.assertEqual([(e["k"], e["full_window"], e["after_first_encounter"]) for e in m2["p2_events"]],
+                         [(30, False, False), (100, True, True)])
+        # and a zig-zag after that loss gives the same numbers as v1's post-encounter sensitivity check
+        z = pe.metrics(born_inside_trial(zigzag_from=100), "v2")
+        self.assertAlmostEqual(z["p2_vy"], 0.010, places=9)
+        self.assertAlmostEqual(z["p2_dh_deg"], 90.0, places=6)
+        self.assertAlmostEqual(z["p2_vy"], z["p2_vy_post_encounter"], places=12)
+
+    def test_loss_needs_two_seconds_inside_and_two_seconds_after(self):
+        # found at 10, lost at 18: only 8 samples inside, v1 counts it, v2 does not
+        n = 70
+        c = np.zeros(n + 1)
+        c[10:18] = 1.0
+        y = np.full(n + 1, 0.15)
+        h = np.full(n + 1, math.pi)
+        tr = make_trial(0.45 - 0.0005 * np.arange(n + 1), y, h, c)
+        self.assertEqual(pe.metrics(tr, "v1")["n_p2_events"], 1)
+        self.assertEqual(pe.metrics(tr, "v2")["n_p2_events"], 0)
+        self.assertTrue(math.isnan(pe.metrics(tr, "v2")["p2_vy"]))
+        # found at 20, inside for 50, lost at 70 with only 10 steps left: v2 excludes the clipped after-window
+        n = 80
+        c = np.zeros(n + 1)
+        c[20:70] = 1.0
+        tr = make_trial(0.45 - 0.0005 * np.arange(n + 1), np.full(n + 1, 0.15), np.full(n + 1, math.pi), c)
+        self.assertEqual(pe.metrics(tr, "v1")["n_p2_events"], 1)
+        self.assertEqual(pe.metrics(tr, "v2")["n_p2_events"], 0)
+        self.assertEqual(pe.metrics(tr, "v2")["n_p2_events_clipped"], 1)
+
+    def test_v2_summary_uses_its_rule_and_keeps_v1_rule_as_sensitivity(self):
+        t = {"odour": [cast_trial(), dict(born_inside_trial(zigzag_from=100), seed=1)],
+             "blank": [straight_trial(0.1, seed=i, condition="blank") for i in range(2)],
+             "shuffled": [straight_trial(0.05, seed=i, condition="shuffled") for i in range(2)]}
+        s = pe.summarise(t, protocol="v2")
+        self.assertEqual(s["protocol"], "v2")
+        self.assertEqual(list(s["conditions"]), ["odour", "blank", "shuffled"])
+        p = s["predictions"]
+        self.assertEqual(p["P1_surge"]["rule"], "full_window")
+        # cast_trial's encounter at 10 lacks a full before-window; the born-inside trial's at 60 has both
+        self.assertEqual(p["P1_surge"]["n_events"], 1)
+        self.assertEqual(p["P1_surge"]["n_events_any_window"], 2)
+        self.assertEqual(p["P1_surge"]["n_trials"], 1)
+        self.assertEqual(p["P2_cast"]["rule"], "full_window_after_encounter")
+        # cast_trial's loss at 60 (50 inside, 40 after) and the born-inside trial's at 100 count; its loss at 30 does not
+        self.assertEqual(p["P2_cast"]["n_events"], 2)
+        self.assertEqual(p["P2_cast"]["n_events_any_window"], 3)
+        self.assertEqual(p["P2_cast"]["n_events_before_first_encounter"], 1)
+        self.assertIn("full", p["P1_surge"]["statement"])
+        self.assertIn("follow an encounter", p["P2_cast"]["statement"])
+        self.assertIn("carried", p["P1_surge"]["protocol_note"])
+        self.assertNotIn("restarted from rest", p["P1_surge"]["protocol_note"])
+        self.assertIn("42.5", p["P4_source_reached"]["design_note"])
+        self.assertEqual(set(s["sensitivity"]) - {"note"},
+                         {"P1_any_window_v1_rule", "P2_any_window_v1_rule", "P2_full_windows_only", "P2_losses_after_an_encounter_only"})
+        self.assertIn("not preregistered for v2", s["sensitivity"]["note"])
+        self.assertEqual(s["sensitivity"]["P1_any_window_v1_rule"]["n_trials"], 2)
+        # v1 on the same trials reads the same events under its own rule
+        s1 = pe.summarise({"odour": t["odour"]}, protocol="v1")
+        self.assertEqual(s1["predictions"]["P1_surge"]["n_events"], 2)
+        self.assertAlmostEqual(s1["predictions"]["P1_surge"]["effect"], s["sensitivity"]["P1_any_window_v1_rule"]["effect"])
+
+
+class V2Paired(unittest.TestCase):
+    """The paired SE and the 2 SE bar on odour - shuffled, and the v2 condition set."""
+
+    def trials(self, odour=(0.3, 0.2, 0.4), shuffled=(0.1, 0.1, 0.1)):
+        return {
+            "odour": [straight_trial(p, seed=i) for i, p in enumerate(odour)],
+            "blank": [straight_trial(p, seed=i, condition="blank") for i, p in enumerate((0.05, 0.05, 0.05))],
+            "shuffled": [straight_trial(p, seed=i, condition="shuffled") for i, p in enumerate(shuffled)],
+        }
+
+    def test_odour_minus_shuffled_se_and_verdicts(self):
+        s = pe.summarise(self.trials(), protocol="v2")
+        self.assertEqual(set(s["paired"]), {"odour-blank", "odour-shuffled"})
+        osh = s["paired"]["odour-shuffled"]
+        self.assertEqual(osh["seeds"], [0, 1, 2])
+        self.assertAlmostEqual(osh["mean"], 0.2, places=9)
+        self.assertAlmostEqual(osh["se"], 0.1 / math.sqrt(3), places=9)    # 0.2 > 2 x 0.0577
+        self.assertEqual(osh["verdict"], "supported")
+        p3 = s["predictions"]["P3_upwind_progress"]
+        self.assertEqual(set(p3) - {"statement", "verdict", "control_note"}, {"odour-blank", "odour-shuffled"})
+        self.assertIn("odour > shuffled", p3["statement"])
+        self.assertEqual(p3["verdict"], "supported")
+        self.assertIn("shuffled", s["predictions"]["P4_source_reached"])
+        self.assertNotIn("nowind", s["predictions"]["P4_source_reached"])
+
+    def test_within_two_se_is_not_supported(self):
+        s = pe.summarise(self.trials(odour=(0.3, 0.0, 0.1)), protocol="v2")   # diffs vs shuffled: 0.2, -0.1, 0.0
+        osh = s["paired"]["odour-shuffled"]
+        self.assertAlmostEqual(osh["mean"], 0.1 / 3, places=9)
+        self.assertAlmostEqual(osh["se"], np.std([0.2, -0.1, 0.0], ddof=1) / math.sqrt(3), places=9)
+        self.assertEqual(osh["verdict"], "not supported")
+        self.assertEqual(s["predictions"]["P3_upwind_progress"]["verdict"], "not supported")
+        # exactly 2 SE is not more than 2 SE
+        se = np.std([0.2, -0.1, 0.0], ddof=1) / math.sqrt(3)
+        self.assertEqual(pe.verdict(2 * se, se), "not supported")
+        self.assertEqual(pe.verdict(2 * se + 1e-12, se), "supported")
+
+    def test_one_half_passing_is_not_supported(self):
+        s = pe.summarise(self.trials(shuffled=(0.3, 0.2, 0.4)), protocol="v2")   # odour == shuffled
+        self.assertEqual(s["paired"]["odour-blank"]["verdict"], "supported")
+        self.assertEqual(s["paired"]["odour-shuffled"]["verdict"], "not supported")
+        self.assertEqual(s["predictions"]["P3_upwind_progress"]["verdict"], "not supported")
+
+
+class FacingUpwind(unittest.TestCase):
+    def test_fraction_of_steps_with_cos_phi_positive(self):
+        self.assertAlmostEqual(pe.metrics(straight_trial(0.2))["facing_upwind_fraction"], 1.0)
+        n = 20
+        down = make_trial(0.3 + 0.001 * np.arange(n + 1), np.full(n + 1, 0.15), np.zeros(n + 1), np.zeros(n + 1))
+        self.assertAlmostEqual(pe.metrics(down)["facing_upwind_fraction"], 0.0)
+        h = np.full(n + 1, math.pi)
+        h[:10] = 0.0                                  # the heading at the start of each step counts: 10 of 20 steps
+        half = make_trial(np.full(n + 1, 0.3), np.full(n + 1, 0.15), h, np.zeros(n + 1))
+        self.assertAlmostEqual(pe.metrics(half)["facing_upwind_fraction"], 0.5)
+        s = pe.summarise({"blank": [straight_trial(0.1, condition="blank"), dict(down, seed=1, condition="blank")]})
+        self.assertAlmostEqual(s["conditions"]["blank"]["facing_upwind_fraction"]["mean"], 0.5)
+        self.assertAlmostEqual(s["baseline_blank"]["facing_upwind_fraction"]["mean"], 0.5)
+        self.assertAlmostEqual(s["disclosures"]["blank"]["facing_upwind_fraction"], 0.5)
+
+
+class Smoothing(unittest.TestCase):
+    """The motor low-pass in run_trial: the world gets the smoothed command, the record keeps both."""
+
+    def test_exponential_smoothing_from_rest(self):
+        alpha = 1.0 - math.exp(-DT / 0.15)
+        self.assertAlmostEqual(pe.smooth_alpha(DT, 0.15), alpha)
+        self.assertEqual(pe.smooth_alpha(DT, None), 1.0)
+        tr = pe.run_trial(FakeWorld(0), FakeFly(turn=0.5, speed=1.0), 30, 0, True, smooth_tau_s=0.15)
+        self.assertAlmostEqual(tr["smooth_alpha"], alpha)
+        self.assertEqual(tr["smooth_tau_s"], 0.15)
+        np.testing.assert_allclose(tr["turn_raw"], 0.5)
+        np.testing.assert_allclose(tr["speed_raw"], 1.0)
+        expect = 1.0 - (1.0 - alpha) ** (np.arange(30) + 1)
+        np.testing.assert_allclose(tr["turn"], 0.5 * expect, atol=1e-12)
+        np.testing.assert_allclose(tr["speed"], expect, atol=1e-12)
+        self.assertLess(tr["speed"][0], 0.3)
+        self.assertGreater(tr["speed"][-1], 0.99)
+        # the world moved by the smoothed speed, not the raw one (FakeWorld turns, then walks along the new heading)
+        self.assertAlmostEqual(tr["x"][1] - tr["x"][0], expect[0] * 0.02 * DT * math.cos(tr["heading"][1]), places=12)
+        m = pe.metrics(tr)
+        self.assertAlmostEqual(m["mean_turn_raw"], 0.5)
+        self.assertAlmostEqual(m["mean_speed_raw"], 1.0)
+        self.assertAlmostEqual(m["mean_turn_cmd"], float(np.mean(0.5 * expect)))
+        self.assertLess(m["mean_speed_cmd"], m["mean_speed_raw"])
+
+    def test_no_smoothing_leaves_raw_and_world_commands_equal(self):
+        tr = pe.run_trial(FakeWorld(0), FakeFly(turn=0.3, speed=0.7), 10, 0, True)
+        np.testing.assert_array_equal(tr["turn"], tr["turn_raw"])
+        np.testing.assert_array_equal(tr["speed"], tr["speed_raw"])
+        self.assertEqual(tr["smooth_alpha"], 1.0)
+
+    def test_command_distributions(self):
+        a = pe.run_trial(FakeWorld(0), FakeFly(turn=0.5, speed=1.0), 30, 0, True, smooth_tau_s=0.15)
+        b = pe.run_trial(FakeWorld(1), FakeFly(turn=-1.5, speed=-0.2), 10, 1, True, smooth_tau_s=0.15)
+        d = pe.command_distributions([a, b])
+        self.assertEqual(set(d) - {"note"}, {"turn_raw", "speed_raw", "turn", "speed"})
+        self.assertEqual(d["turn_raw"]["n"], 40)
+        self.assertAlmostEqual(d["turn_raw"]["fraction_negative"], 0.25)
+        self.assertAlmostEqual(d["turn_raw"]["fraction_beyond_clip"], 0.25)   # -1.5 is beyond the world's clip
+        self.assertAlmostEqual(d["speed_raw"]["q50"], 1.0)
+        self.assertAlmostEqual(d["speed_raw"]["min"], -0.2)
+        self.assertLessEqual(d["speed"]["max"], 1.0)
+        self.assertLess(d["turn"]["min"], 0.0)
+        s = pe.summarise({"odour": [a, dict(b, seed=1)]}, protocol="v2")
+        self.assertEqual(s["conditions"]["odour"]["commands"]["turn_raw"]["n"], 40)
+        self.assertEqual(pe.command_distributions([straight_trial(0.1)])["turn"]["n"], 40)
+        self.assertEqual(pe.command_distributions([dict(straight_trial(0.1), turn=np.array([]), speed=np.array([]))]), {})
+
+
+class Shuffled(unittest.TestCase):
+    """The shuffled control: the fly's antennae get a random angle, the record keeps the true one."""
+
+    def test_fly_gets_a_random_angle_independent_of_the_heading(self):
+        f = FakeFly(turn=0.0, speed=0.0)
+        tr = pe.run_trial(FakeWorld(3), f, 200, 3, True, condition="shuffled", shuffled=True)
+        self.assertTrue(tr["shuffled"])
+        np.testing.assert_allclose(tr["phi"], 0.0, atol=1e-12)                # the fly stands facing the wind
+        given = np.array([c[1] for c in f.calls])
+        np.testing.assert_array_equal(given, tr["phi_fly"])
+        self.assertTrue(np.all(given > -math.pi) and np.all(given <= math.pi))
+        self.assertGreater(np.std(given), 1.0)                                  # uniform on (-pi, pi]: sd 1.81
+        self.assertLess(abs(np.mean(given)), 0.5)
+        self.assertGreater(np.mean(np.abs(given) > math.pi / 2), 0.35)         # half the angles are tailwind-ish
+        self.assertEqual(len(set(np.round(given, 12))), 200)
+        self.assertTrue(all(c[2] is True for c in f.calls))                     # wind sense stays on
+
+    def test_deterministic_per_seed_and_distinct_from_the_brain_seed(self):
+        a = pe.run_trial(FakeWorld(4), FakeFly(), 20, 4, True, shuffled=True)
+        b = pe.run_trial(FakeWorld(4, odour=False), FakeFly(), 20, 4, True, shuffled=True)
+        np.testing.assert_array_equal(a["phi_fly"], b["phi_fly"])
+        c = pe.run_trial(FakeWorld(5), FakeFly(), 20, 5, True, shuffled=True)
+        self.assertFalse(np.array_equal(a["phi_fly"], c["phi_fly"]))
+        self.assertNotEqual(pe.shuffle_seed(4), pe.step_seed(4, 0))
+        self.assertNotEqual(pe.shuffle_seed(4), pe.shuffle_seed(5))
+        plain = pe.run_trial(FakeWorld(4), FakeFly(), 20, 4, True)
+        np.testing.assert_array_equal(plain["phi_fly"], plain["phi"])
+        self.assertFalse(plain["shuffled"])
+        self.assertEqual(pe.condition_flags("v2", "shuffled"), (True, True, True))
+        self.assertEqual(pe.condition_flags("v2", "blank"), (False, True, False))
+        self.assertEqual(pe.condition_flags("v1", "nowind"), (True, False, False))
+
+
+class CarryingFly(FakeFly):
+    def __init__(self, *a, method="begin_trial", **kw):
+        super().__init__(*a, **kw)
+        self.begun = []
+        setattr(self, method, self._begin)
+
+    def _begin(self, seed):
+        self.begun.append(int(seed))
+
+
+class StateCarry(unittest.TestCase):
+    """v2 tells the fly when a trial starts, and refuses a fly that cannot be told."""
+
+    def test_begin_trial_is_called_once_per_trial_with_the_trial_seed(self):
+        f = CarryingFly()
+        tr = pe.run_trial(FakeWorld(7), f, 15, 7, True, state_carry=True)
+        self.assertEqual(f.begun, [pe.trial_seed(7)])
+        self.assertEqual(pe.trial_seed(7), pe.step_seed(7, 0))
+        self.assertEqual(tr["begin_trial_method"], "begin_trial")
+        self.assertTrue(tr["state_carry"])
+        pe.run_trial(FakeWorld(8), f, 15, 8, True, state_carry=True)
+        self.assertEqual(f.begun, [pe.trial_seed(7), pe.trial_seed(8)])
+        # per-step seeds are still passed (a state-carrying fly uses the first only)
+        self.assertEqual([c[3] for c in f.calls][:2], [pe.step_seed(7, 0), pe.step_seed(7, 1)])
+
+    def test_synonyms_and_refusal(self):
+        for name in ("start_trial", "reset_trial", "reset"):
+            f = CarryingFly(method=name)
+            tr = pe.run_trial(FakeWorld(1), f, 3, 1, True, state_carry=True)
+            self.assertEqual((tr["begin_trial_method"], f.begun), (name, [pe.trial_seed(1)]))
+        with self.assertRaises(TypeError):
+            pe.run_trial(FakeWorld(1), FakeFly(), 3, 1, True, state_carry=True)
+        plain = pe.run_trial(FakeWorld(1), CarryingFly(), 3, 1, True)      # v1 never calls it
+        self.assertIsNone(plain["begin_trial_method"])
+        self.assertEqual(pe.begin_trial_name(FakeFly()), None)
+
+    def test_make_fly_and_make_world_enforce_the_v2_interface(self):
+        import types
+        mod = types.ModuleType("plume_fly")
+
+        class OldFly(FakeFly):
+            def __init__(self, fb, gains, **kw):
+                super().__init__()
+                self.kw = kw
+
+        class NewFly(CarryingFly):
+            def __init__(self, fb, gains, protocol="v1", **kw):
+                super().__init__()
+                self.protocol, self.kw = protocol, kw
+
+        mod.PlumeFly = OldFly
+        self.assertIsInstance(pe.make_fly(mod, None, None, "v1", sim_steps=60), OldFly)
+        with self.assertRaises(TypeError):
+            pe.make_fly(mod, None, None, "v2", sim_steps=120)
+        mod.PlumeFly = NewFly
+        fly = pe.make_fly(mod, None, None, "v2", sim_steps=120)
+        self.assertEqual((fly.protocol, fly.kw), ("v2", {"sim_steps": 120}))
+        self.assertEqual(pe.make_fly(mod, None, None, "v1").protocol, "v1")
+
+        class NewFlyNoReset(FakeFly):
+            def __init__(self, fb, gains, protocol="v1", **kw):
+                super().__init__()
+        mod.PlumeFly = NewFlyNoReset
+        with self.assertRaises(TypeError):
+            pe.make_fly(mod, None, None, "v2")
+
+        wmod = types.ModuleType("plume")
+        wmod.World = FakeWorld
+        self.assertEqual(pe.make_world(wmod, 0, True, "v2").protocol, "v2")
+        self.assertEqual(pe.make_world(wmod, 0, True, "v1").protocol, "v1")
+
+        class OldWorld(FakeWorld):
+            def __init__(self, seed, odour=True):
+                super().__init__(seed, odour)
+        wmod.World = OldWorld
+        self.assertEqual(pe.make_world(wmod, 0, True, "v1").protocol, "v1")
+        with self.assertRaises(TypeError):
+            pe.make_world(wmod, 0, True, "v2")
+
+
+class StartRule(unittest.TestCase):
+    """Every trial's start is checked against the threshold, from the field and from the nose, and reported."""
+
+    def test_counts_and_seeds(self):
+        t = {"odour": [dict(straight_trial(0.1, seed=0), c_start_field=0.2), dict(straight_trial(0.1, seed=1), c_start_field=0.01)],
+             "blank": [dict(straight_trial(0.1, seed=0, condition="blank"), c_start_field=0.2),
+                       dict(straight_trial(0.1, seed=1, condition="blank"), c_start_field=0.01)],
+             "shuffled": [dict(straight_trial(0.1, seed=0, condition="shuffled"), c_start_field=0.2),
+                          dict(straight_trial(0.1, seed=1, condition="shuffled"), c_start_field=0.01)]}
+        s = pe.summarise(t, protocol="v2")
+        sr = s["start_rule"]
+        self.assertEqual((sr["n_trials"], sr["n_trials_above_threshold_field"], sr["seeds_above_threshold_field"]), (6, 3, [0]))
+        self.assertEqual(sr["n_trials_above_threshold_nose"], 0)      # the straight trials carry c = 0 at the nose
+        self.assertEqual(sr["expected_violations"], 0)
+        self.assertEqual(s["conditions"]["blank"]["n_start_above_threshold_field"], 1)
+        self.assertEqual(s["conditions"]["blank"]["n_start_above_threshold"], 0)
+        m = pe.metrics(t["odour"][0], "v2")
+        self.assertTrue(m["starts_above_threshold_field"])
+        self.assertFalse(m["starts_above_threshold"])
+        self.assertAlmostEqual(m["c_start_field"], 0.2)
+        # without a field value the nose decides, as under v1
+        m = pe.metrics(surge_trial())
+        self.assertFalse(m["starts_above_threshold_field"])
+        self.assertTrue(math.isnan(m["c_start_field"]))
+        self.assertTrue(pe.metrics(dict(surge_trial(), c=np.ones(61)))["starts_above_threshold_field"])
+        # run_trial reads it off the world
+        tr = pe.run_trial(FakeWorld(0, field=lambda x, y, t: 0.3), FakeFly(), 5, 0, True)
+        self.assertAlmostEqual(tr["c_start_field"], 0.3)
+        self.assertTrue(pe.metrics(tr)["starts_above_threshold_field"])
+
+
+class JoMatch(unittest.TestCase):
+    """The realised total JO drive per condition and the within-15 % statement."""
+
+    def test_statement(self):
+        conds = {"odour": {"mean_jo_total_cell_hz": {"mean": 10000.0}}, "shuffled": {"mean_jo_total_cell_hz": {"mean": 11000.0}}}
+        j = pe.jo_match(conds)
+        self.assertAlmostEqual(j["relative_difference"], 1000.0 / 10500.0)
+        self.assertTrue(j["within_tolerance"])
+        self.assertIn("within the 15 %", j["statement"])
+        conds["shuffled"]["mean_jo_total_cell_hz"]["mean"] = 15000.0
+        j = pe.jo_match(conds)
+        self.assertFalse(j["within_tolerance"])
+        self.assertIn("NOT within", j["statement"])
+        self.assertIsNone(pe.jo_match({"odour": {}})["within_tolerance"])
+
+    def test_from_trial_rates(self):
+        def tr(seed, cond, total, left=None, right=None):
+            rates = {"jo_total_cell_hz": np.full(40, total), "jo_left_hz": np.full(40, 30.0), "jo_right_hz": np.full(40, 30.0)}
+            if left is not None:
+                rates["jo_left_cell_hz"] = np.full(40, left)
+                rates["jo_right_cell_hz"] = np.full(40, right)
+            return dict(straight_trial(0.1, seed=seed, condition=cond), rates=rates)
+        t = {"odour": [tr(0, "odour", 9000.0, 4500.0, 4500.0), tr(1, "odour", 11000.0, 5500.0, 5500.0)],
+             "blank": [tr(0, "blank", 9000.0), tr(1, "blank", 11000.0)],
+             "shuffled": [tr(0, "shuffled", 10500.0), tr(1, "shuffled", 10500.0)]}
+        s = pe.summarise(t, protocol="v2", jo_cells=(150, 150))
+        jd = s["jo_drive"]
+        self.assertAlmostEqual(jd["odour"]["mean_total_cell_hz"], 10000.0)
+        self.assertAlmostEqual(jd["odour"]["mean_left_cell_hz"], 5000.0)          # the fly's own per-side number wins
+        self.assertAlmostEqual(jd["blank"]["mean_left_cell_hz"], 30.0 * 150)        # else per-cell mean x count
+        self.assertAlmostEqual(jd["odour_vs_shuffled"]["relative_difference"], 500.0 / 10250.0)
+        self.assertTrue(jd["odour_vs_shuffled"]["within_tolerance"])
+        self.assertAlmostEqual(s["disclosures"]["shuffled"]["mean_jo_total_cell_hz"], 10500.0)
+        self.assertEqual(pe.jo_cells_of({"constants": {"fly_instance": {"jo_e_left": 100, "jo_e_right": 90, "jo_left": 203, "jo_right": 132}}}), (100, 90))
+        self.assertEqual(pe.jo_cells_of({"constants": {"fly_instance": {"jo_left": 203, "jo_right": 132}}}), (203, 132))
+        self.assertIsNone(pe.jo_cells_of({"constants": {}}))
+
+
+class LadderV2(unittest.TestCase):
+    def test_ten_to_eight_never_lower(self):
+        self.assertEqual(pe.ladder(10, 0.6, 400, 3, 9000.0, (10, 8), 8), (10, "kept"))       # 120 min
+        self.assertEqual(pe.ladder(10, 0.8, 400, 3, 9000.0, (10, 8), 8)[0], 8)               # 160 min -> 8
+        self.assertEqual(pe.ladder(10, 5.0, 400, 3, 9000.0, (10, 8), 8), (8, "dropped 10 -> 8 (floor)"))
+        self.assertEqual(pe.ladder(8, 5.0, 400, 3, 9000.0, (10, 8), 8), (8, "kept"))
+        self.assertEqual(pe.PROTOCOLS["v2"]["seed_ladder"], (10, 8))
+        self.assertEqual(pe.PROTOCOLS["v2"]["min_seeds"], 8)
+        self.assertEqual(pe.PROTOCOLS["v2"]["budget_s"], 9000.0)
+        self.assertEqual(pe.PROTOCOLS["v2"]["sim_steps"], 120)
+        self.assertEqual(pe.ladder_note({"protocol": "v2", "requested_seeds": 10, "budget_s": 9000.0, "steps": 400}), "as designed")
+        note = pe.ladder_note({"protocol": "v2", "requested_seeds": 10, "budget_s": 9000.0, "steps": 400, "sec_per_brain_run": 0.8})
+        self.assertIn("would have given 8 seeds (dropped 10 -> 8)", note)
+
+
+def fake_v1_json(path, npz_trials=None):
+    """A minimal v1 record with v1's headline numbers, and optionally a trajectories NPZ next to it."""
+    data = {
+        "protocol": "v1",
+        "run": {"seeds": list(range(10)), "steps": 400, "sim_steps": 60, "sec_per_brain_run": 0.311, "elapsed_s": 3900.0},
+        "summary": {
+            "predictions": {
+                "P1_surge": {"effect": 0.00215, "se": 0.00144, "n_trials": 9, "n_events": 16, "verdict": "not supported"},
+                "P2_cast": {"vy": {"effect": -0.00085, "se": 0.00026, "verdict": "not supported"},
+                            "heading_change_deg": {"effect": 0.062, "se": 0.188, "verdict": "not supported"},
+                            "n_events": 21, "verdict": "not supported"},
+                "P3_upwind_progress": {"odour-blank": {"mean": -0.0128, "se": 0.0048, "n": 10, "verdict": "not supported"},
+                                       "odour-nowind": {"mean": 0.0379, "se": 0.0130, "n": 10, "verdict": "supported"},
+                                       "verdict": "not supported"},
+                "P4_source_reached": {"odour": 0.0, "blank": 0.0, "nowind": 0.0, "verdict": "not supported"},
+            },
+            "conditions": {
+                "odour": {"progress": {"mean": 0.0458, "se": 0.0051}, "n_encounters": {"mean": 1.6, "se": 0.4},
+                          "n_losses": {"mean": 2.3, "se": 0.5}, "time_in_plume_s": {"mean": 17.0, "se": 1.0},
+                          "wall_contacts": {"mean": 0.0, "se": 0.0}, "mean_jo_total_cell_hz": {"mean": 8696.0, "se": 100.0},
+                          "n_start_above_threshold": 9, "n_trials": 10, "n_reached": 0},
+                "blank": {"progress": {"mean": 0.0586, "se": 0.0071}, "n_trials": 10, "n_reached": 0, "n_start_above_threshold": 0},
+                "nowind": {"progress": {"mean": 0.0079, "se": 0.0142}, "mean_jo_total_cell_hz": {"mean": 15361.0, "se": 50.0},
+                           "n_trials": 10, "n_reached": 0},
+            },
+        },
+    }
+    Path(path).write_text(json.dumps(data), encoding="utf-8")
+    if npz_trials is not None:
+        pe.save_trajectories(npz_trials, Path(path).with_name(Path(path).name.replace("_experiment.json", "_trajectories.npz")))
+    return data
+
+
+class V1Comparison(unittest.TestCase):
+    """The side-by-side table reads v1's numbers from its JSON and never invents a missing one."""
+
+    def v2_summary(self):
+        t = {"odour": [straight_trial(0.3, seed=i) for i in range(3)],
+             "blank": [straight_trial(0.1, seed=i, condition="blank") for i in range(3)],
+             "shuffled": [straight_trial(0.2, seed=i, condition="shuffled") for i in range(3)]}
+        return pe.summarise(t, protocol="v2")
+
+    def rows_by_metric(self, table):
+        return {r["metric"]: r for r in table["rows"]}
+
+    def test_table_from_a_fake_v1_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            j = Path(d) / "plume_experiment.json"
+            fake_v1_json(j)
+            s = self.v2_summary()
+            table = pe.v1_comparison(j, s, {"seeds": [0, 1, 2], "steps": 400, "sim_steps": 120, "sec_per_brain_run": 0.62, "elapsed_s": 100.0})
+            self.assertTrue(table["available"])
+            self.assertEqual((table["v1_control"], table["v2_control"]), ("nowind", "shuffled"))
+            self.assertIn("not the same experiment", table["note"])
+            r = self.rows_by_metric(table)
+            self.assertAlmostEqual(r["P1 surge: effect (m/s upwind, after - before)"]["v1"], 0.00215)
+            self.assertIsNone(r["P1 surge: effect (m/s upwind, after - before)"]["v2"])       # no encounters in the straight trials: nan -> None
+            self.assertEqual(r["P1 surge: verdict"]["v1"], "not supported")
+            self.assertEqual(r["P1 surge: verdict"]["v2"], "undetermined")
+            self.assertEqual(r["P1 surge: n events"]["v1"], 16)
+            self.assertIn("full windows", r["P1 surge: n events"]["note"])
+            self.assertAlmostEqual(r["P3 progress odour - blank (m): mean"]["v1"], -0.0128)
+            self.assertAlmostEqual(r["P3 progress odour - blank (m): mean"]["v2"], 0.2, places=9)
+            self.assertEqual(r["P3 progress odour - blank (m): verdict"]["v2"], "supported")
+            sc = r["P3 progress odour - second control (m): mean"]
+            self.assertAlmostEqual(sc["v1"], 0.0379)
+            self.assertAlmostEqual(sc["v2"], 0.1, places=9)
+            self.assertIn("nowind", sc["note"])
+            self.assertIn("shuffled", sc["note"])
+            self.assertEqual(r["P4 source reached: odour"]["v1"], 0.0)
+            self.assertEqual(r["P4 source reached: second control"]["v1"], 0.0)
+            self.assertEqual(r["P4 source reached: second control"]["v2"], 0.0)
+            self.assertAlmostEqual(r["odour: progress (m upwind): mean"]["v1"], 0.0458)
+            self.assertAlmostEqual(r["odour: progress (m upwind): mean"]["v2"], 0.3, places=9)
+            self.assertAlmostEqual(r["odour: total JO drive (cell-Hz): mean"]["v1"], 8696.0)
+            self.assertIsNone(r["odour: total JO drive (cell-Hz): mean"]["v2"])                 # the fake fly reported none
+            self.assertEqual(r["odour: trials starting above threshold"]["v1"], 9)
+            self.assertEqual(r["odour: trials starting above threshold"]["v2"], 0)
+            self.assertIsNone(r["odour: facing upwind (fraction of steps)"]["v1"])              # no NPZ: not invented
+            self.assertAlmostEqual(r["odour: facing upwind (fraction of steps)"]["v2"], 1.0)
+            self.assertAlmostEqual(r["second control (nowind / shuffled): progress (m upwind): mean"]["v1"], 0.0079)
+            self.assertAlmostEqual(r["second control (nowind / shuffled): progress (m upwind): mean"]["v2"], 0.2, places=9)
+            self.assertEqual(r["run: seeds"]["v1"], 10)
+            self.assertEqual(r["run: seeds"]["v2"], 3)
+            self.assertEqual(r["run: sim_steps"]["v1"], 60)
+            self.assertEqual(r["run: sim_steps"]["v2"], 120)
+            self.assertAlmostEqual(r["run: sec_per_brain_run"]["v1"], 0.311)
+
+    def test_facing_upwind_comes_from_the_v1_trajectories_when_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            j = Path(d) / "plume_experiment.json"
+            n = 20
+            down = make_trial(0.3 + 0.001 * np.arange(n + 1), np.full(n + 1, 0.15), np.zeros(n + 1), np.zeros(n + 1),
+                              seed=1, condition="odour")
+            fake_v1_json(j, npz_trials={"odour": [straight_trial(0.1), down],
+                                        "blank": [straight_trial(0.1, condition="blank")]})
+            table = pe.v1_comparison(j, self.v2_summary())
+            r = self.rows_by_metric(table)
+            self.assertAlmostEqual(r["odour: facing upwind (fraction of steps)"]["v1"], 0.5)
+            self.assertAlmostEqual(r["blank: facing upwind (fraction of steps)"]["v1"], 1.0)
+            self.assertIsNone(r["second control (nowind / shuffled): facing upwind (fraction of steps)"]["v1"])
+            self.assertEqual(pe.facing_upwind_from_npz(j.with_name("plume_trajectories.npz")), {"odour": 0.5, "blank": 1.0})
+
+    def test_missing_v1_json_is_reported_not_invented(self):
+        table = pe.v1_comparison(Path("nowhere") / "plume_experiment.json", self.v2_summary())
+        self.assertFalse(table["available"])
+        self.assertEqual(table["rows"], [])
+
+
+class OutputGuard(unittest.TestCase):
+    """The published v1 files are never written by a new run, however the prefix is spelled."""
+
+    def test_published_prefix_is_refused(self):
+        for bad in (pe.V1_PREFIX, str(pe.V1_PREFIX), pe.out_prefix_from(str(pe.V1_JSON)),
+                    Path("build") / "plume" if Path("build").resolve() == pe.BUILD.resolve() else pe.V1_PREFIX):
+            with self.assertRaises(ValueError):
+                pe.assert_not_published(bad)
+        for ok in (pe.BUILD / "plume_v2", pe.BUILD / "plume_quick", pe.BUILD / "plume_v2_quick", pe.BUILD / "plume_rerun",
+                   pe.out_prefix_from(str(pe.V1_JSON), quick=True)):
+            pe.assert_not_published(ok)
+        self.assertEqual([p.name for p in pe.PUBLISHED_V1],
+                         ["plume_experiment.json", "plume_trajectories.npz", "plume_trajectories.png", "plume_report.md"])
+        self.assertEqual(pe.output_paths(pe.BUILD / "plume_v2")[0], pe.BUILD / "plume_v2_experiment.json")
+
+    def test_write_outputs_and_main_refuse_the_published_prefix(self):
+        trials = {"odour": [surge_trial()], "blank": [straight_trial(0.2, seed=1, condition="blank")]}
+        watched = list(pe.PUBLISHED_V1) + [pe.V1_PREFIX.with_name("plume_experiment.log")]   # the guard runs before a log is opened
+        before = {p: (p.stat().st_mtime_ns if p.exists() else None) for p in watched}
+        with self.assertRaises(ValueError):
+            pe.write_outputs(trials, {"constants": {"runner": pe.CONSTANTS}}, pe.V1_PREFIX, protocol="v2")
+        with self.assertRaises(ValueError):
+            pe.write_outputs(trials, {"constants": {"runner": pe.CONSTANTS}}, str(pe.V1_JSON)[:-len("_experiment.json")])
+        real_ram = pe.free_ram_gb
+        pe.free_ram_gb = lambda: (_ for _ in ()).throw(AssertionError("main must refuse before touching RAM or a brain"))
+        try:
+            self.assertEqual(pe.main(["--protocol", "v2", "--out", str(pe.V1_PREFIX)]), 4)
+            self.assertEqual(pe.main(["--protocol", "v1", "--out", str(pe.V1_JSON)]), 4)
+            self.assertEqual(pe.main(["--reanalyse", str(pe.V1_JSON)]), 4)          # without --allow-published
+        finally:
+            pe.free_ram_gb = real_ram
+        after = {p: (p.stat().st_mtime_ns if p.exists() else None) for p in watched}
+        self.assertEqual(before, after)
+
+    def test_v2_default_prefix_is_plume_v2(self):
+        self.assertEqual(pe.PROTOCOLS["v2"]["default_out"], "plume_v2")
+        self.assertEqual(pe.out_prefix_from(str(pe.BUILD / "plume_v2"), quick=True), pe.BUILD / "plume_v2_quick")
+        self.assertEqual(pe.out_prefix_from("build/plume_v2_experiment.json"), Path("build/plume_v2"))
+
+
+class MainWithFakesV2(unittest.TestCase):
+    """The v2 CLI end to end with fakes: three v2 conditions, the record's v2 blocks, and a reanalysis round trip."""
+
+    def test_v2_quick_run(self):
+        import sys
+        import types
+
+        fake_flysim = types.ModuleType("flysim")
+        class FakeBrain:
+            n = 7
+        fake_flysim.FlyBrain = FakeBrain
+        fake_cal = types.ModuleType("calibration")
+        fake_cal.CHOSEN = "fake_setting"
+        fake_cal.gains_for = lambda fb, setting: None
+        fake_plume = types.ModuleType("plume")
+        fake_plume.World = FakeWorld
+        fake_plume.ARENA_X, fake_plume.ARENA_Y, fake_plume.SOURCE, fake_plume.REACH_RADIUS = 0.6, 0.3, (0.05, 0.15), 0.03
+        fake_plume.start_rule_v2_check = lambda n: {"n_start_above_threshold": 9, "seeds_above_threshold": [0, 16], "n_seeds": n}
+        fake_fly = types.ModuleType("plume_fly")
+        made = []
+
+        class Fly(CarryingFly):
+            def __init__(self, fb, gains, protocol="v1", **kw):
+                super().__init__(turn=0.1, speed=0.5)
+                self.protocol, self.kw = protocol, kw
+                made.append(self)
+
+            def step(self, c, phi, wind_sense=True, seed=0):
+                turn, speed, info = super().step(c, phi, wind_sense, seed)
+                info.update({"jo_total_cell_hz": 10000.0 + 100.0 * math.cos(phi), "jo_left_cell_hz": 5000.0, "jo_right_cell_hz": 5000.0})
+                return turn, speed, info
+
+            def describe(self):
+                return {"kw": self.kw, "protocol": self.protocol, "jo_e_left": 100, "jo_e_right": 90}
+
+        fake_fly.PlumeFly = Fly
+        saved = {k: sys.modules.get(k) for k in ("flysim", "calibration", "plume", "plume_fly")}
+        sys.modules.update({"flysim": fake_flysim, "calibration": fake_cal, "plume": fake_plume, "plume_fly": fake_fly})
+        real_ram, real_v1 = pe.free_ram_gb, pe.V1_JSON
+        pe.free_ram_gb = lambda: 100.0
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                v1 = Path(d) / "v1" / "plume_experiment.json"
+                v1.parent.mkdir()
+                fake_v1_json(v1)
+                pe.V1_JSON = v1
+                out = Path(d) / "plume_v2"
+                rc = pe.main(["--protocol", "v2", "--quick", "1", "--out", str(out)])
+                self.assertEqual(rc, 0)
+                self.assertEqual(len(made), 1)
+                self.assertEqual(made[0].protocol, "v2")
+                self.assertEqual(made[0].kw["sim_steps"], 120)
+                self.assertEqual(made[0].kw["smooth_tau_s"], 0.0)          # the fly passes through; the runner smooths once
+                self.assertEqual(made[0].begun, [pe.trial_seed(0)] * 3 + [pe.trial_seed(1)] * 3)
+                log = (Path(d) / "plume_v2_quick_experiment.log").read_text(encoding="utf-8").splitlines()
+                trial_lines = [l for l in log if " trial " in l]
+                self.assertEqual(len(trial_lines), 6)
+                self.assertIn("seed=1 cond=shuffled", trial_lines[-1])
+                self.assertIn("upwind=", trial_lines[0])
+                self.assertTrue(any("protocol v2" in l for l in log))
+                self.assertTrue(any("start rule v2 over 50 seeds: 9" in l for l in log))
+                self.assertTrue(any("JO drive:" in l for l in log))
+                data = json.loads((Path(d) / "plume_v2_quick_experiment.json").read_text(encoding="utf-8"))
+                self.assertEqual(data["protocol"], "v2")
+                self.assertFalse(data["partial"])
+                self.assertEqual(data["run"]["protocol"], "v2")
+                self.assertEqual(data["run"]["seeds"], [0, 1])
+                self.assertEqual(data["run"]["sim_steps"], 120)
+                self.assertEqual(data["run"]["smooth_tau_s"], 0.15)
+                self.assertTrue(data["run"]["state_carry"])
+                self.assertEqual(data["run"]["begin_trial_method"], "begin_trial")
+                self.assertEqual(data["run"]["smoothing_applied_by"], "runner")
+                self.assertEqual(data["run"]["shuffled_wind_applied_by"], "runner")
+                self.assertEqual(data["run"]["design_seeds"], 10)
+                self.assertEqual(data["run"]["design_budget_s"], 9000.0)
+                self.assertEqual([c["letter"] for c in data["protocol_changes"]], list("ABCDEFGH"))
+                self.assertTrue(all("named_in_v1_report" in c for c in data["protocol_changes"]))
+                self.assertEqual(data["constants"]["world_start_rule_v2"]["n_start_above_threshold"], 9)
+                self.assertEqual(data["constants"]["fly_instance"]["protocol"], "v2")
+                self.assertEqual(len(data["simulator_limits"]), 4)
+                self.assertFalse(any("restarted from rest" in s for s in data["simulator_limits"]))
+                self.assertTrue(any("carries its state" in s for s in data["simulator_limits"]))
+                s = data["summary"]
+                self.assertEqual(list(s["conditions"]), ["odour", "blank", "shuffled"])
+                self.assertEqual(set(s["paired"]), {"odour-blank", "odour-shuffled"})
+                self.assertEqual(s["predictions"]["P1_surge"]["rule"], "full_window")
+                self.assertIn("odour_vs_shuffled", s["jo_drive"])
+                self.assertIsNotNone(s["jo_drive"]["odour_vs_shuffled"]["within_tolerance"])
+                self.assertAlmostEqual(s["jo_drive"]["odour"]["mean_left_cell_hz"], 5000.0)
+                self.assertEqual(s["start_rule"]["n_trials"], 6)
+                self.assertEqual(s["start_rule"]["n_trials_above_threshold_field"], 0)
+                self.assertIn("turn_raw", s["conditions"]["odour"]["commands"])
+                self.assertLess(s["conditions"]["odour"]["mean_speed_cmd"]["mean"], 0.5)      # smoothed from rest
+                self.assertAlmostEqual(s["conditions"]["odour"]["mean_speed_raw"]["mean"], 0.5)
+                self.assertTrue(data["v1_comparison"]["available"])
+                self.assertEqual(data["v1_comparison"]["v2_control"], "shuffled")
+                rows = {r["metric"]: r for r in data["v1_comparison"]["rows"]}
+                self.assertEqual(rows["run: seeds"]["v2"], 2)
+                self.assertEqual(rows["run: sim_steps"]["v2"], 120)
+                self.assertEqual(len(s["per_trial"]), 6)
+                self.assertEqual({r["condition"] for r in s["per_trial"]}, {"odour", "blank", "shuffled"})
+                with np.load(Path(d) / "plume_v2_quick_trajectories.npz") as z:
+                    self.assertEqual(list(z["condition"]), ["odour", "odour", "blank", "blank", "shuffled", "shuffled"])
+                    for k in ("turn", "speed", "turn_raw", "speed_raw", "phi", "phi_fly", "c_start_field"):
+                        self.assertIn(k, z.files)
+                    self.assertAlmostEqual(float(z["speed_raw"][0, 0]), 0.5)
+                    self.assertLess(float(z["speed"][0, 0]), 0.5)
+                    self.assertNotEqual(float(z["phi_fly"][4, 0]), float(z["phi"][4, 0]))   # shuffled rows
+                    self.assertEqual(float(z["phi_fly"][0, 0]), float(z["phi"][0, 0]))
+                self.assertTrue((Path(d) / "plume_v2_quick_trajectories.png").exists())
+                # the reanalysis of a v2 record keeps the protocol and the numbers, rebuilding commands from the NPZ
+                _, j1, _, png = pe.reanalyse(str(Path(d) / "plume_v2_quick_experiment.json"), note="v2 round trip")
+                new = json.loads(j1.read_text(encoding="utf-8"))
+                self.assertEqual(new["protocol"], "v2")
+                same, worst, mismatches = pe.compare_preregistered(data["summary"]["predictions"], new["summary"]["predictions"], protocol="v2")
+                self.assertTrue(same, mismatches)
+                self.assertTrue(new["run"]["reanalyses"][-1]["preregistered_metrics_unchanged"])
+                self.assertEqual(new["run"]["design_seeds"], 10)
+                self.assertAlmostEqual(new["summary"]["conditions"]["odour"]["mean_speed_raw"]["mean"], 0.5)
+                self.assertAlmostEqual(new["summary"]["conditions"]["odour"]["mean_speed_cmd"]["mean"],
+                                       data["summary"]["conditions"]["odour"]["mean_speed_cmd"]["mean"])
+                self.assertEqual(new["summary"]["start_rule"]["n_trials"], 6)
+                self.assertIn("turn_raw", new["summary"]["conditions"]["odour"]["commands"])
+                self.assertEqual(new["summary"]["conditions"]["odour"]["commands"]["turn_raw"]["n"],
+                                 data["summary"]["conditions"]["odour"]["commands"]["turn_raw"]["n"])
+                # a v1 quick run through the same fakes is untouched by the v2 machinery
+                rc = pe.main(["--quick", "1", "--out", str(Path(d) / "plume")])
+                self.assertEqual(rc, 0)
+                d1 = json.loads((Path(d) / "plume_quick_experiment.json").read_text(encoding="utf-8"))
+                self.assertEqual(d1["protocol"], "v1")
+                self.assertEqual(list(d1["summary"]["conditions"]), ["odour", "blank", "nowind"])
+                self.assertNotIn("v1_comparison", d1)
+                self.assertEqual(made[-1].protocol, "v1")
+                self.assertEqual(made[-1].begun, [])
+                self.assertNotIn("smooth_tau_s", made[-1].kw)              # v1: no smoothing anywhere
+                self.assertEqual(d1["run"]["smoothing_applied_by"], "none")
+                self.assertAlmostEqual(d1["summary"]["conditions"]["odour"]["mean_speed_cmd"]["mean"], 0.5)
+        finally:
+            pe.free_ram_gb, pe.V1_JSON = real_ram, real_v1
+            for k, v in saved.items():
+                if v is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = v
+
+    def test_v2_refuses_a_fly_or_world_without_the_protocol(self):
+        import sys
+        import types
+        fake_flysim = types.ModuleType("flysim")
+        class FakeBrain:
+            n = 7
+        fake_flysim.FlyBrain = FakeBrain
+        fake_cal = types.ModuleType("calibration")
+        fake_cal.CHOSEN = "fake_setting"
+        fake_cal.gains_for = lambda fb, setting: None
+        fake_plume = types.ModuleType("plume")
+        fake_plume.World = FakeWorld
+        fake_fly = types.ModuleType("plume_fly")
+
+        class OldFly(FakeFly):
+            def __init__(self, fb, gains, **kw):
+                super().__init__()
+        fake_fly.PlumeFly = OldFly
+        saved = {k: sys.modules.get(k) for k in ("flysim", "calibration", "plume", "plume_fly")}
+        sys.modules.update({"flysim": fake_flysim, "calibration": fake_cal, "plume": fake_plume, "plume_fly": fake_fly})
+        real_ram = pe.free_ram_gb
+        pe.free_ram_gb = lambda: 100.0
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self.assertEqual(pe.main(["--protocol", "v2", "--quick", "1", "--out", str(Path(d) / "plume_v2")]), 3)
+                log = (Path(d) / "plume_v2_quick_experiment.log").read_text(encoding="utf-8")
+                self.assertIn("refusing to run", log)
+                self.assertFalse((Path(d) / "plume_v2_quick_experiment.json").exists())
+        finally:
+            pe.free_ram_gb = real_ram
+            for k, v in saved.items():
+                if v is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = v
+
+
+class V2Wiring(unittest.TestCase):
+    """The real fly's names are accepted, and the fly's echoed raw commands stay the runner's."""
+
+    def test_reset_state_counts_as_a_trial_start_method(self):
+        f = CarryingFly(method="reset_state")
+        tr = pe.run_trial(FakeWorld(2), f, 3, 2, True, state_carry=True)
+        self.assertEqual((tr["begin_trial_method"], f.begun), ("reset_state", [pe.trial_seed(2)]))
+        self.assertEqual(pe.BEGIN_TRIAL_NAMES[0], "begin_trial")      # the alias is found first when both exist
+
+    def test_echoed_raw_commands_are_not_recorded_twice(self):
+        class EchoFly(FakeFly):
+            def step(self, c, phi, wind_sense=True, seed=0):
+                turn, speed, info = super().step(c, phi, wind_sense, seed)
+                info.update({"turn_raw": turn, "speed_raw": speed, "phi_drive": phi, "trial_seed": 1})
+                return turn, speed, info
+        tr = pe.run_trial(FakeWorld(0), EchoFly(turn=0.2, speed=0.4), 5, 0, True, smooth_tau_s=0.15)
+        self.assertNotIn("turn_raw", tr["rates"])
+        self.assertNotIn("speed_raw", tr["rates"])
+        self.assertIn("phi_drive", tr["rates"])
+        self.assertEqual(list(tr["turn_raw"]), [0.2] * 5)
+        self.assertLess(tr["turn"][0], 0.2)
+        m = pe.metrics(tr, "v2")
+        self.assertAlmostEqual(m["mean_turn_raw"], 0.2)
 
 
 if __name__ == "__main__":
