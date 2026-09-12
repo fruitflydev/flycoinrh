@@ -25,7 +25,15 @@ def _soma_xy(fb):
     if ok.sum()<100:raise RuntimeError('insufficient soma coordinates')
     lo,hi=np.nanmin(xy[ok],0),np.nanmax(xy[ok],0); xy[ok]=(xy[ok]-lo)/np.maximum(hi-lo,1e-6); return xy
 def _load():
-    if _STATE['fb'] is None:
+    if _STATE['fb'] is not None:return _STATE['fb'],_STATE['eye']
+    use_lite=os.environ.get('FLYVUE_LITE')=='1'
+    if not use_lite:
+        try:use_lite=GRAPH.stat().st_size*3.5>MEMORY_CEILING and os.environ.get('FLYVUE_FORCE_FULL')!='1'
+        except OSError:pass
+    if use_lite:
+        from lite import load_lite
+        fb,eye,pilot=load_lite(GRAPH,ANNOTATIONS,depth=4); _STATE.update(fb=fb,eye=eye,pilot=pilot,soma_xy=_soma_xy(fb),mode='lite')
+    else:
         fb=FlyBrain(GRAPH); eye=FlyEye(fb,str(ANNOTATIONS)); _STATE.update(fb=fb,eye=eye,pilot=FlyPilot(fb,eye=eye,sim_steps=STEPS),soma_xy=_soma_xy(fb),mode='full')
     return _STATE['fb'],_STATE['eye']
 def _dense_log(raw,steps,n):
