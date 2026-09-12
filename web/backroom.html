@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>the backroom</title>
+<style>
+/*
+  The room the fly walks into.
+
+  It is drawn for an eye with about 892 hex columns over a 1280x800 screen -
+  roughly 30x30 effective pixels inside the 300x210 window it samples - so
+  every card is a large bright shape on a near-black ground, and none of the
+  writing on it can be read by the animal. The grid is fixed: the same
+  rectangles sit in the same places whatever the listing returns, so the fly
+  fixating one card keeps fixating it across a refresh.
+
+  There is nothing here to press. No link, no field, no control of any kind.
+*/
+:root{
+  --ground:#0b0c0e;        /* the room's ground; backroom.GROUND is its ITU-R 601 grey */
+  --card:#181b20;
+  --edge:#23272e;
+  --ink:#e9edf3;
+  --dim:#818a97;
+  --bar:#2b3038;
+  --fill:#9aa7b8;
+  --mine:#ffd166;          /* the marker on a coin the fly already holds */
+  --logo:#c9ced6;          /* a logo that does not load is a plain light square */
+}
+html,body{margin:0;padding:0;background:var(--ground);}
+body{
+  color:var(--ink);
+  font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+#room{width:1280px;margin:0 auto;padding:14px 56px 40px;box-sizing:border-box;}
+.label{
+  font-size:12px;letter-spacing:3px;color:var(--dim);
+  text-transform:uppercase;margin:6px 0 10px;
+}
+.strip{
+  display:grid;grid-template-columns:repeat(8,138px);gap:10px;
+  height:78px;margin-bottom:18px;
+}
+.tile{
+  background:var(--card);border:1px solid var(--edge);border-radius:8px;
+  height:78px;box-sizing:border-box;padding:8px;display:grid;
+  grid-template-columns:40px 1fr;grid-template-rows:auto auto;gap:2px 8px;
+  align-items:center;
+}
+.tile-logo{
+  grid-row:1 / span 2;width:40px;height:40px;border-radius:6px;
+  background-color:var(--logo);background-size:cover;background-position:center;
+}
+.tile-name{font-size:12px;color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.tile-sym{font-size:11px;color:var(--mine);letter-spacing:1px;}
+.grid{
+  display:grid;grid-template-columns:repeat(4,280px);grid-auto-rows:200px;gap:14px;
+}
+.card{
+  width:280px;height:200px;box-sizing:border-box;
+  background:var(--card);border:1px solid var(--edge);border-radius:12px;
+  padding:16px;display:grid;grid-template-columns:80px 1fr;
+  grid-template-rows:80px 1fr 12px;gap:10px 14px;position:relative;
+}
+.logo{
+  width:80px;height:80px;border-radius:10px;
+  background-color:var(--logo);background-size:cover;background-position:center;
+}
+.text{grid-column:2;align-self:start;overflow:hidden;}
+.name{font-size:19px;line-height:22px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.sym{font-size:14px;color:var(--dim);letter-spacing:2px;margin-top:4px;}
+.cap{font-size:15px;color:var(--ink);margin-top:8px;}
+.grad{
+  grid-column:1 / span 2;grid-row:3;height:12px;border-radius:6px;
+  background:var(--bar);overflow:hidden;
+}
+.grad .fill{display:block;height:12px;width:0%;background:var(--fill);}
+.mark{
+  position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:11px;
+  background:var(--mine);opacity:0;
+}
+.card[data-held="1"] .mark,.tile[data-held="1"] .tile-sym{opacity:1;}
+.empty{visibility:hidden;}
+</style>
+</head>
+<body>
+<div id="room">
+  <div class="label">holdings</div>
+  <div id="holdings" class="strip"></div>
+  <div class="label">board</div>
+  <div id="board" class="grid"></div>
+</div>
+
+<template id="tile-shape">
+  <div class="tile" data-token="" data-held="0">
+    <div class="tile-logo"></div>
+    <div class="tile-name"></div>
+    <div class="tile-sym"></div>
+  </div>
+</template>
+
+<template id="card-shape">
+  <div class="card" data-token="" data-held="0">
+    <div class="logo"></div>
+    <div class="text">
+      <div class="name"></div>
+      <div class="sym"></div>
+      <div class="cap"></div>
+    </div>
+    <div class="grad"><span class="fill"></span></div>
+    <div class="mark"></div>
+  </div>
+</template>
+
+<script>
+// A fixed number of slots, made once. A refresh writes into the slots it has
+// rather than rebuilding the list, so no rectangle ever moves under the fly.
+var SLOTS = 16, TILES = 8, EVERY_MS = 20000;
+var cards = [], tiles = [];
+
+function build(templateId, hostId, n, into){
+  var tpl = document.getElementById(templateId);
+  var host = document.getElementById(hostId);
+  for (var i = 0; i < n; i++){
+    var node = tpl.content.firstElementChild.cloneNode(true);
+    node.className = node.className + ' empty';
+    host.appendChild(node);
+    into.push(node);
+  }
+}
+build('card-shape', 'board', SLOTS, cards);
+build('tile-shape', 'holdings', TILES, tiles);
+
+function money(v){
+  var n = Number(v);
+  if (v === null || v === undefined || !isFinite(n)) return '';
+  if (n >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  return '$' + n.toFixed(0);
+}
+
+function art(el, url){
+  // a logo that fails to load leaves the plain light square underneath it
+  el.style.backgroundImage = url ? 'url("' + String(url).split('"').join('') + '")' : 'none';
+}
+
+function paintCard(node, item){
+  if (!item){
+    node.className = 'card empty';
+    node.setAttribute('data-token', '');
+    node.setAttribute('data-held', '0');
+    return;
+  }
+  node.className = 'card';
+  node.setAttribute('data-token', item.token || '');
+  node.setAttribute('data-held', item.held ? '1' : '0');
+  art(node.querySelector('.logo'), item.logo);
+  node.querySelector('.name').textContent = item.name || '';
+  node.querySelector('.sym').textContent = item.symbol || '';
+  node.querySelector('.cap').textContent = money(item.market_cap_usd);
+  var pct = Number(item.graduation_pct);
+  if (!isFinite(pct)) pct = 0;
+  pct = Math.max(0, Math.min(100, pct));
+  node.querySelector('.fill').style.width = pct.toFixed(1) + '%';
+}
+
+function paintTile(node, item){
+  if (!item){
+    node.className = 'tile empty';
+    node.setAttribute('data-token', '');
+    node.setAttribute('data-held', '0');
+    return;
+  }
+  node.className = 'tile';
+  node.setAttribute('data-token', item.token || '');
+  node.setAttribute('data-held', '1');
+  art(node.querySelector('.tile-logo'), item.logo);
+  node.querySelector('.tile-name').textContent = item.name || '';
+  node.querySelector('.tile-sym').textContent = item.symbol || '';
+}
+
+function draw(d){
+  var b = (d && d.cards) || [];
+  var h = (d && d.holdings) || [];
+  for (var i = 0; i < cards.length; i++) paintCard(cards[i], b[i]);
+  for (var j = 0; j < tiles.length; j++) paintTile(tiles[j], h[j]);
+}
+
+function load(){
+  fetch('/backroom/board.json', {cache: 'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(draw)
+    .catch(function(){ /* the last good board stays on the wall */ });
+}
+
+load();
+setInterval(load, EVERY_MS);
+</script>
+</body>
+</html>

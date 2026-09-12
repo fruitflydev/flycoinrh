@@ -1,0 +1,16 @@
+# What the paper executor needs, on top of requirements-roam.txt.
+#
+# It serves its loopback API from the standard library's http.server, so no web
+# framework is added here. What the roaming image lacks is the ABI codec and
+# the hash backend pons.py uses to read the chain: selectors and event topics
+# are keccak, and every call is ABI-encoded by hand.
+#
+# eth-abi is pinned to the last stable release on purpose. Local development
+# ran against eth-abi 6.0.0b1, which is a beta; an image should not follow a
+# pre-release of the library that decodes money amounts.
+#
+# eth-account is deliberately absent. This build has no key and puts nothing on
+# chain, and the container should not carry the means to.
+eth-abi==5.2.0
+eth-utils==5.3.1
+eth-hash[pycryptodome]==0.7.1
