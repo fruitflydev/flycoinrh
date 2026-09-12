@@ -116,17 +116,36 @@ class FlyPilot:
             "click": dn("MN9"),            # proboscis extension = commit
         }
 
-    def step(self, img, cx, cy, gains=None, seed=0, detail=False):
+    def step(self, img, cx, cy, gains=None, seed=0, detail=False,
+             extra_drive=None, extra_record=None):
         """
         One control step.
 
         detail=True adds a fifth return value: what the rest of the brain was
         doing while the descending neurons decided. Existing callers unpack
         four and are unaffected.
+
+        extra_drive adds input to the same run, as a FlyBrain drive dict (the
+        backroom adds a coin's smell on the olfactory receptor neurons).
+        extra_record adds populations to record in that run; their rates come
+        back in info["extra"]. One run then gives the cursor, the commit, the
+        mushroom body output and the Kenyon cells that fired, together.
         """
         drive = self.eye.look(img, cx, cy)
+        if extra_drive:
+            drive = dict(drive)
+            for k, v in extra_drive.items():
+                if k in drive:
+                    raise ValueError("extra_drive overlaps the eye's own input")
+                drive[k] = v
+        record = self.motor
+        if extra_record:
+            clash = set(extra_record) & set(self.motor)
+            if clash:
+                raise ValueError(f"extra_record reuses motor names: {sorted(clash)}")
+            record = dict(self.motor, **extra_record)
         r = self.fb.run(drive, steps=self.sim_steps, gains=gains,
-                        record=self.motor, seed=seed)
+                        record=record, seed=seed)
         hz = {k: float(r[k].mean()) for k in self.motor}
 
         # steering is the left/right difference; forward drive is the sum
@@ -159,6 +178,7 @@ class FlyPilot:
             "visual": int(np.isin(eye_idx, fired).sum()) if fired is not None else 0,
             "motor": int(np.isin(motor_idx, fired).sum()) if fired is not None else 0,
             "fired": fired,
+            "extra": {k: r[k] for k in (extra_record or {})},
             "turn_l": float(max(0.0, -turn)), "turn_r": float(max(0.0, turn)),
             "forward": float(max(0.0, speed)), "reverse": float(back),
             "click": float(stop),
