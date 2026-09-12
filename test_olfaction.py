@@ -47,7 +47,15 @@ class Door(unittest.TestCase):
     def test_known_responses(self):
         # acetic acid is the Ir64a/DC4 channel's best odorant; CO2 drives V fully
         self.assertAlmostEqual(DOOR.profile(DOOR.key_of["acetic acid"])["DC4"], 1.0, places=2)
-        self.assertAlmostEqual(DOOR.profile(DOOR.key_of["carbon dioxide"])["V"], 1.0, places=2)
+        # CO2's strongest receptor reports 1.0 raw; the profile subtracts its spontaneous rate
+        raw = DOOR.response[DOOR.key_of["carbon dioxide"]]
+        adjusted = [float(v) - (0.0 if s in ("NA", "") else float(s))
+                    for r, v, s in zip(DOOR.receptors, raw, DOOR.sfr)
+                    if DOOR.glomerulus_of.get(r) == "V" and v not in ("NA", "")]
+        self.assertAlmostEqual(max(float(v) for r, v in zip(DOOR.receptors, raw)
+                                   if DOOR.glomerulus_of.get(r) == "V" and v not in ("NA", "")), 1.0, places=2)
+        self.assertAlmostEqual(DOOR.profile(DOOR.key_of["carbon dioxide"])["V"], max(adjusted), places=6)
+        self.assertLess(DOOR.profile(DOOR.key_of["carbon dioxide"])["V"], 1.0)
         self.assertGreater(DOOR.profile(DOOR.key_of["geosmin"])["DA2"], 0.5)
 
     def test_profiles_are_bounded(self):
@@ -100,6 +108,69 @@ class Nose(unittest.TestCase):
         for idx, hz in d.items():
             self.assertTrue(set(idx) <= orn)
             self.assertTrue(0 < hz <= olfaction.MAX_HZ)
+
+
+class SpontaneousFiring(unittest.TestCase):
+    def test_sfr_row_is_kept_and_is_not_an_odorant(self):
+        self.assertIsNotNone(DOOR.sfr)
+        self.assertNotIn("SFR", DOOR.odorants)
+
+    def test_response_at_or_below_baseline_is_not_driven(self):
+        d = olfaction.Door.__new__(olfaction.Door)
+        d.receptors = ["R1", "R2", "R3", "R4"]
+        d.glomerulus_of = {"R1": "G1", "R2": "G2", "R3": "G3", "R4": "G4"}
+        d.sfr = ["0.2", "0.2", "NA", "0.1"]
+        d.response = {"k": ["0.2", "0.1", "0.3", "0.6"]}
+        p = d.profile("k")
+        self.assertEqual(p["G1"], 0.0)          # at baseline
+        self.assertEqual(p["G2"], 0.0)          # below baseline: inhibition is not driven
+        self.assertAlmostEqual(p["G3"], 0.3)    # no baseline measured: taken as 0
+        self.assertAlmostEqual(p["G4"], 0.5)
+
+
+class EqualSniff(unittest.TestCase):
+    """Scaling every coin to the same total odour, so no coin shouts."""
+
+    class FakeFly:
+        def where(self, type_re=None, **kw):
+            return np.array([0, 1], dtype=np.int64)
+
+    def nose(self, equal_sniff=0.0):
+        return olfaction.Nose(self.FakeFly(), door=DOOR, equal_sniff=equal_sniff)
+
+    def test_off_by_default(self):
+        plain = self.nose().smell("Banana", "BNNA")
+        self.assertGreater(sum(plain["profile"].values()), 0)
+        self.assertEqual(plain["profile"], self.nose(0.0).smell("Banana", "BNNA")["profile"])
+
+    def test_every_coin_smells_equally_loudly(self):
+        # A glomerulus is never driven above the strongest response DoOR
+        # measured for it, so a coin whose smell sits in very few glomeruli
+        # cannot reach the target total: it lands at one unit per glomerulus.
+        n = self.nose(2.0)
+        for name, symbol in (("Banana", "BNNA"), ("Mud", "MUD"), ("Moon Dog", "MDOG")):
+            profile = n.smell(name, symbol)["profile"]
+            total = sum(profile.values())
+            self.assertAlmostEqual(total, min(2.0, float(len(profile))), places=2, msg=name)
+
+    def test_a_loud_coin_no_longer_swamps_a_quiet_one(self):
+        loud = sum(self.nose().smell("Mud", "MUD")["profile"].values())
+        quiet = sum(self.nose().smell("Banana", "BNNA")["profile"].values())
+        self.assertGreater(quiet / loud, 1.0)          # unscaled, banana spreads much wider
+        loud2 = sum(self.nose(2.0).smell("Mud", "MUD")["profile"].values())
+        quiet2 = sum(self.nose(2.0).smell("Banana", "BNNA")["profile"].values())
+        self.assertLessEqual(max(loud2, quiet2) / min(loud2, quiet2), 2.0)
+
+    def test_shape_is_kept(self):
+        plain = self.nose().smell("Mud", "MUD")["profile"]
+        scaled = self.nose(2.0).smell("Mud", "MUD")["profile"]
+        self.assertEqual(sorted(plain), sorted(scaled))
+        top = max(plain, key=plain.get)
+        self.assertEqual(top, max(scaled, key=scaled.get))
+
+    def test_never_above_one(self):
+        for g, v in self.nose(50.0).smell("Banana", "BNNA")["profile"].items():
+            self.assertLessEqual(v, 1.0, g)
 
 
 if __name__ == "__main__":

@@ -125,16 +125,29 @@ class Door:
                 self.key_of[r[2].lower()] = r[3]
                 self.name_of[r[3]] = r[2]
         self.odorants = sorted(k for k in self.response if k != "SFR")
+        # each receptor's spontaneous firing, subtracted in profile()
+        self.sfr = self.response.get("SFR")
 
     def profile(self, key):
-        """Per-glomerulus response, 0..1, from every receptor mapped to a glomerulus."""
+        """
+        Per-glomerulus response above spontaneous firing, 0..1.
+
+        DoOR's normalised values include each receptor's spontaneous firing
+        (the SFR row, nonzero for most receptors). A receptor firing at its
+        spontaneous rate is not responding to the odour, so SFR is subtracted
+        per receptor, as DoOR's resetSFR does. Anything at or below baseline is
+        not driven: Poisson input can only excite, so inhibitory responses are
+        dropped (CHOSEN, disclosed).
+        """
         values = self.response[key]
+        sfr = self.sfr or [""] * len(values)
         out = {}
-        for rec, v in zip(self.receptors, values):
+        for rec, v, s in zip(self.receptors, values, sfr):
             g = self.glomerulus_of.get(rec)
             if not g or v in ("NA", ""):
                 continue
-            out[g] = max(out.get(g, 0.0), max(0.0, float(v)))
+            base = 0.0 if s in ("NA", "") else float(s)
+            out[g] = max(out.get(g, 0.0), max(0.0, float(v) - base))
         return out
 
 
@@ -149,9 +162,10 @@ class Nose:
     `fb` needs `where(type_re=...)` returning neuron indices, as FlyBrain does.
     """
 
-    def __init__(self, fb, root=ROOT, max_hz=MAX_HZ, door=None):
+    def __init__(self, fb, root=ROOT, max_hz=MAX_HZ, door=None, equal_sniff=0.0):
         self.door = door or Door(root)
         self.max_hz = max_hz
+        self.equal_sniff = float(equal_sniff)
         self.orn = {}
         for g in sorted(set(self.door.glomerulus_of.values())):
             idx = np.asarray(fb.where(type_re=f"^ORN_{re.escape(g)}$"))
@@ -184,8 +198,23 @@ class Nose:
             for g, v in self.door.profile(key).items():
                 if g in self.orn:
                     profile[g] = max(profile.get(g, 0.0), v * weight)
+        out = {g: round(v, 4) for g, v in sorted(profile.items()) if v >= MIN_RESPONSE}
+        if self.equal_sniff > 0:
+            # Every coin is smelled equally loudly.
+            #
+            # DoOR has no dose axis, so how strong a coin smells is an accident
+            # of which odorant its words happen to name. Measured 2026-09-12 on
+            # this connectome: geosmin alone fires 42% of the Kenyon cells while
+            # isopentyl acetate fires 4.9%, so a lesson about a loud coin lands
+            # on five times as many synapses and swamps the quiet ones. Scaling
+            # every coin's profile to the same total takes that accident out,
+            # and it is what made sugar and shock both point the right way in
+            # build/backroom_screen.json. CHOSEN, disclosed.
+            total = sum(out.values())
+            if total > 0:
+                out = {g: round(min(1.0, v * self.equal_sniff / total), 4) for g, v in out.items()}
         return {"odorants": [{"name": o, "weight": w, "why": why} for o, (w, why) in sorted(picks.items())],
-                "profile": {g: round(v, 4) for g, v in sorted(profile.items()) if v >= MIN_RESPONSE}}
+                "profile": out}
 
     def drive(self, smell):
         """The smell as a FlyBrain drive dict: receptor neurons of each glomerulus at response x max_hz."""
