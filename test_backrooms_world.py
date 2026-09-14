@@ -706,6 +706,121 @@ class WorldAdapter(unittest.TestCase):
             self.assertEqual(json.dumps(a, sort_keys=True), json.dumps(b, sort_keys=True))
 
 
+class MoreThanTwoFlies(unittest.TestCase):
+    """
+    The extensions backrooms_talk uses (four flies on one brain), held to
+    changing nothing for two: the seeded starts, the pair helpers and the
+    one-fly channels are what they were, and a batched window is the same
+    record as a window stepped alone.
+    """
+
+    NAMES = ("A", "B", "C", "D")
+
+    def test_two_fly_starts_are_the_draws_they_always_were(self):
+        rng = np.random.default_rng(5)
+        xy = rng.uniform(bw.START_MARGIN_MM, bw.ARENA_MM - bw.START_MARGIN_MM, size=(2, 2))
+        hd = rng.uniform(-math.pi, math.pi, size=2)
+        a = bw.Arena(seed=5)
+        self.assertEqual([(f.x, f.y, f.heading) for f in a.flies],
+                         [(xy[i, 0], xy[i, 1], hd[i]) for i in range(2)])
+
+    def test_four_flies_seeded_inside_the_margin_and_pair_helpers_refuse(self):
+        a, b = bw.Arena(seed=7, names=self.NAMES), bw.Arena(seed=7, names=self.NAMES)
+        self.assertEqual([(f.x, f.y, f.heading) for f in a.flies], [(f.x, f.y, f.heading) for f in b.flies])
+        self.assertEqual([f.name for f in a.flies], list(self.NAMES))
+        for f in a.flies:
+            self.assertTrue(bw.START_MARGIN_MM <= f.x <= bw.ARENA_MM - bw.START_MARGIN_MM)
+            self.assertTrue(bw.START_MARGIN_MM <= f.y <= bw.ARENA_MM - bw.START_MARGIN_MM)
+        self.assertEqual([o.name for o in a.others(a.flies[1])], ["A", "C", "D"])
+        for call in (lambda: a.distance(), lambda: a.geometry(), lambda: a.other(a.flies[0]),
+                     lambda: a.step((0, 0), (0, 0))):
+            with self.assertRaises(ValueError):
+                call()
+        for bad in (("A",), ("A", "A", "B")):
+            with self.assertRaises(ValueError):
+                bw.Arena(names=bad)
+        with self.assertRaises(ValueError):
+            bw.Arena(names=self.NAMES, start=[(1, 1, 0)] * 3)
+
+    def test_step_all_moves_every_fly_as_step_does(self):
+        start = [(10.0, 10.0, 0.0), (2.0, 2.0, 0.0)]
+        a, b = bw.Arena(start=start), bw.Arena(start=start)
+        a.step((1.0, 1.0), (0.0, -1.0))
+        b.step_all({"A": (1.0, 1.0), "B": (0.0, -1.0)})
+        self.assertEqual(json.dumps(a.geometry()), json.dumps(b.geometry()))
+        c = bw.Arena(names=self.NAMES, start=[(5, 5, 0), (6, 6, 0), (7, 7, 0), (8, 8, 0)])
+        c.step_all({"A": (0, 1), "B": (0, 0), "C": (1, 0), "D": (0, -1)})
+        self.assertAlmostEqual(c.by_name["A"].x, 6.0)
+        self.assertAlmostEqual(math.degrees(c.by_name["C"].heading), -18.0)
+        self.assertAlmostEqual(c.by_name["D"].x, 7.0)
+        self.assertEqual(c.t, 1)
+        with self.assertRaises(KeyError):
+            c.step_all({"A": (0, 0)})
+
+    def test_several_flies_on_the_frame_and_in_the_drives(self):
+        ch = bw.Channels()
+        v = flat()
+        near, far = other_at(v, 20.0, 4.0), other_at(v, -30.0, 6.0)
+        both = ch.sight_frame_many(v, [near, far])
+        union = (ch.sight_frame(v, near) < bw.GROUND_GREY) | (ch.sight_frame(v, far) < bw.GROUND_GREY)
+        np.testing.assert_array_equal(both < bw.GROUND_GREY, union)
+        np.testing.assert_array_equal(ch.sight_frame_many(v, [near]), ch.sight_frame(v, near))
+        self.assertEqual(ch.smell_hz_many([5.0]), ch.smell_hz(5.0))
+        self.assertAlmostEqual(ch.smell_hz_many([15.0, 18.0]), ch.smell_hz(15.0) + ch.smell_hz(18.0))
+        self.assertEqual(ch.smell_hz_many([1.0, 2.0]), bw.SMELL_MAX_HZ)          # clipped at one fly's ceiling
+        self.assertEqual(ch.smell_hz_many([]), 0.0)
+        full = bw.SONG_FULL_HZ
+        self.assertEqual(ch.sound_hz_many([(full / 2, 10.0)]), ch.sound_hz(full / 2, 10.0))
+        self.assertAlmostEqual(ch.sound_hz_many([(full / 4, 10.0), (full / 4, 0.0)]),
+                               ch.sound_hz(full / 4, 10.0) + ch.sound_hz(full / 4, 0.0))
+        self.assertEqual(ch.sound_hz_many([(full, 0.0), (full, 0.0)]), bw.SOUND_MAX_HZ)
+
+    def test_a_batched_window_is_the_record_of_a_window_stepped_alone(self):
+        class BatchBrain(FakeBrain):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.batches = []
+
+            def run_batch(self, drives, steps, gains=None, record=None, seeds=None, spike_log=False,
+                          states=None, random_sources=None):
+                self.batches.append((len(drives), list(seeds), [s is None for s in states]))
+                return [FakeBrain.run(self, d, steps, gains=gains, record=record, seed=s, state=st)
+                        for d, s, st in zip(drives, seeds, states)]
+
+        spont = {26: 120.0, 27: 60.0, 21: 90.0}
+        img = bw.Channels().sight_frame(flat(), other_at(flat(), 0.0, 4.0))
+        inputs = [(img, 150.0, 20.0), (img, 50.0, 0.0), (img, 0.0, 70.0)]
+        out = []
+        for cls in (BatchBrain, FakeBrain):
+            fb, eye, groups, motor = make_parts()
+            fb = cls(spont=spont)
+            eye = FakeEye(fb)
+            bodies = [bw.FlyBody(n, fb, eye, groups, motor, seed=10 + i) for i, n in enumerate("ABC")]
+            recs = [bw.step_bodies(bodies, inputs) for _ in range(3)]
+            for r in recs:
+                for x in r:
+                    x.pop("brain_s")
+            out.append((recs, [b.windows for b in bodies], fb))
+        self.assertEqual(json.dumps(out[0][0]), json.dumps(out[1][0]))
+        self.assertEqual(out[0][1], [3, 3, 3])
+        self.assertEqual(out[0][2].batches, [(3, [10, 11, 12], [True] * 3), (3, [10, 11, 12], [False] * 3),
+                                             (3, [10, 11, 12], [False] * 3)])
+        self.assertIn("total_hz", out[0][0][0][0])
+        with self.assertRaises(ValueError):
+            bw.step_bodies(bodies, inputs[:2])
+
+    def test_load_brain_hands_on_a_graph_path(self):
+        seen = []
+
+        def cls(**kw):
+            seen.append(kw)
+            return mock.Mock(n=7)
+        with mock.patch.object(bw, "brain_class", return_value=cls):
+            bw.load_brain(say=lambda m: None, check=False, graph_path="elsewhere/graph.npz")
+            bw.load_brain(say=lambda m: None, check=False)
+        self.assertEqual(seen, [{"graph_path": "elsewhere/graph.npz"}, {}])
+
+
 # =============================================================================
 
 @unittest.skipUnless(os.environ.get("BACKROOMS_REAL_BRAIN") == "1",

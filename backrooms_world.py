@@ -288,15 +288,23 @@ class Arena:
         self.max_speed = float(max_speed_mm_s)
         self.max_turn = math.radians(float(max_turn_deg_s))
         self.t = 0
-        if len(names) != 2:
-            raise ValueError("an arena holds exactly two flies")
+        names = tuple(names)
+        # two or more flies (the backrooms_talk room holds four); the pair
+        # helpers below (A, B, other, distance, bearing, geometry, step) are
+        # the two-fly room's and refuse any other count. With two names the
+        # seeded draws are exactly the ones this class always made.
+        if len(names) < 2 or len(set(names)) != len(names):
+            raise ValueError("an arena holds two or more flies with distinct names")
+        n = len(names)
         if start is None:
             rng = np.random.default_rng(self.seed)
             lo, hi = START_MARGIN_MM, self.size - START_MARGIN_MM
-            xy = rng.uniform(lo, hi, size=(2, 2))
-            hd = rng.uniform(-math.pi, math.pi, size=2)
-            start = [(xy[i, 0], xy[i, 1], hd[i]) for i in range(2)]
-        self.flies = [Fly(n, *s) for n, s in zip(names, start)]
+            xy = rng.uniform(lo, hi, size=(n, 2))
+            hd = rng.uniform(-math.pi, math.pi, size=n)
+            start = [(xy[i, 0], xy[i, 1], hd[i]) for i in range(n)]
+        if len(start) != n:
+            raise ValueError(f"{len(start)} starts for {n} flies")
+        self.flies = [Fly(n_, *s) for n_, s in zip(names, start)]
         self.by_name = {f.name: f for f in self.flies}
         self._last_turn = {n: 0.0 for n in names}
         self._last_move = {n: 0.0 for n in names}
@@ -311,14 +319,24 @@ class Arena:
     def B(self):
         return self.flies[1]
 
+    def _pair_only(self):
+        if len(self.flies) != 2:
+            raise ValueError("this helper is for a two-fly arena; use distance_mm / bearing_deg per pair")
+
     def other(self, fly):
+        self._pair_only()
         return self.flies[1] if fly is self.flies[0] else self.flies[0]
+
+    def others(self, fly):
+        """Every fly but this one, in arena order (any number of flies)."""
+        return [f for f in self.flies if f is not fly]
 
     @property
     def time_s(self):
         return self.t * self.dt
 
     def distance(self):
+        self._pair_only()
         return distance_mm(self.flies[0], self.flies[1])
 
     def bearing(self, name):
@@ -328,6 +346,7 @@ class Arena:
 
     def geometry(self):
         """Everything the recorder and the page need about where the flies are."""
+        self._pair_only()
         a, b = self.flies
         return {
             "t": self.t, "time_s": self.time_s,
@@ -354,10 +373,24 @@ class Arena:
 
     def step(self, cmd_a, cmd_b):
         """cmd = (turn, speed) per fly, both applied from the same state."""
+        self._pair_only()
         self.apply(self.flies[0], *cmd_a)
         self.apply(self.flies[1], *cmd_b)
         self.t += 1
         return self.geometry()
+
+    def step_all(self, cmds):
+        """
+        Any number of flies: cmds = {name: (turn, speed)} for every fly, all
+        applied from the same previous state (apply() moves one fly and reads
+        no other, so the order cannot matter). Returns nothing; read the flies.
+        """
+        missing = [f.name for f in self.flies if f.name not in cmds]
+        if missing:
+            raise KeyError(f"no command for {missing}")
+        for f in self.flies:
+            self.apply(f, *cmds[f.name])
+        self.t += 1
 
     def describe(self):
         return {
@@ -440,6 +473,18 @@ class Channels:
         self.draw_ellipse(img, self.ellipse_of(viewer, other))
         return img
 
+    def sight_frame_many(self, viewer, others):
+        """
+        The same frame with every other fly drawn on it, each by ellipse_of
+        exactly as for one. All flies share one grey, so where two ellipses
+        overlap the pixel is the fly grey either way and the drawing order
+        cannot change the frame.
+        """
+        img = np.full((self.h, self.w), self.ground, dtype=np.float32)
+        for other in others:
+            self.draw_ellipse(img, self.ellipse_of(viewer, other))
+        return img
+
     def draw_ellipse(self, img, e):
         cx, cy, rx, ry = e["cx"], e["cy"], max(e["rx"], 0.5), max(e["ry"], 0.5)
         x0 = max(int(math.floor(cx - rx)), 0)
@@ -467,6 +512,23 @@ class Channels:
         """JO-A/JO-B drive from the other's song (summed pulse-MN rate) at distance d."""
         loud = float(np.clip(float(song_hz) / self.song_full, 0.0, 1.0))
         return self.sound_max * loud * self.falloff(d_mm)
+
+    # CHOSEN (several flies): each other fly's contribution is the one-fly
+    # channel above, unchanged; contributions are summed (concentrations and
+    # sound pressures from separate sources add) and the sum is clipped at the
+    # same ceiling as one fly's, smell_max_hz / sound_max_hz, so no drive can
+    # exceed what one fly at contact delivers. With one other fly both are
+    # identical to smell_hz / sound_hz.
+
+    def smell_hz_many(self, distances_mm):
+        """ORN_DA1 drive from several flies at these distances: summed, clipped at smell_max."""
+        total = sum(self.smell_hz(d) for d in distances_mm)
+        return float(min(total, self.smell_max))
+
+    def sound_hz_many(self, songs_and_distances):
+        """JO drive from several singers, [(song_hz, d_mm), ...]: summed, clipped at sound_max."""
+        total = sum(self.sound_hz(s, d) for s, d in songs_and_distances)
+        return float(min(total, self.sound_max))
 
     def describe(self):
         return {
@@ -550,13 +612,15 @@ def brain_class(name=None):
     return getattr(importlib.import_module(mod), cls)
 
 
-def load_brain(min_free_gb=MIN_FREE_RAM_GB, cls=None, say=print, check=True):
+def load_brain(min_free_gb=MIN_FREE_RAM_GB, cls=None, say=print, check=True, graph_path=None):
     """
     The one brain this process holds. On a shared desk, refuses when free RAM
     is measured below min_free_gb (other workflows hold a brain at times), so
     the check is not left to the caller. When free RAM cannot be measured it
     says so and loads anyway: an unknown is not a shortage. check=False skips
-    the measurement (a container that runs nothing else).
+    the measurement (a container that runs nothing else). graph_path, when
+    given, is handed to the class (a checkout whose build/ has no graph.npz
+    points at another copy); None keeps the class's own default.
     """
     if check:
         ram = free_ram_gb()
@@ -569,7 +633,7 @@ def load_brain(min_free_gb=MIN_FREE_RAM_GB, cls=None, say=print, check=True):
     else:
         say("free RAM check skipped")
     t0 = time.time()
-    fb = brain_class(cls)()
+    fb = brain_class(cls)() if graph_path is None else brain_class(cls)(graph_path=graph_path)
     say(f"brain ready: {fb.n:,} neurons in {time.time() - t0:.1f} s ({cls or BRAIN_CLASS})")
     return fb
 
@@ -756,6 +820,14 @@ class FlyBody:
         drive = self.drive(frame, smell_hz, sound_hz)
         r = self.fb.run(drive, steps=self.sim_steps, gains=self.gains,
                         record={"all": self.rec_idx}, seed=self.seed, state=self.state)
+        return self.absorb(r, drive, smell_hz, sound_hz, t0)
+
+    def absorb(self, r, drive, smell_hz, sound_hz, t0):
+        """
+        The record of one window from the brain's returned dict: step()'s
+        second half, split out so step_bodies() can run several bodies in one
+        batched call and record each exactly as step() would.
+        """
         carried = self.state is not None
         self.state = r["_state"]          # a brain that cannot carry state is an error, not a restart
         self.windows += 1
@@ -786,6 +858,7 @@ class FlyBody:
                     **{k: rates[k] for k in SOUND_KEYS if k in rates}},
             "rates": rates, "counts": counts,
             "fired": int(len(fired)) if fired is not None else 0,
+            "total_hz": float(r["_total_hz"]) if "_total_hz" in r else None,
             "brain_s": time.time() - t0,
         }
 
@@ -808,6 +881,34 @@ class FlyBody:
                           "rootSide; unsided cells x 1), so both antennae receive the same total "
                           "cell-Hz and the drive carries no side information by construction",
         }
+
+
+def step_bodies(bodies, inputs):
+    """
+    One window for several bodies on one brain: inputs[i] = (frame, smell_hz,
+    sound_hz) for bodies[i]. When every body holds the same brain, gains and
+    window, and the brain has run_batch (flysim_gpu.FlyBrainGPU), the windows
+    run as the columns of one batched call; flysim_gpu documents that column b
+    equals run() with that body's drive, seed and state spike for spike. Else
+    each body steps in turn, as the two-fly Room does. Returns the records in
+    body order, each exactly what FlyBody.step returns.
+    """
+    bodies = list(bodies)
+    if len(inputs) != len(bodies):
+        raise ValueError(f"{len(inputs)} inputs for {len(bodies)} bodies")
+    if not bodies:
+        return []
+    fb = bodies[0].fb
+    same = all(b.fb is fb and b.gains is bodies[0].gains and b.sim_steps == bodies[0].sim_steps
+               and np.array_equal(b.rec_idx, bodies[0].rec_idx) for b in bodies)
+    if len(bodies) == 1 or not same or not callable(getattr(fb, "run_batch", None)):
+        return [b.step(*x) for b, x in zip(bodies, inputs)]
+    t0 = time.time()
+    drives = [b.drive(*x) for b, x in zip(bodies, inputs)]
+    outs = fb.run_batch(drives, bodies[0].sim_steps, gains=bodies[0].gains,
+                        record={"all": bodies[0].rec_idx}, seeds=[b.seed for b in bodies],
+                        states=[b.state for b in bodies])
+    return [b.absorb(r, d, x[1], x[2], t0) for b, r, d, x in zip(bodies, outs, drives, inputs)]
 
 
 # =============================================================================
