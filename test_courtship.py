@@ -43,7 +43,7 @@ def test_wave_ear_carried_constant_spikes_and_equalisation():
     logs.clear()
     expected = run({}, 250, record={'all': body.rec_idx})
     assert split == logs
-    assert body.state == expected['_state']
+    assert body.brain_state == expected['_state']
     assert result['her_answer']['vpodn_hz'] == pytest.approx(expected['all'][0])
     assert result['counts']['vpoDN'] == 2*len(logs)
     # Per-side scaling is the same drive path for every waveform subwindow.
@@ -82,7 +82,8 @@ def female_fake(types=None):
         types = (["L1", "L2", "JO-A", "JO-A", "JO-B", "JO-B"]
                  + [f"pC1{letter}" for letter in "abcde" for _ in range(2)]
                  + ["DNp37", "DNp37", "DNa02", "DNa02", "DNa01", "DNa01"]
-                 + ["MDN", "DNp09", "MN9", "JO-A1", "pC1a_extra", "DNp370"])
+                 + ["MDN", "DNp09", "MN9", "JO-A1", "pC1a_extra", "DNp370"]
+                 + ["SpsP"]*7 + ["oviDNa_a", "oviDNa_b", "oviDNb"]*2)
     fb = FakeBrain(types)
     fb.soma_side = fake_sides(fb)
     return fb
@@ -91,6 +92,38 @@ def female_fake(types=None):
 def her(fb=None):
     fb = female_fake() if fb is None else fb
     return HerBody("B", fb, FakeEye(fb), female_groups(fb), female_motor(fb), seed=2)
+
+
+def test_state_drive_and_recorded_readouts():
+    from courtship import SPSN_HZ
+    body = her()
+    frame = np.zeros((800, 1280))
+    for state, hz in (("virgin", SPSN_HZ), ("mated", 0.)):
+        body.state = state
+        body.reset()
+        assert body.state == state and not body.state_carried
+        delivered = []
+        run = body.fb.run
+        def capture(drive, **kwargs):
+            delivered.append(drive[tuple(body.groups['SpsP'])].copy())
+            return run(drive, **kwargs)
+        body.fb.run = capture
+        for i, idx in enumerate(body.groups['oviDN']):
+            body.fb.spont[idx] = 10.*i
+        result = body.step(frame, 0., np.zeros(1103))
+        body.fb.run = run
+        assert len(delivered) == 10
+        assert all(np.all(v == hz) for v in delivered)
+        assert result['her_answer']['spsp_hz'] == hz
+        assert result['her_answer']['ovidn_hz'] == 25.
+        assert not np.intersect1d(body.groups['SpsP'], body.sound_idx).size
+        assert body.state_carried
+    groups = female_groups(body.fb)
+    groups['SpsP'] = groups['JO_A'][:1]
+    with pytest.raises(ValueError, match='SpsP cells overlap sound cells'):
+        HerBody('B', body.fb, body.eye, groups, female_motor(body.fb))
+    with pytest.raises(ValueError, match='state must'):
+        HerBody('B', body.fb, body.eye, female_groups(body.fb), female_motor(body.fb), state='unknown')
 
 
 def test_male_readouts_are_measured_population_mean_and_sums():
@@ -249,7 +282,7 @@ def test_blind_body_only_sound():
     frame = np.ones((bw.FRAME_H, bw.FRAME_W), dtype=np.float32)
     assert eye.look(frame, 0, 0) == {}
     drive = body.drive(frame, 999, 80)
-    assert set(drive) == {tuple(body.sound_idx)}
+    assert set(drive) == {tuple(body.sound_idx), tuple(body.groups["SpsP"])}
     assert () not in drive
     np.testing.assert_array_equal(drive[tuple(body.sound_idx)], body.sound_scale * 80)
     result = body.step(frame, 999, 80)
@@ -274,7 +307,7 @@ def test_groups_and_motor():
     fb = female_fake()
     groups = female_groups(fb)
     assert {k: len(v) for k, v in groups.items()} == {
-        "JO_A": 2, "JO_B": 2, "pC1": 10, "vpoDN": 2}
+        "JO_A": 2, "JO_B": 2, "pC1": 10, "vpoDN": 2, "SpsP": 7, "oviDN": 6}
     motor = female_motor(fb)
     assert set(motor) == set(bw.MOTOR_NAMES)
     for key, typ, side in (("steer_L", "DNa02", "L"), ("steer_R", "DNa02", "R"),
@@ -302,17 +335,17 @@ def test_five_windows_mean_answer_and_ignored_smell():
     frame = np.zeros((bw.FRAME_H, bw.FRAME_W), dtype=np.float32)
     for window in range(1, 6):
         r = body.step(frame, 999.0, 80.0)
-        assert r["her_answer"] == body.answer == {"vpodn_hz": 40.0, "pc1_hz": 4.5}
+        assert r["her_answer"] == body.answer == {"vpodn_hz": 40.0, "pc1_hz": 4.5, "ovidn_hz": 0., "spsp_hz": 50.}
         assert all(np.isfinite(v) for v in body.answer.values())
         assert r["out"] == {"JO_A": 80.0, "JO_B": 80.0}
         assert r["song_hz"] == r["in"]["smell_hz"] == 0.0
         assert r["window"] == window
         assert r["state_carried"] == (window > 1)
-        assert int(body.state["v"][0]) == window
+        assert int(body.brain_state["v"][0]) == window
     assert not hasattr(body, "song_key")
-    assert len(body.fb.calls[-1]["keys"]) == 3
+    assert len(body.fb.calls[-1]["keys"]) == 4
     body.reset()
-    assert body.answer == {"vpodn_hz": 0.0, "pc1_hz": 0.0}
+    assert body.answer == {"vpodn_hz": 0.0, "pc1_hz": 0.0, "ovidn_hz": 0., "spsp_hz": 0.}
 
 
 def test_room_twenty_steps_and_previous_song():

@@ -21,12 +21,18 @@ FEMALE_EXC_SCALE = 1.0
 FEMALE_EYE = "blind"
 ENABLE_DARK = False
 CONDITIONS = {"song": (True, False), "jittered": (True, True),
-              "silence": (False, False), "mute": (True, False), "noscent": (True, False)}
+              "silence": (False, False), "mute": (True, False), "noscent": (True, False),
+              "mated": (True, False)}
 if ENABLE_DARK:
     CONDITIONS["dark"] = (False, False)
 DEFAULT_STEPS = 400
 ACCEPT_WINDOWS = 3
-PROTOCOL_TEXT = """CHOSEN before data: all five conditions share seed and arena start.
+PROTOCOL_TEXT = """Protocol v5. CHOSEN before data: all six conditions share seed and arena start.
+- virgin: SpsP driven at a tonic SPSN_HZ = 50 Hz every window (CHOSEN; "the sensory pathway that reports an unmated uterus is on").
+- mated: SpsP driven at 0 Hz (CHOSEN; "sex peptide has silenced it").
+CHOSEN: song, jittered, silence, mute and noscent are virgin; mated is identical to song except her state is mated. This adds a tonic SpsP drive relative to v4 and changes the physics: v5 predictions are fixed again before data. Today's prior experiment had no SpsP drive at all: it silently ran the mated encoding.
+CHOSEN: courtship starts when he can see her. She starts 6 mm ahead of him, offset by a seed-derived angle within +/-30 degrees of his heading, facing a seed-derived random heading. All other arena rules are unchanged.
+UNCERTAIN: SpsP identity is taken from the FlyWire name and not verified. Biology (not verified in session): active virgin SPSN, through SAG, keep pC1 receptive; sex peptide silences SPSN after mating and receptivity falls. Citations, not verified in session: Yapici et al. 2008 Nature 451:33 (sex peptide receptor); Feng et al. 2014 Neuron 83:135 (SPSN to SAG to pC1); Wang et al. 2021 Nature 589:577 (vpoDN); Wang et al. 2020 Nature 579:101 (oviDN, mating and egg laying).
 - song: his previous measured pIP10 mean sets amplitude; per-cell pulse and sine motor means set mode.
 - jittered: replay the paired song first-recorded a, m and distance series; each IPI is uniform 15-60 ms, seed-derived RNG (seed, 731). CHOSEN: one trial-wide gain matches delivered RMS to song, including pulse-density differences; his live brain still runs and is recorded.
 - silence: her waveform is zero; his brain still runs.
@@ -55,9 +61,15 @@ Predictions fixed before data (paired difference > 2 SE across seeds; P5 require
 - P8b (descriptive): his LC10a mean rate, song versus noscent; no verdict.
 - P0 baselines (descriptive): silence/mute active windows per seed.
 - P7 (descriptive): his P1 active windows, LC10a mean rate per window (275 cells), and lagged correlations of his song amplitude a and mode m with her previous distance and speed.
+- P9 she can say no: her vpoDN mean rate, song (virgin) > mated.
+- P10 rejection (descriptive, no verdict): oviDN mean rate and retreat fraction per seed, mated vs song.
+- Seed spread: per condition, seeds with accept / no-accept; if `mated` gives accept on every seed the report says "the state did not produce a no" in one sentence.
+- P11 he sees her (descriptive with a verdict rule): his LC10a mean rate in windows with sight > in windows without sight, paired within trial, across seeds, > 2 SE (song condition).
+- P12 adaptation (descriptive, no verdict): lagged correlations already in P7, plus `m[1:]` vs `LC10a[:-1]` (does his song mode follow what his LC10a saw a window earlier).
+MEASURED: per-window ovidn_hz (mean over six oviDN cells), spsp_hz and sight_ok (silhouette reaches his retinal samples); per-trial sight fraction. P11 uses only song trials with both sight and no-sight windows; missing pairs are excluded and fewer than two pairs is undetermined. P10 retreat fraction is the fraction of adjacent pre-window distances that increase, excluding the first window, which has no previous distance.
 - Seed spread: accept / approach / retreat per seed and condition; say plainly when every seed gives the same outcome.
 """ + "\n" + BIOLOGY
-PROTOCOLS = {"v4": {"text": PROTOCOL_TEXT, "conditions": CONDITIONS,
+PROTOCOLS = {"v5": {"text": PROTOCOL_TEXT, "conditions": CONDITIONS,
     "default_seeds": 10, "steps": DEFAULT_STEPS, "seed_ladder": (10, 8),
     "budget_s": 9000, "accept_windows": ACCEPT_WINDOWS, "sim_steps": 250,
     "world_dt_s": bw.WORLD_DT_S, "state_carry": True,
@@ -67,6 +79,7 @@ PROTOCOLS = {"v4": {"text": PROTOCOL_TEXT, "conditions": CONDITIONS,
     "quarter_rule": "floor(steps / 4) windows at each end; geometry before the window",
     "budget_note": "First trial measures both graphs per step; choose largest fitting seed count, with floor 8 (requests below 8 kept). Setup and rendering excluded from estimate."}}
 LIMITATIONS = [
+    "her state is a chosen tonic drive on SpsP, an identity taken from the FlyWire name and not verified; oviDN is a readout of a descending command, she has no body to extrude an ovipositor with; the start geometry is chosen so that she is visible to him",
     "His wing motor neurons run near ceiling from background activity; the song is taken from the command neuron pIP10, not from the motor sum. Mode still uses the motor means.",
     "Her ear now hears a waveform in 5 ms sub-windows; the brain runs in real time for her. His brain also runs in real time.",
     "Pulse rhythm and carriers are chosen synthesis, not measured spike timing or a biomechanical wing model.",
@@ -107,6 +120,16 @@ class ExperimentRoom(bw.Room):
         if condition not in CONDITIONS and condition != "dark":
             raise ValueError("unknown condition")
         self.condition = condition
+        rng = np.random.default_rng(np.random.SeedSequence([seed, 905]))
+        angle = self.arena.A.heading + rng.uniform(-np.pi/6, np.pi/6)
+        # Translate the pair together only if needed to retain the existing arena bounds.
+        dx, dy = 6*np.cos(angle), 6*np.sin(angle)
+        margin = bw.START_MARGIN_MM
+        self.arena.A.x = float(np.clip(self.arena.A.x, margin-min(0., dx), bw.ARENA_MM-margin-max(0., dx)))
+        self.arena.A.y = float(np.clip(self.arena.A.y, margin-min(0., dy), bw.ARENA_MM-margin-max(0., dy)))
+        self.arena.B.x, self.arena.B.y = self.arena.A.x+dx, self.arena.A.y+dy
+        self.arena.B.heading = float(rng.uniform(-np.pi, np.pi))
+        self.bodies["B"].state = "mated" if condition == "mated" else "virgin"
         body = self.bodies["A"]
         groups = getattr(body, "groups", {})
         self.singer = Singer(seed, condition == "jittered",
@@ -187,7 +210,7 @@ def build_room(seed, condition, song_sound=None, brains=None,
     groups["LC10a"] = male.where(type_re="^LC10a$")
     for key in ("P1", "pIP10", "LC10a"):
         if key not in groups or not len(groups[key]):
-            raise ValueError(f"v4 requires measured male group {key}")
+            raise ValueError(f"v5 requires measured male group {key}")
     gains = p1_lesion(male, groups) if condition == "mute" else None
     room = ExperimentRoom(male, male_eye, groups,
         bw.motor_groups(male, sides), gains=gains, seed=seed, body_b=body,
@@ -214,6 +237,10 @@ def outcome(seed, condition, trace, start):
     last = float(np.mean(trace["distance_mm"][-q:]))
     active = int(np.count_nonzero(trace["vpodn_hz"] > 0))
     result = dict(seed=seed, condition=condition, start=start, accept=active >= ACCEPT_WINDOWS,
+        state="mated" if condition == "mated" else "virgin",
+        ovidn_hz=float(np.mean(trace["ovidn_hz"])), spsp_hz=float(np.mean(trace["spsp_hz"])),
+        sight_fraction=float(np.mean(trace["sight_ok"])),
+        retreat_fraction=float(np.mean(np.diff(trace["distance_mm"]) > 0)),
         approach=last < first, retreat=last > first, active_windows=active,
         vpodn_hz=float(np.mean(trace["vpodn_hz"])), pc1_hz=float(np.mean(trace["pc1_hz"])),
         first_distance_mm=first, last_distance_mm=last,
@@ -237,6 +264,12 @@ def outcome(seed, condition, trace, start):
     for channel in ("a", "m"):
         for label, key in (("distance", "distance_mm"), ("speed", "her_speed_mm_s")):
             result[f"{channel}_{label}_lagged_rho"] = correlation(trace[channel][1:], trace[key][:-1]) if channel in trace else None
+    result["m_lc10a_lagged_rho"] = correlation(trace["m"][1:], trace["lc10a_hz"][:-1])
+    seen = trace["sight_ok"].astype(bool)
+    result["lc10a_sight_hz"] = float(trace["lc10a_hz"][seen].mean()) if seen.any() else None
+    result["lc10a_no_sight_hz"] = float(trace["lc10a_hz"][~seen].mean()) if (~seen).any() else None
+    result["lc10a_sight_difference"] = (result["lc10a_sight_hz"]-result["lc10a_no_sight_hz"]
+                                        if seen.any() and (~seen).any() else None)
     return result
 
 
@@ -254,6 +287,9 @@ def run_trial(room, steps, seed, condition):
                    for k, v in baseline.items())
     rows = []
     for _ in range(steps):
+        image = eye.look(ch.sight_frame(room.arena.A, room.arena.B), *ch.gaze)
+        window_sight = any(np.any(np.abs(np.asarray(image[k])-v) > 1e-6)
+                           for k, v in baseline.items())
         r = room.step()
         if any(r["A"].get(k) is None for k in ("pulse_hz", "sine_hz")):
             raise ValueError("experiment protocol requires both male song groups: song_pulse_mn and song_sine_hg1")
@@ -264,7 +300,7 @@ def run_trial(room, steps, seed, condition):
         displacement = np.hypot(r["after"]["B"]["x"]-g["B"]["x"],
                                 r["after"]["B"]["y"]-g["B"]["y"])
         sound_a, sound_b = HerBody.sound_pair(r["B"]["in"]["sound_hz"])
-        row.update(time_s=g["time_s"], distance_mm=g["distance_mm"],
+        row.update(time_s=g["time_s"], distance_mm=g["distance_mm"], sight_ok=bool(window_sight),
             p1_hz=r["A"].get("p1_hz"), pulse_hz=r["A"]["pulse_hz"],
             sine_hz=r["A"]["sine_hz"],
             her_sound_a_clipped=r["sound_clipped"][0],
@@ -314,7 +350,8 @@ def summarise(rows):
         ("P5_rms", "delivered_rms", "mute", 1),
         ("P6", "vpodn_hz", "mute", 1),
         ("P8", "p1_hz", "noscent", 1),
-        ("P8b", "lc10a_hz", "noscent", 1)):
+        ("P8b", "lc10a_hz", "noscent", 1),
+        ("P9", "vpodn_hz", "mated", 1)):
         diffs = [sign * (indexed[s, "song"][key] - indexed[s, control][key])
                  for s in sorted({r["seed"] for r in rows})]
         mean = float(np.mean(diffs))
@@ -324,13 +361,25 @@ def summarise(rows):
             verdict=verdict(mean, se, len(diffs)))
         if label == "P8b":
             predictions[label]["verdict"] = "descriptive; no verdict"
+    song = [r for r in rows if r["condition"] == "song"]
+    diffs = [r["lc10a_sight_difference"] for r in song if r["lc10a_sight_difference"] is not None]
+    mean = float(np.mean(diffs)) if diffs else None
+    se = float(np.std(diffs, ddof=1)/np.sqrt(len(diffs))) if len(diffs) > 1 else None
+    predictions["P11"] = dict(mean=mean, se=se, n=len(diffs), paired_differences=diffs,
+        excluded_seeds=[r["seed"] for r in song if r["lc10a_sight_difference"] is None],
+        metric="lc10a_hz", control="no-sight windows within song trial", direction="sight - no sight",
+        verdict=verdict(mean, se, len(diffs)))
     spread = {}
     for c in CONDITIONS:
         rr = [r for r in rows if r["condition"] == c]
         counts = {k: sum(r[k] for r in rr) for k in ("accept", "approach", "retreat")}
         same = len({tuple(r[k] for k in counts) for r in rr}) == 1
         sentence = f"{c}: every seed gives the same outcome." if same else f"{c}: outcomes differ across seeds."
-        spread[c] = dict(n=len(rr), **counts, sentence=sentence)
+        spread[c] = dict(n=len(rr), **counts, no_accept=len(rr)-counts["accept"],
+                        accept_seeds=[r["seed"] for r in rr if r["accept"]],
+                        no_accept_seeds=[r["seed"] for r in rr if not r["accept"]], sentence=sentence)
+        if c == "mated" and rr and counts["accept"] == len(rr):
+            spread[c]["state_sentence"] = "the state did not produce a no"
     p0 = dict(per_seed=[
         dict(seed=r["seed"], condition=r["condition"], active_windows=r["active_windows"])
         for r in rows if r["condition"] in ("dark", "silence", "mute")])
@@ -339,7 +388,11 @@ def summarise(rows):
         baseline = indexed[seed, "song"]["delivered_rms"]
         ratios.append(dict(seed=seed, jittered_song_rms_ratio=(indexed[seed, "jittered"]["delivered_rms"]/baseline if baseline else None)))
     p5 = "supported" if all(predictions[k]["verdict"] == "supported" for k in ("P5_command", "P5_rms")) else ("undetermined" if len(ratios) < 2 else "not supported")
-    return dict(P0=p0, P5_verdict=p5, rms_ratios=ratios, predictions=predictions, seed_spread=spread)
+    p10 = [dict(seed=r["seed"], condition=r["condition"], ovidn_hz=r["ovidn_hz"],
+                retreat_fraction=r["retreat_fraction"]) for r in rows if r["condition"] in ("song", "mated")]
+    p12 = [{k: r[k] for k in ("seed", "condition", "a_distance_lagged_rho", "a_speed_lagged_rho",
+            "m_distance_lagged_rho", "m_speed_lagged_rho", "m_lc10a_lagged_rho")} for r in rows]
+    return dict(P0=p0, P5_verdict=p5, P10=p10, P12=p12, rms_ratios=ratios, predictions=predictions, seed_spread=spread)
 
 
 def paths(prefix):
@@ -368,16 +421,30 @@ def write_report(json_path):
         f"CHOSEN: FEMALE_EXC_SCALE = {data['female_exc_scale']}; FEMALE_EYE = {data['female_eye']}.",
         data["protocol_spec"]["text"], "", "## Predictions", "| Prediction | Paired difference | SE | n | Verdict |", "|---|---:|---:|---:|---|"]
     for k, p in data["summary"]["predictions"].items():
-        lines.append(f"| {k}: {p['metric']}, {p['direction']} ({p['control']}) | {p['mean']:.6g} | {p['se']} | {p['n']} | {p['verdict']} |")
+        lines.append(f"| {k}: {p['metric']}, {p['direction']} ({p['control']}) | {p['mean']} | {p['se']} | {p['n']} | {p['verdict']} |")
     lines += ["", "## P0: baseline (descriptive, no verdict)"]
     for r in data["summary"]["P0"]["per_seed"]:
         lines.append(f"Seed {r['seed']}, {r['condition']}: {r['active_windows']} active windows.")
-    lines += ["", "## Per-seed outcomes", "MEASURED: clipped windows count actual ear sub-window clipping in each band.", "| Seed | Condition | Accept | Approach | Retreat | Active windows | vpoDN Hz | pC1 Hz | Last distance mm | pIP10 Hz | Delivered RMS |", "|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|"]
+    lines += ["", "## Per-seed outcomes", "MEASURED: clipped windows count actual ear sub-window clipping in each band.", "| Seed | Condition | State | Accept | Approach | Retreat | Active windows | vpoDN Hz | pC1 Hz | oviDN Hz | Sight fraction | Last distance mm | pIP10 Hz | Delivered RMS |", "|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for r in data["outcomes"]:
-        lines.append("| " + " | ".join(str(r[k]) for k in ("seed", "condition", "accept", "approach", "retreat", "active_windows", "vpodn_hz", "pc1_hz", "last_distance_mm", "pip10_hz", "delivered_rms")) + " |")
+        lines.append("| " + " | ".join(str(r[k]) for k in ("seed", "condition", "state", "accept", "approach", "retreat", "active_windows", "vpodn_hz", "pc1_hz", "ovidn_hz", "sight_fraction", "last_distance_mm", "pip10_hz", "delivered_rms")) + " |")
     lines += ["", "## Seed spread"]
     for c, s in data["summary"]["seed_spread"].items():
         lines += [f"{c}: accept {s['accept']}/{s['n']}, approach {s['approach']}/{s['n']}, retreat {s['retreat']}/{s['n']}. {s['sentence']}"]
+        lines.append(f"Accept seeds: {s['accept_seeds']}; no-accept seeds: {s['no_accept_seeds']}.")
+        if "state_sentence" in s:
+            lines.append(s["state_sentence"])
+    lines += ["", "## P9 she can say no", str(data["summary"]["predictions"]["P9"]),
+              "", "## P10 rejection (descriptive, no verdict)",
+              "Retreat fraction: adjacent pre-window distances that increase / all adjacent pairs."]
+    lines += [str(r) for r in data["summary"]["P10"]]
+    lines += ["", "## P11 he sees her", str(data["summary"]["predictions"]["P11"]),
+              "Paired within song trial; exclude trials missing either category; fewer than two pairs is undetermined."]
+    lines += [str({k: r[k] for k in ("seed", "sight_fraction", "lc10a_sight_hz", "lc10a_no_sight_hz")})
+              for r in data["outcomes"] if r["condition"] == "song"]
+    lines += ["", "## P12 adaptation (descriptive, no verdict)",
+              "Spearman correlations: a[1:] and m[1:] versus previous distance/speed, and m[1:] versus LC10a[:-1]; None means constant data."]
+    lines += [str(r) for r in data["summary"]["P12"]]
     lines += ["", "## P7 his response (descriptive)",
         "MEASURED: P1 active windows, LC10a mean rate per window, lagged amplitude/mode correlations with her previous distance/speed. None means constant data. No adaptation mechanism was added.",
         "| Seed | Condition | P1 active windows | LC10a Hz | a-distance | a-speed | m-distance | m-speed |",
@@ -394,7 +461,7 @@ def write_report(json_path):
         step = float(np.mean([t["step_s"] for t in data["timing"]]))
         female = float(np.mean([t["her_brain_s"] for t in data["timing"]]))
         lines += [f"MEASURED: mean world step {step:.6g} s; female brain step {female:.6g} s. "
-                  f"Estimated ten-seed cost (5 x 400 windows each): {step*20000/3600:.3g} hours, excluding setup and rendering."]
+                  f"Estimated ten-seed cost ({len(CONDITIONS)} x 400 windows each): {step*len(CONDITIONS)*4000/3600:.3g} hours, excluding setup and rendering."]
         if female > .5:
             lines.append("MEASURED: female brain step exceeds 0.5 s; the full experiment was not run.")
     interpretation = "; ".join(f"{k} was {p['verdict']}" for k, p in data["summary"]["predictions"].items())
@@ -473,12 +540,12 @@ def save(prefix, data, traces):
 
 def main(argv=None, room_factory=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--protocol", choices=PROTOCOLS, default="v4")
+    ap.add_argument("--protocol", choices=PROTOCOLS, default="v5")
     ap.add_argument("--seeds", type=int, default=10)
     ap.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     ap.add_argument("--quick", type=int, choices=(0, 1), default=0)
     ap.add_argument("--brain", default="flysim.FlyBrain")
-    ap.add_argument("--out", default="build/courtship_v4_local")
+    ap.add_argument("--out", default="build/courtship_v5_quick")
     ap.add_argument("--budget-min", type=float, default=150)
     ap.add_argument("--log")
     ap.add_argument("--reanalyse")

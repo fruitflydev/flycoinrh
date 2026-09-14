@@ -176,6 +176,7 @@ def test_build_room_selected_class(monkeypatch, tmp_path):
 class FakeFly:
     def __init__(self, name, seed, ignores_sound=False):
         self.name, self.seed, self.window = name, seed, 0
+        self.state = "virgin"
         self.ignores_sound = ignores_sound
 
     def step(self, frame, smell, sound):
@@ -187,7 +188,7 @@ class FakeFly:
             pulse_hz=float((self.window * 37 + self.seed * 13) % 101), sine_hz=0.,
             song_hz=float((self.window * 37 + self.seed * 13) % 101) if self.name == "A" else 0.,
             rates={"pIP10": 0. if getattr(self, "muted", False) else 10.+self.window, "LC10a": 3.}, p1_hz=1.,
-            her_answer=dict(vpodn_hz=answer, pc1_hz=answer/2), **{"in": {"sound_hz": sound}})
+            her_answer=dict(vpodn_hz=answer, pc1_hz=answer/2, ovidn_hz=0., spsp_hz=50. if self.state == "virgin" else 0.), **{"in": {"sound_hz": sound}})
 
 
 class FakeRoom(ce.ExperimentRoom):
@@ -213,6 +214,91 @@ def trials(seed=0, steps=12, ignores_sound=False):
     return result
 
 
+def test_v5_geometry_many_seeds():
+    headings, offsets = [], []
+    for seed in range(100):
+        song = FakeRoom(seed, 'song')
+        mated = FakeRoom(seed, 'mated')
+        assert song.arena.geometry() == mated.arena.geometry()
+        a, b = song.arena.A, song.arena.B
+        assert song.arena.distance() == pytest.approx(6.)
+        offset = np.arctan2(np.sin(np.arctan2(b.y-a.y, b.x-a.x)-a.heading),
+                            np.cos(np.arctan2(b.y-a.y, b.x-a.x)-a.heading))
+        assert abs(offset) <= np.pi/6
+        assert all(2-1e-12 <= v <= 18+1e-12 for v in (a.x, a.y, b.x, b.y))
+        headings.append(b.heading)
+        offsets.append(offset)
+    assert len(set(headings)) == len(set(offsets)) == 100
+
+
+def test_mated_song_only_state_drive_differs_on_fake():
+    from test_courtship import female_fake
+    rooms = [ce.build_room(4, c, brains=(make_parts()[0], female_fake()),
+                          annotations_path='build/missing') for c in ('song', 'mated')]
+    assert rooms[0].arena.geometry() == rooms[1].arena.geometry()
+    for _ in range(4):
+        results = [room.step() for room in rooms]
+        for key in ('A', 'before', 'after', 'song_wave'):
+            assert {k: v for k, v in results[0][key].items() if k != 'brain_s'} == {
+                k: v for k, v in results[1][key].items() if k != 'brain_s'}
+        drives = [room.bodies['B'].drive(np.zeros((800, 1280)), 0., (20., 30.)) for room in rooms]
+        spsp = tuple(rooms[0].bodies['B'].groups['SpsP'])
+        assert drives[0].keys() == drives[1].keys()
+        for key in drives[0]:
+            if key == spsp:
+                assert np.all(drives[0][key] == 50.) and np.all(drives[1][key] == 0.)
+            else:
+                np.testing.assert_array_equal(drives[0][key], drives[1][key])
+        assert results[0]['B']['her_answer']['spsp_hz'] == 50.
+        assert results[1]['B']['her_answer']['spsp_hz'] == 0.
+
+
+def test_window_sight_and_v5_outcomes():
+    room = FakeRoom(0, 'song')
+    step = room.step
+    def alternating():
+        result = step()
+        room.arena.A.x, room.arena.A.y, room.arena.A.heading = 10., 10., 0.
+        room.arena.B.x, room.arena.B.y = (8. if room.bodies['A'].window % 2 else 12.), 10.
+        return result
+    room.arena = bw.Arena(start=[(10., 10., 0.), (12., 10., 0.)])
+    room.step = alternating
+    row, trace = ce.run_trial(room, 4, 0, 'song')
+    np.testing.assert_array_equal(trace['sight_ok'], [1, 0, 1, 0])
+    assert row['sight_fraction'] == .5
+    trace['lc10a_hz'] = np.array([8., 1., 6., 3.])
+    trace['m'] = np.array([99., 8., 1., 6.])
+    trace['distance_mm'] = np.array([6., 5., 7., 8.])
+    row = ce.outcome(0, 'song', trace, row['start'])
+    assert row['lc10a_sight_difference'] == 5.
+    assert row['m_lc10a_lagged_rho'] == 1.
+    assert row['retreat_fraction'] == pytest.approx(2/3)
+
+
+def test_p9_p11_wiring_and_strict_two_se_rule():
+    rows = [r[0] for seed in (0, 1) for r in trials(seed).values()]
+    for r in rows:
+        r['vpodn_hz'] = 7. if r['condition'] == 'song' else 2.
+        r['lc10a_sight_difference'] = 4. if r['condition'] == 'song' else 999.
+    summary = ce.summarise(rows)
+    assert summary['predictions']['P9']['paired_differences'] == [5., 5.]
+    assert summary['predictions']['P9']['control'] == 'mated'
+    assert summary['predictions']['P9']['verdict'] == 'supported'
+    assert summary['predictions']['P11']['paired_differences'] == [4., 4.]
+    assert summary['predictions']['P11']['verdict'] == 'supported'
+    assert len(summary['P10']) == 4 and len(summary['P12']) == 12
+    assert summary['seed_spread']['mated']['state_sentence'] == 'the state did not produce a no'
+    assert ce.verdict(2., 1., 2) == 'not supported'
+    assert ce.verdict(2.001, 1., 2) == 'supported'
+    assert ce.verdict(-1., 0., 2) == 'not supported'
+    rows[0]['lc10a_sight_difference'] = None
+    p11 = ce.summarise(rows)['predictions']['P11']
+    assert p11['n'] == 1 and p11['excluded_seeds'] == [0]
+    assert p11['verdict'] == 'undetermined'
+    rows[6]['lc10a_sight_difference'] = None
+    assert ce.summarise(rows)['predictions']['P11']['mean'] is None
+
+
 class Paired(unittest.TestCase):
     @pytest.fixture(autouse=True)
     def temporary_path(self, tmp_path):
@@ -220,7 +306,7 @@ class Paired(unittest.TestCase):
 
     def test_seed_start_and_multiset(self):
         r = trials(3)
-        self.assertEqual(set(r), {"song", "jittered", "silence", "mute", "noscent"})
+        self.assertEqual(set(r), {"song", "jittered", "silence", "mute", "noscent", "mated"})
         for condition in r:
             self.assertEqual(r[condition][0]["seed"], 3)
             self.assertEqual(r[condition][0]["start"], r["song"][0]["start"])
@@ -261,7 +347,7 @@ class Paired(unittest.TestCase):
             r = room.step()
             self.assertEqual(r["B"]["in"]["sound_hz"], (0., 0.))
             drive = body.drive(np.ones((bw.FRAME_H, bw.FRAME_W)), 0, (0., 0.))
-            self.assertEqual(set(drive), {tuple(body.sound_idx)})
+            self.assertEqual(set(drive), {tuple(body.sound_idx), tuple(body.groups["SpsP"])})
             np.testing.assert_array_equal(drive[tuple(body.sound_idx)], 0)
 
 
@@ -276,7 +362,7 @@ class Verdicts(unittest.TestCase):
         rows = [r[0] for seed in (0, 1) for r in trials(seed).values()]
         s = ce.summarise(rows)
         self.assertEqual(s["predictions"]["P1"]["paired_differences"],
-                         [rows[0]["vpodn_hz"]-rows[2]["vpodn_hz"], rows[5]["vpodn_hz"]-rows[7]["vpodn_hz"]])
+                         [rows[0]["vpodn_hz"]-rows[2]["vpodn_hz"], rows[6]["vpodn_hz"]-rows[8]["vpodn_hz"]])
         self.assertEqual(s["predictions"]["P4"]["paired_differences"][0], rows[2]["last_distance_mm"]-rows[0]["last_distance_mm"])
 
 
@@ -315,7 +401,7 @@ class MainWithFakes(unittest.TestCase):
                 self.assertGreater(p.stat().st_size, 0)
             jp = ce.paths(prefix)[0]
             data = json.loads(jp.read_text())
-            self.assertEqual(len(data["outcomes"]), 10)
+            self.assertEqual(len(data["outcomes"]), 12)
             self.assertEqual({(r["seed"], r["condition"]) for r in data["outcomes"]}, {(s, c) for s in (0, 1) for c in ce.CONDITIONS})
             self.assertEqual(data["steps"], 80)
             self.assertEqual(data["environment"], dict(brain_class="flysim.FlyBrain",
@@ -332,7 +418,9 @@ class MainWithFakes(unittest.TestCase):
             self.assertIn("FEMALE_EXC_SCALE = 1.0; FEMALE_EYE = blind", report)
             self.assertIn("Seed 1, silence: 0 active windows.", report)
             self.assertIn("<!-- interpretation: to be written after the run -->", report)
-            self.assertIn("outcomes differ across seeds", report)
+            self.assertIn("every seed gives the same outcome", report)
+            for label in ('P9', 'P10', 'P11', 'P12'):
+                self.assertIn('## '+label, report)
             self.assertEqual(ce.main(["--reanalyse", str(jp)]), 0)
             self.assertEqual(json.loads(jp.read_text())["outcomes"], data["outcomes"])
 
@@ -349,7 +437,7 @@ class Cli(unittest.TestCase):
                     ce.assert_not_published(alias)
 
     def test_budget_ladder(self):
-        self.assertEqual(ce.budget_ladder(10, 100, 5000)["selected"], 10)
+        self.assertEqual(ce.budget_ladder(10, 100, 6000)["selected"], 10)
         self.assertEqual(ce.budget_ladder(10, 100, 4000)["selected"], 8)
         self.assertTrue(ce.budget_ladder(10, 100, 100)["budget_exceeded"])
         self.assertEqual(ce.budget_ladder(2, 100, 100)["selected"], 2)
@@ -373,8 +461,8 @@ class Outputs(unittest.TestCase):
         self.assertEqual(spread["song"]["accept"], 2)
         identical = [dict(r, approach=True, retreat=False) for r in rows]
         self.assertIn("every seed gives the same outcome", ce.summarise(identical)["seed_spread"]["song"]["sentence"])
-        self.assertEqual(ce.PROTOCOLS["v4"]["default_seeds"], 10)
-        self.assertEqual(ce.PROTOCOLS["v4"]["steps"], 400)
+        self.assertEqual(ce.PROTOCOLS["v5"]["default_seeds"], 10)
+        self.assertEqual(ce.PROTOCOLS["v5"]["steps"], 400)
 
 
 def test_p5_p6_verdict_wiring():
@@ -384,7 +472,7 @@ def test_p5_p6_verdict_wiring():
         prediction = summary['predictions'][label]
         assert prediction['control'] == 'mute'
         assert prediction['metric'] == metric
-        assert prediction['paired_differences'] == [rows[0][metric]-rows[3][metric], rows[5][metric]-rows[8][metric]]
+        assert prediction['paired_differences'] == [rows[0][metric]-rows[3][metric], rows[6][metric]-rows[9][metric]]
     assert summary['P5_verdict'] == 'supported'
     for row in rows:
         if row['condition'] == 'mute':
