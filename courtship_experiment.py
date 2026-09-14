@@ -12,70 +12,71 @@ import backrooms_world as bw
 import backrooms_dictionary as bd
 from courtship import BlindEye, HerBody, female_groups, female_motor, load_female
 from flysim import FlyBrain
+from song import Singer, BIOLOGY
+from courtship import WaveEar
 
 # CHOSEN: raw female weights match the male loading convention.
 FEMALE_EXC_SCALE = 1.0
 # CHOSEN: uniform grey luminance carries no information and floods her brain.
 FEMALE_EYE = "blind"
-CONDITIONS = {"song": (True, False), "silence": (False, False), "shuffled": (True, True), "dark": (False, False)}
+CONDITIONS = {"song": (True, False), "jittered": (True, True),
+              "silence": (False, False), "mute": (True, False), "dark": (False, False)}
 DEFAULT_STEPS = 400
 ACCEPT_WINDOWS = 3
-PROTOCOL_TEXT = """Conditions, same seed and same arena start for all four (paired):
-- `song`: the room as built; his pulse and sine motor sums reach her JO-A and JO-B separately through `sound_hz` with distance attenuation.
-- `silence`: her incoming `sound_hz` is forced to (0.0, 0.0) every step (he still sings; she does not hear). The Room-level hook overrides only her incoming sound; it does not modify his incoming sound channel.
-- `shuffled`: her incoming `sound_hz` sequence is the `song` trial's sequence for the same seed, permuted as paired rows in time with a seed-derived permutation (run `song` first for that seed, keep its per-step sound series, then feed the permutation). This matches total sound energy; only the timing/coupling is broken.
+PROTOCOL_TEXT = """CHOSEN before data: all five conditions share seed and arena start.
+- song: his previous measured pIP10 mean sets amplitude; per-cell pulse and sine motor means set mode.
+- jittered: same amplitude/mode mapping; each IPI is uniform 15-60 ms, seed-derived RNG (seed, 731). Closed-loop trajectories may differ; measured trial RMS ratios need not equal one.
+- silence: her waveform is zero; his brain still runs.
+- mute: a lesion, the way the tests already lesion; it asks whether the song we synthesise depends on P1. Outgoing gains zero exactly on every dictionary P1 type; all other gains one.
+- dark: blind and silent; coincides with silence while FEMALE_EYE is blind.
+CHOSEN: pIP10 is the descending song command; no P1, no pIP10, no song. Amplitude clips pIP10 mean / (1000 / refractory_ms). No explicit P1 gate is applied.
+CHOSEN: mode = pulse per-cell mean / (pulse per-cell mean + sine per-cell mean), zero if both zero. Waveform = a * (m * pulse + (1-m) * sine), scaled by existing distance falloff.
+CHOSEN: 22050 Hz waveform; 35 ms IPI, 4 ms Hann-windowed 250 Hz pulse, 150 Hz sine; phases and sample clock carry across windows.
+CHOSEN: JO-A 100-500 Hz, JO-B 500-2500 Hz, Butterworth order 4, sosfiltfilt with padlen 27 per 50 ms waveform. Each of ten 5 ms band-RMS windows drives SOUND_MAX_HZ * clip(RMS / RMS_FULL, 0, 1), equalised per soma side.
+CHOSEN: RMS_FULL is JO-A RMS of a one-second full-amplitude pure pulse train including filter edges, computed once at import and printed with ear settings.
+CHOSEN: her brain runs in real time so pulse timing can reach it. Ten carried 25-step runs; full-window answers average all 250 steps. His constructor also uses 250 steps: both brains run 50 ms per world step.
+CHOSEN: female raw weights (FEMALE_EXC_SCALE = 1.0), female blind eye. Uniform grey is not contrast vision. Male annotation-backed columns and soma sides when available; otherwise luminance and unknown sides, with no invented identities.
+CHOSEN: female scent = SMELL_MAX_HZ * falloff(distance) into ORN_VA1v; putative_ppk23 only within CONTACT_MM = 2.0 mm. His ORN_DA1 cVA drive is zero because no other male is present.
+CHOSEN: P1 > 0 counts active windows; P7 correlates a[1:], m[1:] with her distance[:-1], speed[:-1]. No adaptation mechanism is added. These readouts decide nothing.
+MEASURED: brain rates, song amplitude and mode, delivered waveform RMS, distance, speed, LC10a and P1 activity. Nothing gates either brain.
 
-- `dark`: her eye is blind and incoming sound is forced to (0.0, 0.0); this is the baseline. With FEMALE_EYE blind, dark and silence coincide; both are retained because they differ if FEMALE_EYE changes.
-
-CHOSEN before data: female raw weights (FEMALE_EXC_SCALE = 1.0) give parity with the male. Her eye is blind (FEMALE_EYE = "blind"): uniform grey carries no information and floods her brain (measured silence vpoDN 54-206 Hz with eye, 0 Hz with blind). Contrast/motion vision is a later step.
-
-CHOSEN: pulse-motor sum drives JO-A and sine-motor sum drives JO-B through sound_hz(rate, distance), each normalised by song_full_hz with its actual group size (8 and 2 respectively in these data) and the brain's refractory period; separate references preserve each population's fraction of its ceiling.
-CHOSEN: female_scent_hz = SMELL_MAX_HZ x falloff(distance) drives ORN_VA1v (Or47b); volatile female scent supplies the male's female-presence input.
-CHOSEN: the same female scent reaches putative_ppk23 only at distance <= CONTACT_MM = 2.0 mm; contact chemosensation needs touch.
-CHOSEN: ORN_DA1 cVA input is zero in courtship because there is no other male; this is delivered input, not a claim that those neurons cannot fire.
-CHOSEN: annotation-backed columnar vision and soma sides are used when available; the ellipse floor is one measured column spacing so her silhouette can reach retinal samples.
-CHOSEN: missing annotations use luminance and unknown soma sides; no column or side identities are invented.
-CHOSEN: P1 mean > 0 Hz counts active windows descriptively; it decides nothing.
-CHOSEN: P6 compares pulse[1:] and sine[1:] with distance[:-1] and her_speed[:-1]; a one-window lag describes his next output against her previous state without adding adaptation.
-MEASURED: P1 mean, pulse/sine motor sums, lagged correlations, retinal visibility and restored motor group counts are readouts; none gates either brain.
-
-Predictions (fixed before data, verdict rule as in plume: paired difference > 2 SE across seeds):
-- P0 baseline (descriptive, no verdict): her vpoDN active windows per seed in dark and silence, expected 0.
-- P1 answer: her mean vpoDN rate, song > silence.
-- P2 pC1: her mean pC1 rate, song > silence.
-- P3 coupling: song > shuffled on vpoDN (the timing matters, not only the energy).
-- P4 approach: her mean distance to him in the last quarter, song < silence.
-- P5 his adaptation (descriptive, no verdict): Spearman correlation across steps between his `song_hz` and her distance, and between his `song_hz` and her speed, reported per seed; state in the report that this measures whether his song already depends on her, and that no adaptation mechanism was added.
-- P6 his adaptation (descriptive): P1 active windows and per-seed lagged pulse/sine correlations; no verdict.
-- Seed spread (maintainer's requirement, descriptive): number of seeds with accept / approach / retreat per condition; if every seed gives the same outcome in a condition, the report says so in one plain sentence and does not soften it."""
-PROTOCOLS = {"v3": {"text": PROTOCOL_TEXT, "conditions": CONDITIONS,
+Predictions fixed before data (paired difference > 2 SE across seeds; P5 requires both comparisons):
+- P1 answer: her vpoDN, song > silence.
+- P2 pC1: song > silence.
+- P3 timing: her vpoDN, song > jittered (now meaningful: a real-time ear and a 35 ms rhythm).
+- P4 approach: last-quarter distance, song < silence.
+- P5 command: pIP10 mean rate, song > mute, and delivered song RMS, song > mute (the causal chain P1 → pIP10 → song).
+- P6 answer follows command: her vpoDN, song > mute.
+- P0 baselines (descriptive): silence/dark/mute active windows per seed.
+- P7 (descriptive): his P1 active windows, LC10a mean rate per window (275 cells), and lagged correlations of his song amplitude a and mode m with her previous distance and speed.
+- Seed spread: accept / approach / retreat per seed and condition; say plainly when every seed gives the same outcome.
+""" + "\n" + BIOLOGY
+PROTOCOLS = {"v4": {"text": PROTOCOL_TEXT, "conditions": CONDITIONS,
     "default_seeds": 10, "steps": DEFAULT_STEPS, "seed_ladder": (10, 8),
-    "budget_s": 9000, "accept_windows": ACCEPT_WINDOWS, "sim_steps": bw.SIM_STEPS,
+    "budget_s": 9000, "accept_windows": ACCEPT_WINDOWS, "sim_steps": 250,
     "world_dt_s": bw.WORLD_DT_S, "state_carry": True,
     "trial_text": "Trial: `steps` world steps (default 400 = 20 s at 0.05 s; `--quick 1` = 2 seeds x 80 steps). Both brains carry state across steps (the room already does). Record per step: positions and headings of both, distance, her speed, her `vpodn_hz`, `pc1_hz`, her delivered `sound_hz`, his `song_hz`, `p1_hz`, `pulse_hz`, `sine_hz`, both her sound channels, his delivered `sound_hz`; trial eye choice, sides restored, and sight_ok.",
     "outcome_text": "Per-trial outcome (CHOSEN, disclosed): `accept` = her vpoDN window rate exceeds 0 Hz in at least `ACCEPT_WINDOWS` = 3 windows of the trial; `approach` = mean distance in the last quarter of the trial is smaller than in the first quarter; `retreat` = the opposite. Report all three per seed and per condition in a table in the JSON and in the report; never only the pooled mean.",
-    "permutation": "numpy default_rng(SeedSequence([seed, 731])).permutation(song_sound)",
+    "jitter_rng": "numpy default_rng(SeedSequence([seed, 731])).uniform(.015, .060)",
     "quarter_rule": "floor(steps / 4) windows at each end; geometry before the window",
     "budget_note": "First trial measures both graphs per step; choose largest fitting seed count, with floor 8 (requests below 8 kept). Setup and rendering excluded from estimate."}}
 LIMITATIONS = [
-    "The two-cell sine reference (song_full_hz for 2 cells) lies below the sum a 12 ms window can reach, so her JO-B drive is clipped at its ceiling in some song windows; the count is reported per trial. Pulse did not clip on the quick seeds.",
+    "His wing motor neurons run near ceiling from background activity; the song is taken from the command neuron pIP10, not from the motor sum. Mode still uses the motor means.",
+    "Her ear now hears a waveform in 5 ms sub-windows; the brain runs in real time for her. His brain also runs in real time.",
+    "Pulse rhythm and carriers are chosen synthesis, not measured spike timing or a biomechanical wing model.",
+    "The fork's zero-phase filter uses the whole current 50 ms block; boundary effects and within-block lookahead remain. Sample bins alternate lengths at 22050 Hz.",
+    "Jitter changes pulse density as well as timing (mean IPI 37.5 ms versus 35 ms). Closed-loop amplitude, mode and distance can differ; realised RMS ratio is measured, not forced.",
     "The contact chemosensory cells are a putative receptor label (putative_ppk23), not verified ppk23 expression.",
     "His female-scent input is a chosen drive at the smell ceiling with distance falloff, not a measured pheromone plume; the cVA channel is held at zero because there is no other male.",
-    "He is inside the loop: his trajectory and song differ between conditions because she moves differently, not because his input path changed; only her incoming sound is overridden.",
-    "Pulse and sine are separate motor population sums, not acoustic waveforms.",
-    "Her ear receives a rate, not a waveform.",
-    "12 ms brain per 50 ms world.",
-    "vpoDN identified as DNp37 by alias, 2 cells.",
-    "pC1a-e 10 cells.",
-    "No pheromone channel to her.",
-    "Male P1 membership is the dictionary's uncertain 86-cell group.",
-    "No adaptation mechanism was added on his side.",
-    "CHOSEN before data: female loaded raw (FEMALE_EXC_SCALE = 1.0) for parity with the male.",
-    "CHOSEN before data: female eye blind; uniform grey carries no information and floods the brain (measured silence vpoDN 54-206 Hz with eye, 0 Hz with blind).",
-    "Dark is blind and silent; with FEMALE_EYE blind it coincides with silence. Contrast/motion vision is a later step.",
+    "He is inside the loop: his trajectory and song can change when she moves differently. Mute additionally changes his P1 outgoing gains.",
+    "vpoDN identified as DNp37 by alias, 2 cells; pC1a-e 10 cells. No pheromone channel to her.",
+    "Male P1 membership is the dictionary's uncertain 86-cell group. Outgoing-gain lesion need not silence P1's own spikes.",
+    "No adaptation mechanism was added on his side; correlation does not establish causation.",
+    "CHOSEN: female raw weights for parity; female eye blind. Earlier luminance silence measured vpoDN 54-206 Hz; contrast/motion vision remains a later step.",
+    "Dark and silence coincide with the blind female eye.",
     "Male eye and soma-side availability are recorded per trial; gains remain uncalibrated.",
     "Distance changes include both bodies; approach is not an isolated female command.",
-    "Shuffling matches the input rate multiset, not the downstream neural response."]
+    "Retired v3 limitations: rate-only ear, motor-sum song, 12 ms brain windows, separate motor-reference clipping and shuffled-rate multiset no longer describe this protocol."]
 PUBLISHED = Path("build/courtship")
 
 
@@ -96,22 +97,40 @@ class LuminanceEye:
 
 class ExperimentRoom(bw.Room):
     def configure(self, seed, condition, song_sound=None):
-        self.condition = condition
         if condition not in CONDITIONS:
             raise ValueError("unknown condition")
-        self.replay = None
-        if condition == "shuffled":
-            if song_sound is None:
-                raise ValueError("shuffled requires the paired song series")
-            self.replay = iter(np.random.default_rng(np.random.SeedSequence([seed, 731])).permutation(song_sound))
+        self.condition = condition
+        body = self.bodies["A"]
+        groups = getattr(body, "groups", {})
+        self.singer = Singer(seed, condition == "jittered",
+            pulse_cells=len(groups.get("song_pulse_mn", range(8))),
+            sine_cells=len(groups.get("song_sine_hg1", range(2))),
+            pip10_full=1000/getattr(getattr(getattr(body, "fb", None), "p", None), "refractory", 2.2))
+        self.previous_rates = dict(pip10_hz=0., pulse_hz=0., sine_hz=0.)
 
     def listener_sound(self, sound_hz):
+        wave = self.singer.render(**self.previous_rates,
+                                  attenuation=self.channels.falloff(self.arena.distance()))
         if self.condition in ("silence", "dark"):
-            return 0.0 if np.isscalar(sound_hz) else (0.0, 0.0)
-        if self.condition == "shuffled":
-            value = next(self.replay)
-            return float(value) if np.isscalar(value) else tuple(map(float, value))
-        return sound_hz
+            wave[:] = 0.
+            self.singer.record["delivered_rms"] = 0.
+        return wave
+
+    def step(self):
+        result = super().step()
+        male = result["A"]
+        rates = male.get("rates", {})
+        self.previous_rates = dict(pip10_hz=rates["pIP10"],
+                                   pulse_hz=male["pulse_hz"], sine_hz=male["sine_hz"])
+        result["song_wave"] = dict(self.singer.record)
+        result["sound_clipped"] = result["B"].get("ear_clipped", (False, False))
+        return result
+
+
+def p1_lesion(fb, groups):
+    gains = np.ones(len(fb.type_names), dtype=np.float32)
+    gains[np.unique(fb.type_code[groups["P1"]])] = 0.
+    return gains
 
 
 def build_room(seed, condition, song_sound=None, brains=None,
@@ -121,7 +140,7 @@ def build_room(seed, condition, song_sound=None, brains=None,
     male, female = brains if brains is not None else (cls(), load_female(exc_scale=FEMALE_EXC_SCALE, brain_class=cls))
     eye = BlindEye(female) if condition == "dark" or FEMALE_EYE == "blind" else LuminanceEye(female)
     body = HerBody("B", female, eye, female_groups(female),
-                   female_motor(female), seed=seed * 2 + 2)
+                   female_motor(female), seed=seed * 2 + 2, sim_steps=250)
     available = Path(annotations_path).is_file()
     if available:
         from flyeye import FlyEye
@@ -130,11 +149,19 @@ def build_room(seed, condition, song_sound=None, brains=None,
     else:
         male_eye = LuminanceEye(male)
         sides = np.full(male.n, "", dtype=str)
-    room = ExperimentRoom(male, male_eye, bd.present_groups(male),
-        bw.motor_groups(male, sides), seed=seed, body_b=body,
+    groups = bd.present_groups(male)
+    groups["LC10a"] = male.where(type_re="^LC10a$")
+    for key in ("P1", "pIP10", "LC10a"):
+        if key not in groups or not len(groups[key]):
+            raise ValueError(f"v4 requires measured male group {key}")
+    gains = p1_lesion(male, groups) if condition == "mute" else None
+    room = ExperimentRoom(male, male_eye, groups,
+        bw.motor_groups(male, sides), gains=gains, seed=seed, body_b=body,
+        sim_steps=250,
         min_radius_px=bw.column_spacing_px(bw.distinct_columns(male_eye)))
     room.male_setup = dict(male_eye="columnar" if available else "luminance",
         sides_restored=available,
+        male_recorded_groups={k: len(groups[k]) for k in ("P1", "pIP10", "LC10a")},
         disclosure=("MEASURED: annotation columns and soma sides loaded by bodyId." if available
                     else "CHOSEN: missing annotations use luminance and unknown soma sides; no column or side identities are invented."))
     room.configure(seed, condition, song_sound)
@@ -170,6 +197,12 @@ def outcome(seed, condition, trace, start):
         for label, key in (("distance", "distance_mm"), ("speed", "her_speed_mm_s")):
             result[f"{channel}_{label}_lagged_rho"] = (
                 correlation(values[1:], trace[key][:-1]) if values is not None else None)
+    for key in ("pip10_hz", "lc10a_hz", "a", "m"):
+        result[key] = float(np.mean(trace[key])) if key in trace else None
+    result["delivered_rms"] = float(np.sqrt(np.mean(trace["delivered_rms"]**2))) if "delivered_rms" in trace else None
+    for channel in ("a", "m"):
+        for label, key in (("distance", "distance_mm"), ("speed", "her_speed_mm_s")):
+            result[f"{channel}_{label}_lagged_rho"] = correlation(trace[channel][1:], trace[key][:-1]) if channel in trace else None
     return result
 
 
@@ -206,6 +239,13 @@ def run_trial(room, steps, seed, condition):
             **r["B"]["her_answer"], her_sound_hz=max(sound_a, sound_b),
             her_sound_a_hz=sound_a, her_sound_b_hz=sound_b,
             song_hz=r["A"]["song_hz"], his_sound_hz=r["A"]["in"]["sound_hz"])
+        wave = r.get("song_wave", {})
+        row.update(pip10_hz=r["A"]["rates"]["pIP10"],
+                   lc10a_hz=r["A"]["rates"]["LC10a"],
+                   source_pip10_hz=wave.get("pip10_hz", 0.),
+                   a=wave.get("a", 0.), m=wave.get("m", 0.),
+                   delivered_rms=wave.get("delivered_rms", 0.),
+                   her_brain_s=r["B"].get("brain_s", 0.))
         rows.append(row)
     trace = {k: np.asarray([r[k] for r in rows], dtype=float) for k in rows[0]}
     result = outcome(seed, condition, trace, start)
@@ -232,8 +272,11 @@ def summarise(rows):
     indexed = {(r["seed"], r["condition"]): r for r in rows}
     predictions = {}
     for label, key, control, sign in (("P1", "vpodn_hz", "silence", 1),
-        ("P2", "pc1_hz", "silence", 1), ("P3", "vpodn_hz", "shuffled", 1),
-        ("P4", "last_distance_mm", "silence", -1)):
+        ("P2", "pc1_hz", "silence", 1), ("P3", "vpodn_hz", "jittered", 1),
+        ("P4", "last_distance_mm", "silence", -1),
+        ("P5_command", "pip10_hz", "mute", 1),
+        ("P5_rms", "delivered_rms", "mute", 1),
+        ("P6", "vpodn_hz", "mute", 1)):
         diffs = [sign * (indexed[s, "song"][key] - indexed[s, control][key])
                  for s in sorted({r["seed"] for r in rows})]
         mean = float(np.mean(diffs))
@@ -248,10 +291,15 @@ def summarise(rows):
         same = len({tuple(r[k] for k in counts) for r in rr}) == 1
         sentence = f"{c}: every seed gives the same outcome." if same else f"{c}: outcomes differ across seeds."
         spread[c] = dict(n=len(rr), **counts, sentence=sentence)
-    p0 = dict(expected_active_windows=0, per_seed=[
+    p0 = dict(per_seed=[
         dict(seed=r["seed"], condition=r["condition"], active_windows=r["active_windows"])
-        for r in rows if r["condition"] in ("dark", "silence")])
-    return dict(P0=p0, predictions=predictions, seed_spread=spread)
+        for r in rows if r["condition"] in ("dark", "silence", "mute")])
+    ratios = []
+    for seed in sorted({r["seed"] for r in rows}):
+        baseline = indexed[seed, "song"]["delivered_rms"]
+        ratios.append(dict(seed=seed, jittered_song_rms_ratio=(indexed[seed, "jittered"]["delivered_rms"]/baseline if baseline else None)))
+    p5 = "supported" if all(predictions[k]["verdict"] == "supported" for k in ("P5_command", "P5_rms")) else ("undetermined" if len(ratios) < 2 else "not supported")
+    return dict(P0=p0, P5_verdict=p5, rms_ratios=ratios, predictions=predictions, seed_spread=spread)
 
 
 def paths(prefix):
@@ -276,31 +324,39 @@ def write_report(json_path):
         "## Measured versus chosen", "MEASURED: positions and headings, realised female speed, delivered sound, song, pC1 and vpoDN window rates.",
         f"IMPLEMENTATION: brain class {environment['brain_class']}; torch devices {environment['torch_devices']}. Device is not a scientific choice. Required equivalence: same numbers on either device, verified by test (COURTSHIP_REAL_BRAIN=1); a failing test invalidates this claim.",
         "CHOSEN: accept means vpoDN > 0 Hz in at least 3 windows; approach/retreat compare last and first quarter mean distance. Equal distance is neither. Geometry is sampled before each window; speed is displacement during it.",
-        "CHOSEN: paired seeds, annotation-backed male eye when available, uncalibrated gains, 12 ms brain windows, and the rate-to-motion mapping. No outcomes were tuned to differ across seeds.", "",
+        "CHOSEN: paired seeds, annotation-backed male eye when available, uncalibrated gains, 50 ms brain windows, and the rate-to-motion mapping. No outcomes were tuned to differ across seeds.", "",
         f"CHOSEN: FEMALE_EXC_SCALE = {data['female_exc_scale']}; FEMALE_EYE = {data['female_eye']}.",
         data["protocol_spec"]["text"], "", "## Predictions", "| Prediction | Paired difference | SE | n | Verdict |", "|---|---:|---:|---:|---|"]
     for k, p in data["summary"]["predictions"].items():
         lines.append(f"| {k}: {p['metric']}, {p['direction']} ({p['control']}) | {p['mean']:.6g} | {p['se']} | {p['n']} | {p['verdict']} |")
-    lines += ["", "## P0: baseline (descriptive, no verdict)", "Expected active windows: 0."]
+    lines += ["", "## P0: baseline (descriptive, no verdict)"]
     for r in data["summary"]["P0"]["per_seed"]:
         lines.append(f"Seed {r['seed']}, {r['condition']}: {r['active_windows']} active windows.")
-    lines += ["", "## Per-seed outcomes", "MEASURED: her_sound_a_clipped and her_sound_b_clipped count delayed song windows exceeding their references before the condition override; silence/dark counts describe attempted input and shuffled counts describe its live source, not replay clipping. None means unavailable in an older trace.", "| Seed | Condition | Accept | Approach | Retreat | Active windows | her_sound_a_clipped | her_sound_b_clipped |", "|---:|---|---|---|---|---:|---:|---:|"]
+    lines += ["", "## Per-seed outcomes", "MEASURED: clipped windows count actual ear sub-window clipping in each band.", "| Seed | Condition | Accept | Approach | Retreat | Active windows | vpoDN Hz | pC1 Hz | Last distance mm | pIP10 Hz | Delivered RMS |", "|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|"]
     for r in data["outcomes"]:
-        lines.append(f"| {r['seed']} | {r['condition']} | {r['accept']} | {r['approach']} | {r['retreat']} | {r['active_windows']} | {r.get('her_sound_a_clipped')} | {r.get('her_sound_b_clipped')} |")
+        lines.append("| " + " | ".join(str(r[k]) for k in ("seed", "condition", "accept", "approach", "retreat", "active_windows", "vpodn_hz", "pc1_hz", "last_distance_mm", "pip10_hz", "delivered_rms")) + " |")
     lines += ["", "## Seed spread"]
     for c, s in data["summary"]["seed_spread"].items():
         lines += [f"{c}: accept {s['accept']}/{s['n']}, approach {s['approach']}/{s['n']}, retreat {s['retreat']}/{s['n']}. {s['sentence']}"]
-    lines += ["", "## P5: his song", "This measures whether his song already depends on her; no adaptation mechanism was added. Correlation does not establish causation. None means a constant series or fewer than two samples.",
-              "| Seed | Condition | Song-distance Spearman | Song-speed Spearman |", "|---:|---|---:|---:|"]
+    lines += ["", "## P7 his response (descriptive)",
+        "MEASURED: P1 active windows, LC10a mean rate per window, lagged amplitude/mode correlations with her previous distance/speed. None means constant data. No adaptation mechanism was added.",
+        "| Seed | Condition | P1 active windows | LC10a Hz | a-distance | a-speed | m-distance | m-speed |",
+        "|---:|---|---:|---:|---:|---:|---:|---:|"]
     for r in data["outcomes"]:
-        lines.append(f"| {r['seed']} | {r['condition']} | {r['song_distance_rho']} | {r['song_speed_rho']} |")
-    lines += ["", "## P6 his adaptation (descriptive)",
-        "His next pulse/sine window against her previous distance and speed; no verdict or adaptation mechanism. None means unavailable or constant data.",
-        "| Seed | Condition | P1 active windows | Pulse-distance lagged rho | Pulse-speed lagged rho | Sine-distance lagged rho | Sine-speed lagged rho |",
-        "|---:|---|---:|---:|---:|---:|---:|"]
-    for r in data["outcomes"]:
-        values = [r.get(k) for k in ("p1_active_windows", "pulse_distance_lagged_rho", "pulse_speed_lagged_rho", "sine_distance_lagged_rho", "sine_speed_lagged_rho")]
-        lines.append(f"| {r['seed']} | {r['condition']} | " + " | ".join(map(str, values)) + " |")
+        lines.append("| " + " | ".join(str(r.get(k)) for k in ("seed", "condition", "p1_active_windows", "lc10a_hz", "a_distance_lagged_rho", "a_speed_lagged_rho", "m_distance_lagged_rho", "m_speed_lagged_rho")) + " |")
+    lines += ["", f"P5 joint verdict: {data['summary']['P5_verdict']}.",
+              "MEASURED jittered/song RMS ratios: " + str(data["summary"]["rms_ratios"]),
+              "CHOSEN ear settings: " + str(data.get("ear", WaveEar().describe()))]
+    lines.append("The realised RMS ratios include condition-dependent command, mode and distance; "
+                 "P3 cannot isolate timing when energy differs substantially. Mute tests the "
+                 "command chain; its name does not guarantee silence.")
+    if data.get("timing"):
+        step = float(np.mean([t["step_s"] for t in data["timing"]]))
+        female = float(np.mean([t["her_brain_s"] for t in data["timing"]]))
+        lines += [f"MEASURED: mean world step {step:.6g} s; female brain step {female:.6g} s. "
+                  f"Estimated ten-seed cost (5 x 400 windows each): {step*20000/3600:.3g} hours, excluding setup and rendering."]
+        if female > .5:
+            lines.append("MEASURED: female brain step exceeds 0.5 s; the full experiment was not run.")
     interpretation = "; ".join(f"{k} was {p['verdict']}" for k, p in data["summary"]["predictions"].items())
     lines += ["", "## What it means", f"Under this protocol, {interpretation}. These comparisons concern this simulator and input encoding.",
         "<!-- interpretation: to be written after the run -->", "", "## Limitations"]
@@ -377,12 +433,12 @@ def save(prefix, data, traces):
 
 def main(argv=None, room_factory=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--protocol", choices=PROTOCOLS, default="v3")
+    ap.add_argument("--protocol", choices=PROTOCOLS, default="v4")
     ap.add_argument("--seeds", type=int, default=10)
     ap.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     ap.add_argument("--quick", type=int, choices=(0, 1), default=0)
     ap.add_argument("--brain", default="flysim.FlyBrain")
-    ap.add_argument("--out", default="build/courtship_local")
+    ap.add_argument("--out", default="build/courtship_v4_local")
     ap.add_argument("--budget-min", type=float, default=150)
     ap.add_argument("--log")
     ap.add_argument("--reanalyse")
@@ -429,7 +485,8 @@ def main(argv=None, room_factory=None):
             t0 = time.perf_counter()
             row, trace = run_trial(room, steps, seed, c)
             elapsed = time.perf_counter() - t0
-            timings.append(dict(seed=seed, condition=c, seconds=elapsed, step_s=elapsed/steps))
+            timings.append(dict(seed=seed, condition=c, seconds=elapsed, step_s=elapsed/steps,
+                                her_brain_s=float(trace["her_brain_s"].mean())))
             message = f"seed={seed} condition={c} step_s={elapsed/steps:.6f} active_windows={row['active_windows']}"
             print(message, flush=True)
             if args.log:
@@ -447,7 +504,7 @@ def main(argv=None, room_factory=None):
     data = dict(protocol=args.protocol, protocol_spec=PROTOCOLS[args.protocol], steps=steps,
         seeds=list(range(n)), quick=bool(args.quick), outcomes=rows, summary=summarise(rows),
         female_exc_scale=FEMALE_EXC_SCALE, female_eye=FEMALE_EYE,
-        limitations=LIMITATIONS, budget_ladder=ladder, timing=timings, environment=environment, note=args.note)
+        ear=WaveEar().describe(), limitations=LIMITATIONS, budget_ladder=ladder, timing=timings, environment=environment, note=args.note)
     save(prefix, data, traces)
     return 0
 

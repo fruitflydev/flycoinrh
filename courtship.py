@@ -2,11 +2,39 @@
 import time
 
 import numpy as np
+from scipy.signal import butter, sosfiltfilt
+from song import Singer, SAMPLE_RATE, PIP10_FULL, rms
 
 from flysim import BUILD, FlyBrain, Params
 import backrooms_world as bw
 from backrooms_world import (FlyBody, FRAME_W, FRAME_H, SIM_STEPS, LIF_DT_MS,
                              MOTOR_NAMES, PlumeFly, motor_groups, per_side_scales)
+
+BANDS = ((100, 500), (500, 2500))
+FILTERS = [butter(4, band, btype="bandpass", fs=SAMPLE_RATE, output="sos")
+           for band in BANDS]
+# CHOSEN: one second (including filter edges) of the full pure pulse reference.
+RMS_FULL = rms(sosfiltfilt(FILTERS[0], Singer().render(
+    PIP10_FULL, 8., 0., seconds=1.), padlen=27))
+
+
+class WaveEar:
+    """The fork's two filters, read in ten 5 ms windows rather than 500 ms."""
+    def hear(self, waveform):
+        wave = np.asarray(waveform, dtype=float)
+        if wave.ndim != 1 or wave.size not in (1102, 1103):
+            raise ValueError("ear requires 50 ms of mono waveform at 22050 Hz")
+        bands = [sosfiltfilt(sos, wave, padlen=min(27, wave.size-1)) for sos in FILTERS]
+        self.band_rms = np.array([[rms(chunk) for chunk in np.array_split(band, 10)]
+                                 for band in bands]).T
+        self.clipped = self.band_rms > RMS_FULL
+        return bw.SOUND_MAX_HZ*np.clip(self.band_rms/RMS_FULL, 0, 1)
+
+    def describe(self):
+        return dict(bands_hz=BANDS, filter_order=4, filter="sosfiltfilt", padlen=27,
+                    subwindows=10, lif_steps_per_subwindow=25, rms_full=RMS_FULL,
+                    reference="CHOSEN: JO-A RMS of one second of full pure pulse train",
+                    note="CHOSEN: her brain runs in real time so pulse timing can reach it")
 
 
 def female_groups(fb):
@@ -96,6 +124,33 @@ class HerBody(FlyBody):
         self.rec_pos = {k: np.searchsorted(self.rec_idx, v)
                         for k, v in {**self.groups, **self.motor}.items()}
         self.answer = {"vpodn_hz": 0.0, "pc1_hz": 0.0}
+        self.ear = WaveEar()
+
+    def step(self, frame, smell_hz, sound_hz):
+        if not isinstance(sound_hz, np.ndarray) or sound_hz.ndim != 1 or sound_hz.size <= 2:
+            return super().step(frame, smell_hz, sound_hz)
+        t0 = time.time()
+        pairs = self.ear.hear(sound_hz)
+        state, results, drives = self.state, [], []
+        for pair in pairs:
+            drive = self.drive(frame, smell_hz, pair)
+            result = self.fb.run(drive, steps=25, gains=self.gains,
+                                 record={"all": self.rec_idx}, seed=self.seed, state=state)
+            state = result["_state"]
+            results.append(result)
+            drives.append(drive)
+        combined = dict(results[-1])
+        combined["all"] = np.mean([r["all"] for r in results], axis=0)
+        if all("_total_hz" in r for r in results):
+            combined["_total_hz"] = float(np.mean([r["_total_hz"] for r in results]))
+        # _fired is an end-of-run event, not a count over the complete window.
+        combined.pop("_fired", None)
+        mean_drive = {k: np.mean([d[k] for d in drives], axis=0) for k in drives[0]}
+        self.sim_steps, self.secs = 250, .05
+        record = self.absorb(combined, mean_drive, smell_hz, pairs.mean(axis=0), t0)
+        record["wave_rms"] = rms(sound_hz)
+        record["ear_clipped"] = self.ear.clipped.any(axis=0).tolist()
+        return record
 
     def reset(self, seed=None):
         super().reset(seed)
@@ -163,4 +218,5 @@ class HerBody(FlyBody):
                 "groups": {k: int(v.size) for k, v in self.groups.items()},
                 "motor_cells": {k: int(v.size) for k, v in self.motor.items()},
                 "side_scales": self.side_scales,
+                "ear": self.ear.describe(),
                 "drive_note": "smell ignored; JO sound equalised per soma side"}

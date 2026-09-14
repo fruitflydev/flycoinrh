@@ -13,9 +13,57 @@ from flysim import BUILD, FlyBrain
 from test_backrooms_world import FakeBrain, FakeEye, fake_sides, FAKE_TYPES
 
 
+@pytest.mark.parametrize('frequency,band', [(150, 0), (1000, 1)])
+def test_wave_ear_frequency_bands(frequency, band):
+    from courtship import WaveEar
+    ear = WaveEar()
+    ear.hear(.01*np.sin(2*np.pi*frequency*np.arange(1103)/22050))
+    levels = ear.band_rms.mean(axis=0)
+    assert levels[band] > 10*levels[1-band]
+
+
+def test_wave_ear_carried_constant_spikes_and_equalisation():
+    from courtship import WaveEar
+    from unittest.mock import patch
+    body = her()
+    # A fake spike generator uses a carried integer clock; resetting any subrun
+    # changes the event sequence. Rates are actual recorded spike counts / time.
+    logs = []
+    def run(drive, steps, gains=None, record=None, seed=0, state=None):
+        start = 0 if state is None else state['clock']
+        events = np.flatnonzero(np.arange(start, start+steps) % 7 == 0) + start
+        logs.extend(events.tolist())
+        return {'all': np.full(len(record['all']), len(events)/(steps*.0002)),
+                '_state': {'clock': start+steps}}
+    body.fb.run = run
+    with patch.object(WaveEar, 'hear', return_value=np.full((10, 2), 40.)):
+        body.ear.clipped = np.zeros((10, 2), bool)
+        result = body.step(np.zeros((800, 1280)), 0, np.zeros(1103))
+    split = list(logs)
+    logs.clear()
+    expected = run({}, 250, record={'all': body.rec_idx})
+    assert split == logs
+    assert body.state == expected['_state']
+    assert result['her_answer']['vpodn_hz'] == pytest.approx(expected['all'][0])
+    assert result['counts']['vpoDN'] == 2*len(logs)
+    # Per-side scaling is the same drive path for every waveform subwindow.
+    body = her(female_fake(female_fake().types.tolist() + ['JO-A', 'JO-B']))
+    for key in ('JO_A', 'JO_B'):
+        idx = body.groups[key]
+        body.fb.soma_side[idx] = ['L', 'L', 'R']
+    body = her(body.fb)
+    rates = body.ear.hear(.01*np.sin(2*np.pi*150*np.arange(1103)/22050))
+    for pair in rates:
+        drive = body.drive(np.zeros((800, 1280)), 0, pair)[tuple(body.sound_idx)]
+        for key in ('JO_A', 'JO_B'):
+            pos = np.searchsorted(body.sound_idx, body.groups[key])
+            assert drive[pos[:2]].sum() == pytest.approx(drive[pos[2]])
+            assert drive[pos[2]] == pytest.approx(2*drive[pos[0]])
+
+
 class MaleFake(FakeBrain):
     def __init__(self, spont=None):
-        super().__init__(list(FAKE_TYPES) + ["ORN_VA1v", "contact", "P1", "hg1"], spont)
+        super().__init__(list(FAKE_TYPES) + ["ORN_VA1v", "contact", "P1", "hg1", "pIP10"], spont)
 
     def where(self, type_re=None, receptor=None, **kwargs):
         if receptor is not None:
