@@ -8,7 +8,7 @@ import pytest
 
 import backrooms_dictionary as bd
 import backrooms_world as bw
-from courtship import HerBody, female_groups, female_motor, load_female
+from courtship import BlindEye, HerBody, female_groups, female_motor, load_female
 from flysim import BUILD, FlyBrain
 from test_backrooms_world import FakeBrain, FakeEye, fake_sides, make_parts
 
@@ -27,6 +27,51 @@ def female_fake(types=None):
 def her(fb=None):
     fb = female_fake() if fb is None else fb
     return HerBody("B", fb, FakeEye(fb), female_groups(fb), female_motor(fb), seed=2)
+
+
+@pytest.mark.parametrize("override, expected", [(None, .5), (1.0, 1.0), (.25, .25)])
+def test_load_female_scale_once(tmp_path, monkeypatch, override, expected):
+    from types import SimpleNamespace
+    import courtship
+    path = tmp_path / "female.npz"
+    np.savez(path, exc_scale=.5, soma_side=np.array(["L", "R"]))
+    def raw_brain(path, p):
+        return SimpleNamespace(wdata=np.array([8., -6., 0., 4.], dtype=np.float32),
+                               W=SimpleNamespace(data=None))
+    monkeypatch.setattr(courtship, "FlyBrain", raw_brain)
+    for _ in range(2):
+        fb = load_female(path, exc_scale=override)
+        assert fb.exc_scale == expected
+        np.testing.assert_array_equal(fb.wdata, [8 * expected, -6, 0, 4 * expected])
+        np.testing.assert_array_equal(fb.W.data, fb.wdata)
+
+
+def test_blind_body_only_sound():
+    fb = female_fake()
+    eye = BlindEye(fb)
+    assert eye.on_idx.dtype == eye.off_idx.dtype == np.dtype('int64')
+    assert eye.on_idx.size == eye.off_idx.size == 0
+    body = HerBody("B", fb, eye, female_groups(fb), female_motor(fb))
+    frame = np.ones((bw.FRAME_H, bw.FRAME_W), dtype=np.float32)
+    assert eye.look(frame, 0, 0) == {}
+    drive = body.drive(frame, 999, 80)
+    assert set(drive) == {tuple(body.sound_idx)}
+    assert () not in drive
+    np.testing.assert_array_equal(drive[tuple(body.sound_idx)], body.sound_scale * 80)
+    result = body.step(frame, 999, 80)
+    assert result['in'] == dict(smell_hz=0., sound_hz=80., eye_on_hz=0., eye_off_hz=0.)
+
+
+def test_dark_is_blind_and_silent():
+    import courtship_experiment as ce
+    male, _, _, _ = make_parts()
+    with unittest.mock.patch.object(ce, "FEMALE_EYE", "luminance"):
+        room = ce.build_room(3, "dark", brains=(male, female_fake()))
+    body = room.bodies['B']
+    assert isinstance(body.eye, BlindEye)
+    room.song['A'] = 1000.
+    result = room.step()
+    assert result['B']['in'] == dict(smell_hz=0., sound_hz=0., eye_on_hz=0., eye_off_hz=0.)
 
 
 def test_groups_and_motor():

@@ -28,20 +28,32 @@ def female_motor(fb):
     return motor_groups(fb, sides)
 
 
-def load_female(path=BUILD / "graph_female.npz", p=Params()):
-    """Load female anatomy and its stored excitation convention."""
+def load_female(path=BUILD / "graph_female.npz", p=Params(), exc_scale=None):
+    """The stored factor calibrated the web-roaming fork; courtship loads raw for parity with the male."""
     fb = FlyBrain(path, p=p)
     with np.load(path, allow_pickle=False) as z:
         # The builder stores raw weights; the fork scaled positive weights
         # at load time. Apply that convention once here, including W itself.
         # CHOSEN: older archives without metadata retain unscaled weights.
-        fb.exc_scale = float(z["exc_scale"]) if "exc_scale" in z else 1.0
+        stored = float(z["exc_scale"]) if "exc_scale" in z else 1.0
+        fb.exc_scale = stored if exc_scale is None else float(exc_scale)
         fb.soma_side = z["soma_side"].astype(str)
     if not np.isfinite(fb.exc_scale) or fb.exc_scale < 0:
         raise ValueError("exc_scale must be finite and non-negative")
     fb.wdata[fb.wdata > 0] *= fb.exc_scale
     fb.W.data = fb.wdata
     return fb
+
+
+class BlindEye:
+    """Supply no visual input to the listener."""
+
+    def __init__(self, fb):
+        self.on_idx = np.empty(0, dtype=np.int64)
+        self.off_idx = np.empty(0, dtype=np.int64)
+
+    def look(self, img, cx, cy):
+        return {}
 
 
 class HerBody(FlyBody):

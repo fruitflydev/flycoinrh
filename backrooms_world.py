@@ -944,6 +944,10 @@ class Room:
         self.song = {"A": 0.0, "B": 0.0}
         self.seed = int(seed)
 
+    def listener_sound(self, sound_hz):
+        """Room-level control point for the sound delivered to B."""
+        return sound_hz
+
     def step(self):
         t0 = time.time()
         a, b = self.arena.A, self.arena.B
@@ -952,6 +956,7 @@ class Room:
         smell = self.channels.smell_hz(d)
         heard = {"A": self.channels.sound_hz(self.song["B"], d),
                  "B": self.channels.sound_hz(self.song["A"], d)}
+        heard["B"] = self.listener_sound(heard["B"])
         seen = {"A": self.channels.ellipse_of(a, b), "B": self.channels.ellipse_of(b, a)}
         rec = {}
         for name, me, other in (("A", a, b), ("B", b, a)):
