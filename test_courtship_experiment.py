@@ -511,9 +511,11 @@ class Cli(unittest.TestCase):
             alias = Path(td) / "alias"
             ce.paths(published)[2].write_bytes(b"protected")
             os.link(ce.paths(published)[2], ce.paths(alias)[0])
-            with patch.object(ce, "PUBLISHED", published):
-                with self.assertRaises(ValueError):
-                    ce.assert_not_published(alias)
+            for constant in ("PUBLISHED", "PUBLISHED_ADDENDUM"):
+                with self.subTest(constant=constant), patch.object(ce, constant, published):
+                    with self.assertRaisesRegex(ValueError, "published prefix is refused"):
+                        ce.assert_not_published(alias)
+            self.assertEqual(ce.paths(published)[2].read_bytes(), b"protected")
 
     def test_budget_ladder(self):
         self.assertEqual(ce.budget_ladder(10, 100, 6000)["selected"], 10)
@@ -523,7 +525,10 @@ class Cli(unittest.TestCase):
 
     def test_published_refusal(self):
         self.assertEqual(ce.PUBLISHED, Path("build/courtship"))
-        for prefix in ("build/courtship", "build/COURTSHIP", "build/../build/courtship"):
+        self.assertEqual(ce.PUBLISHED_ADDENDUM, Path("build/courtship_addendum"))
+        for prefix in ("build/courtship", "build/COURTSHIP", "build/../build/courtship",
+                       "build/courtship_addendum", "build/COURTSHIP_ADDENDUM",
+                       "build/../build/courtship_addendum"):
             with self.subTest(prefix=prefix):
                 self.assertEqual(ce.main(["--out", prefix], room_factory=FakeRoom), 4)
 

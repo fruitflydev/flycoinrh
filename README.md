@@ -471,13 +471,12 @@ not.
 `courtship.HerBody` is a second body in `backrooms_world.Room`, with a
 139,255-neuron female brain built from FlyWire FAFB v783.
 He sings, she hears through JO-A and JO-B, and her pC1 and vpoDN are read.
-A pre-registered experiment pairs song, silence, shuffled song and dark on
-ten seeds, for 20 seconds each.
+The published v5 run pairs six conditions on ten seeds for 20 seconds each;
+the v6 addendum pairs gated and p1drive against those v5 song records.
 
-Build the male graph as above, then get the female CSV exports from the
-[FlyWire Codex](https://codex.flywire.ai/) export site.
-An account is required to export; the data stays CC-BY 4.0.
-Put these six files in `data/female/`:
+Build the male graph as above, then get the six female CSV exports from
+[FlyWire Codex](https://codex.flywire.ai/). An account is required to export;
+the data stays CC-BY 4.0. Put these files in `data/female/`:
 
 - `classification.csv.gz`
 - `consolidated_cell_types.csv.gz`
@@ -487,65 +486,57 @@ Put these six files in `data/female/`:
 - `connections_princeton.csv.gz`
 
 ```bash
-py build_graph_female.py       # -> build/graph_female.npz
-py courtship_experiment.py --quick 1 --out build/courtship_smoke
-py courtship_experiment.py --out build/courtship_local
+py build_graph_female.py
+py courtship_experiment.py --protocol v5 --quick 1 --out build/courtship_smoke
+py courtship_experiment.py --protocol v5 --out build/courtship_local
+py courtship_experiment.py --protocol v6 --baseline build/courtship_experiment.json --brain flysim_gpu.FlyBrainGPU --out build/courtship_addendum_local
 ```
 
-The quick run is a smoke test: two seeds, 80 steps, not the experiment.
-For the GPU, add `--brain flysim_gpu.FlyBrainGPU` to either experiment command.
-It selects both brains; the CPU and GPU spike-equivalence test is recorded
-in the commits. Each output prefix gets `_experiment.json`,
-`_trajectories.npz`, `_trajectories.png` and `_report.md` under `build/`.
-The published prefix, `build/courtship`, is refused, including
-aliases of its files, so a run cannot overwrite the published evidence.
+Quick runs use two seeds and 80 steps. Add `--brain flysim_gpu.FlyBrainGPU`
+to the v5 commands to use the GPU for both brains, as the published run did.
+The addendum must use the same brain class as its baseline.
+Each prefix gets `_experiment.json`, `_trajectories.npz`, `_trajectories.png`
+and `_report.md`. Both published prefixes, `build/courtship` and
+`build/courtship_addendum`, are refused, including case variants and file aliases.
 
-The ten-seed numbers below are from the published `build/courtship_report.md`.
-Differences are paired across seeds; support requires a difference above
-two standard errors (SE), with n = 10 for each row.
+The evidence is in [the v5 report](build/courtship_report.md) and
+[the v6 addendum](build/courtship_addendum_report.md); the addendum records
+its baseline's SHA256. Support requires a paired difference above two
+standard errors across ten seeds; P5 and P13 require both comparisons.
 
-| Prediction | Paired difference | SE | Verdict |
-|---|---:|---:|---|
-| P1: vpoDN, song - silence | +132.7 Hz | 12.6 | supported |
-| P2: pC1, song - silence | +3.2 Hz | 0.5 | supported |
-| P3: vpoDN, song - shuffled | -11.8 Hz | 16.9 | not supported |
-| P4: last distance, silence - song | -3.5 mm | 2.8 | not supported |
+| Protocol | Prediction | Verdict |
+|---|---|---|
+| v5 | P1: her vpoDN, song > silence | supported |
+| v5 | P2: her pC1, song > silence | supported |
+| v5 | P3: timing, song > jittered | not supported |
+| v5 | P4: approach, song closer than silence | not supported |
+| v5 | P5: pIP10 and delivered song, song > mute | not supported |
+| v5 | P6: her vpoDN, song > mute | not supported |
+| v5 | P8: his P1, song > noscent | not supported |
+| v5 | P9: her vpoDN, virgin > mated | not supported |
+| v5 | P11: his LC10a, sight > no sight | not supported |
+| v6 | P9': her vpoDN, v5 song > gated | not supported |
+| v6 | P13: pIP10 and delivered song, p1drive > v5 song | supported |
+| v6 | P14: her vpoDN, p1drive > v5 song | supported |
 
-Accept was 10/10 with song and shuffled, 0/10 with silence and dark;
-approach was 4/10, 5/10, 2/10 and 2/10 respectively, so distance outcomes vary.
-Accept is a chosen rule: vpoDN above zero in at least three windows.
-P3 failed: shuffled song does as well, as expected when her ear hears a
-rate rather than pulse timing; energy mattered here, timing did not.
-P4 failed: she walks when sung to and stands when not, but a rate-based
-ear does not by itself give her a direction, and distance includes his motion.
-His P1 active windows span 18-400 across seeds and conditions; lagged
-pulse/sine correlations with her previous distance and speed are inconsistent,
-mostly weak, and do not establish adaptation.
+Song met the accept rule on nine of ten seeds, with approach on three and retreat on seven; silence met it on none, with approach on one and retreat on nine. Accept means vpoDN above zero in at least three windows; song produced some vpoDN activity on all ten seeds, while silence produced none.
 
-What is NOT real here, stated plainly:
+She hears him through the waveform: song raised her vpoDN and pC1 over silence. Timing did not beat a copy with the same energy, and song did not bring them closer. Removing her scent did not lower his P1; cutting his P1 outputs did not lower his pIP10 or song, and sight did not establish an increase in his LC10a. Her sex-peptide pathway has no synapses to carry a change of state into this map, and closing pC1 by hand did not establish a no. Driving his P1 from above did raise his pIP10, the song reaching her, and her vpoDN. These unsupported comparisons do not establish that their effects are exactly zero.
 
-- Pulse and sine are summed motor rates, not song waveforms; her ear hears a rate.
-- Her eye is blind in this uniform arena: silence vpoDN was 54-206 Hz with
-  the eye, zero with it blind. Dark and silence therefore coincide.
-- She is loaded raw, excitation scale 1.0, for parity with him; this overrides
-  the female graph's stored scale. It is a choice, not a fitted result.
-- vpoDN is DNp37 by alias, two cells; pC1a-e has ten cells.
-- His P1 is the dictionary's uncertain 86-cell group, not a settled identity.
-- The contact cells carry a putative ppk23 label.
-- Her scent is a chosen drive to him, not a measured plume; cVA is held at
-  zero because there is no other male. She has no pheromone input.
-- He is inside the loop: her position affects his inputs and their distance.
-  No adaptation mechanism was added, and none was established by these readouts.
-- JO-B clips at its two-cell ceiling in some windows; the count is reported
-  per trial. Shuffling preserves input rates, not the downstream response.
-- The brain runs 12 ms per 50 ms world step. Gains, rate-to-motion mappings
-  and outcome rules are chosen; rates and trajectories are measured.
+What is chosen or missing:
 
-What is next:
+- Her ear now hears a waveform in 5 ms slices and her brain runs the full 50 ms of every step; effects are smaller in this regime than in the first run.
+- The sex-peptide axons in her map carry no synapses, so a mated state has no wired entry; gated cuts pC1 outputs by hand.
+- p1drive is an intervention.
+- Her eye is blind; dark and silence coincide. Her raw excitation scale is 1.0 by choice.
+- vpoDN is DNp37 by alias, two cells; pC1a-e has ten cells. His P1 is an uncertain dictionary group of 86 cells; contact cells carry a putative ppk23 label.
+- Her scent is a chosen drive, not a measured plume; cVA is zero with no other male. She has no pheromone input.
+- Song amplitude comes from pIP10; mode uses motor means near ceiling. Pulse rhythm and carriers are synthesis choices, not wing mechanics.
+- The ear filter uses the whole current block, with boundary effects and lookahead. Jitter changes pulse density; matching trial energy does not match local envelopes or spectra. Ear clipping is recorded per trial.
+- He is inside the loop, so distance includes both bodies. No adaptation mechanism was added or established.
+- Gains, motion mappings, start geometry and accept rules are chosen. SpsP identity is unverified; oviDN is a readout without an ovipositor body. Male eye and soma-side availability are recorded per trial.
 
-- A waveform ear that hears pulse timing, so P3 can be tested properly.
-- Contrast and motion vision for her.
-- A state for her that can say no.
+[The first run, with a rate ear](build/courtship_v3_report.md), is kept for comparison.
 
 ## Hosting it
 

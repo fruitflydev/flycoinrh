@@ -101,6 +101,7 @@ LIMITATIONS = [
     "Distance changes include both bodies; approach is not an isolated female command.",
     "Retired v3 limitations: rate-only ear, motor-sum song, 12 ms brain windows, separate motor-reference clipping and shuffled-rate multiset no longer describe this protocol."]
 PUBLISHED = Path("build/courtship")
+PUBLISHED_ADDENDUM = Path("build/courtship_addendum")
 V6_CONDITIONS = {"gated": (True, False), "p1drive": (True, False)}
 V6_PROTOCOL_TEXT = """Protocol v6 ADDENDUM. Only gated and p1drive are run; controls are the v5 song records paired by seed. Seed RNGs, start geometry, steps, brains and all other v5 song settings are retained.
 CHOSEN gated: identical to v5 song (virgin), with outgoing gains 0.0 on exactly pC1a, pC1b, pC1c, pC1d, pC1e; other gains one. a mated female cannot be encoded through her own sex-peptide pathway in this map, because the SPSN and SAG axons carry no synapses here; the receptivity gate is closed by hand instead, as a lesion, the way the tests lesion.
@@ -510,7 +511,8 @@ def paths(prefix):
 
 
 def assert_not_published(prefix):
-    for target, protected in ((t, p) for t in paths(prefix) for p in paths(PUBLISHED)):
+    for target, protected in ((t, p) for t in paths(prefix)
+                              for root in (PUBLISHED, PUBLISHED_ADDENDUM) for p in paths(root)):
         # Resolve the parent identity, including aliases, before the files exist.
         same_parent = target.parent.exists() and protected.parent.exists() and os.path.samefile(target.parent, protected.parent)
         same_file = target.exists() and protected.exists() and os.path.samefile(target, protected)
