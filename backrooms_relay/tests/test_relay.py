@@ -397,6 +397,295 @@ def test_cors_preflight_post_not_allowed(client):
 def test_about_is_honest(client):
     about = client.get("/").json()["about"]
     for phrase in ("LFM2.5-1.2B-Instruct", "MaleCNS v1.0", "CC BY 4.0", "not a fly's thoughts",
-                   "not simulated spikes", "better without fly anatomy", "labels, not personalities"):
+                   "flies do not use language", "leaky integrate-and-fire", "a simplification",
+                   "labels, not personalities", "readout lines the model was shown"):
         assert phrase in about
+    for stale in ("abstract recurrence", "not simulated spikes", "better without fly anatomy"):
+        assert stale not in about
     assert relay_mod.safety.check(about) is None
+
+
+# ---------- talk turns: backrooms_talk/TURN_SCHEMA.md ----------
+
+# Readout lines of the shape the engine really sends (taken from its dry run).
+TALK_BASIS = [
+    "walked 3.0 mm in the last 2.2 s; C is 3.4 mm away, 161 deg to the right; D is 5.4 mm away, "
+    "102 deg to the right; B is 12.8 mm away, 128 deg to the right",
+    "Tk-FruM, male-specific tachykinin neurons promoting aggression (uncertain match): 8 Hz now, baseline 0 Hz",
+    "vMS11, song premotor neurons (von Philipsborn 2011) (uncertain match): 171 Hz now, baseline 143 Hz",
+    "song level, summed over 8 pulse-song wing motor neurons: 2241 Hz; sound drive to JO-A and JO-B hearing "
+    "neurons: 159 Hz; cVA smell drive to ORN_DA1: 200 Hz",
+    "A  Tk-FruM falls to 0 Hz (male-specific tachykinin neurons promoting aggression, Asahina 2014; uncertain match)",
+    "A  stops",
+]
+
+INT_META = ("window_steps", "seed", "new_tokens")
+
+
+def talk_meta(**kw):
+    m = {"active_fraction": 0.145, "brain_rate_hz": 36.2, "song_hz": 2241.3, "sound_drive_hz": 159.0,
+         "smell_drive_hz": 200.0, "top_group_rate_hz": 8.1, "top_group_baseline_hz": 0.0,
+         "nearest_fly_mm": 3.4, "world_s": 2.2, "window_steps": 44, "seed": 1672430541, "new_tokens": 27}
+    m.update(kw)
+    return m
+
+
+def talk(**kw):
+    body = {"speaker": "B", "to": "A", "text": "I observed a spike pattern matching the recorded activity.",
+            "engine_seq": 2, "fly_index": 1, "basis": list(TALK_BASIS), "meta": talk_meta()}
+    body.update(kw)
+    return body
+
+
+def without(body, *keys):
+    return {k: v for k, v in body.items() if k not in keys}
+
+
+def test_talk_turn_accepted_and_returned_with_every_field(client, clock):
+    r = client.post("/turn", json=talk(), headers=auth())
+    assert r.status_code == 200, r.text
+    first = without(talk(speaker="A", fly_index=0, engine_seq=1), "to")
+    assert client.post("/turn", json=first, headers=auth()).status_code == 200
+    turns = client.get("/turns").json()["turns"]
+    t = turns[0]
+    assert list(t) == ["seq", "at", "ts", "speaker", "to", "text", "engine_seq", "fly_index", "basis", "meta"]
+    assert t["seq"] == 1 and t["ts"] == clock.t and t["at"].endswith("Z")
+    assert without(t, "seq", "at", "ts") == talk()
+    assert list(t["meta"]) == list(relay_mod.TALK_META)                  # schema order, active_fraction first
+    assert "to" not in turns[1] and turns[1]["fly_index"] == 0 and turns[1]["basis"] == TALK_BASIS
+    assert all(type(t["meta"][k]) is int for k in INT_META)
+
+
+def test_talk_meta_order_is_normalised_and_ints_kept(client):
+    shuffled = dict(reversed(list(talk_meta(brain_rate_hz=36, top_group_baseline_hz=0).items())))
+    assert client.post("/turn", json=talk(meta=shuffled), headers=auth()).status_code == 200
+    meta = client.get("/turns").json()["turns"][0]["meta"]
+    assert list(meta) == list(relay_mod.TALK_META)
+    assert meta["brain_rate_hz"] == 36 and type(meta["brain_rate_hz"]) is int
+
+
+def test_talk_boundaries_accepted(client):
+    edge = [
+        talk(basis=[]),
+        talk(basis=["x" * 200] * 6, text="a" * 600),
+        talk(engine_seq=2**53),
+        talk(meta=talk_meta(active_fraction=0, sound_drive_hz=0, smell_drive_hz=0, nearest_fly_mm=0, seed=0,
+                            new_tokens=1, window_steps=1, world_s=0, song_hz=0, brain_rate_hz=0.0)),
+        talk(meta=talk_meta(active_fraction=1, sound_drive_hz=200, smell_drive_hz=200.0, nearest_fly_mm=29,
+                            seed=2**31 - 1, new_tokens=4096, window_steps=2**53)),
+        without(talk(speaker="D", fly_index=3), "to"),
+        talk(speaker="C", fly_index=2, to="D"),
+    ]
+    for i, body in enumerate(edge):
+        r = client.post("/turn", json=body, headers=auth())
+        assert r.status_code == 200, (i, r.text)
+    assert client.get("/status").json()["count"] == len(edge)
+
+
+def _talk_rejects():
+    cases = []
+    for k in ("speaker", "text", "engine_seq", "fly_index", "basis", "meta"):
+        cases.append((f"missing {k}", without(talk(), k)))
+    for k in relay_mod.TALK_META:
+        cases.append((f"meta missing {k}", talk(meta={x: v for x, v in talk_meta().items() if x != k})))
+        cases.append((f"meta {k} bool", talk(meta=talk_meta(**{k: True}))))
+        cases.append((f"meta {k} string", talk(meta=talk_meta(**{k: "1"}))))
+        cases.append((f"meta {k} null", talk(meta=talk_meta(**{k: None}))))
+        cases.append((f"meta {k} negative", talk(meta=talk_meta(**{k: -1}))))
+    for k in INT_META:
+        cases.append((f"meta {k} float", talk(meta=talk_meta(**{k: 5.0}))))
+    cases += [
+        ("extra field", talk(extra=1)),
+        ("legacy body with basis", turn(basis=[])),
+        ("legacy body with fly_index", turn(fly_index=0)),
+        ("meta extra key", talk(meta=talk_meta(bias_norm=0.4))),
+        ("meta legacy shape", talk(meta={"bias_norm": 0.42, "tokens": 31})),
+        ("meta empty", talk(meta={})),
+        ("meta not object", talk(meta=[1, 2])),
+        ("active_fraction > 1", talk(meta=talk_meta(active_fraction=1.0001))),
+        ("sound > 200", talk(meta=talk_meta(sound_drive_hz=200.5))),
+        ("smell > 200", talk(meta=talk_meta(smell_drive_hz=201))),
+        ("nearest > 29", talk(meta=talk_meta(nearest_fly_mm=29.01))),
+        ("seed 2^31", talk(meta=talk_meta(seed=2**31))),
+        ("new_tokens 0", talk(meta=talk_meta(new_tokens=0))),
+        ("new_tokens 4097", talk(meta=talk_meta(new_tokens=4097))),
+        ("window_steps 0", talk(meta=talk_meta(window_steps=0))),
+        ("window_steps huge", talk(meta=talk_meta(window_steps=2**53 + 1))),
+        ("speaker E", talk(speaker="E")),
+        ("speaker name", talk(speaker="Wren")),
+        ("speaker lower", talk(speaker="b")),
+        ("to E", talk(to="E")),
+        ("to self", talk(to="B")),
+        ("to null", talk(to=None)),
+        ("fly_index mismatch", talk(fly_index=2)),
+        ("fly_index 4", talk(fly_index=4)),
+        ("fly_index -1", talk(fly_index=-1)),
+        ("fly_index bool", talk(speaker="B", fly_index=True)),
+        ("fly_index string", talk(fly_index="1")),
+        ("fly_index float", talk(fly_index=1.0)),
+        ("engine_seq 0", talk(engine_seq=0)),
+        ("engine_seq bool", talk(engine_seq=True)),
+        ("engine_seq float", talk(engine_seq=2.0)),
+        ("engine_seq over 2^53", talk(engine_seq=2**53 + 1)),
+        ("engine_seq null", talk(engine_seq=None)),
+        ("text empty", talk(text="")),
+        ("text blank", talk(text="   ")),
+        ("text 601", talk(text="a" * 601)),
+        ("text bidi", talk(text="spoof‮evil")),
+        ("basis 7 items", talk(basis=TALK_BASIS + ["A  stops"])),
+        ("basis item 201 chars", talk(basis=["x" * 201])),
+        ("basis item empty", talk(basis=[""])),
+        ("basis item blank", talk(basis=["   "])),
+        ("basis item number", talk(basis=[3])),
+        ("basis item null", talk(basis=[None])),
+        ("basis item list", talk(basis=[["A  stops"]])),
+        ("basis string", talk(basis="A  stops")),
+        ("basis object", talk(basis={"0": "A  stops"})),
+        ("basis null", talk(basis=None)),
+        ("basis newline", talk(basis=["A  stops\nB  stops"])),
+        ("basis tab", talk(basis=["A\tstops"])),
+        ("basis control", talk(basis=["A  stops\x00"])),
+        ("basis zero-width", talk(basis=["A  st​ops"])),
+    ]
+    return cases
+
+
+TALK_REJECTS = _talk_rejects()
+
+
+@pytest.mark.parametrize("name,body", TALK_REJECTS, ids=[c[0] for c in TALK_REJECTS])
+def test_talk_validation_rejects(client, name, body):
+    r = client.post("/turn", json=body, headers=auth())
+    assert r.status_code == 422, (name, r.status_code, r.text)
+    st = client.get("/status").json()
+    assert st["count"] == 0 and st["blocked_at_relay"] == 0   # schema rejections are not filter blocks
+
+
+def test_talk_non_finite_meta_rejected(client):
+    h = {**auth(), "Content-Type": "application/json"}
+    for raw in ("NaN", "Infinity", "-Infinity"):
+        body = json.dumps(talk()).replace('"song_hz": 2241.3', f'"song_hz": {raw}')
+        assert raw in body
+        assert client.post("/turn", content=body, headers=h).status_code == 400
+    body = json.dumps(talk()).replace('"world_s": 2.2', '"world_s": 1e400')   # parses to inf
+    assert "1e400" in body
+    assert client.post("/turn", content=body, headers=h).status_code == 422
+    assert client.get("/status").json()["count"] == 0
+
+
+@pytest.mark.parametrize("index", range(6))
+def test_filter_checks_every_basis_line_and_counts(client, index):
+    basis = list(TALK_BASIS)
+    basis[index] = "we pumped it"
+    r = client.post("/turn", json=talk(basis=basis), headers=auth())
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert detail["blocked"] == f"basis[{index}]" and detail["reason"] == "financial"
+    assert detail["filter"] == relay_mod.safety.FILTER_VERSION
+    st = client.get("/status").json()
+    assert st == {**st, "count": 0, "blocked_at_relay": 1}
+    assert client.get("/turns").json()["turns"] == []
+
+
+@pytest.mark.parametrize("line", [
+    "MDN 83 Hz (backward walking descending neurons (moonwalker))",
+    "follow @someone", "check www.example.com", "the price", "\U0001f680 fires 3 Hz", "café рump",
+])
+def test_filter_blocks_basis_probes(client, line):
+    r = client.post("/turn", json=talk(basis=["A  stops", line]), headers=auth())
+    assert r.status_code == 422, (line, r.text)
+    assert r.json()["detail"]["blocked"] == "basis[1]"
+    assert client.get("/status").json() == {"running": False, "last_at": None, "count": 0, "blocked_at_relay": 1}
+
+
+def test_filter_on_talk_text_counts(client):
+    r = client.post("/turn", json=talk(text="we should buy more"), headers=auth())
+    assert r.status_code == 422 and r.json()["detail"]["blocked"] == "text"
+    assert client.get("/status").json()["blocked_at_relay"] == 1
+
+
+def test_legacy_and_talk_turns_side_by_side(client):
+    assert client.post("/turn", json=turn(to="Moth", engine_seq=7, meta={"bias_norm": 0.42}), headers=auth()).status_code == 200
+    assert client.post("/turn", json=talk(), headers=auth()).status_code == 200
+    assert client.post("/turn", json=turn(text="an old-shape line"), headers=auth()).status_code == 200
+    turns = client.get("/turns").json()["turns"]
+    assert [t["seq"] for t in turns] == [1, 2, 3]
+    assert set(turns[0]) == {"seq", "at", "ts", "speaker", "to", "text", "engine_seq", "meta"}
+    assert set(turns[1]) == {"seq", "at", "ts", "speaker", "to", "text", "engine_seq", "fly_index", "basis", "meta"}
+    assert set(turns[2]) == {"seq", "at", "ts", "speaker", "text"}
+
+
+def test_talk_turn_in_stream_replay_and_live(client):
+    client.post("/turn", json=talk(), headers=auth())
+    with client.stream("GET", "/stream", params={"after": 0, "max_events": 1}) as r:
+        ev = parse_sse(r.read().decode("utf-8"))
+    assert [e["id"] for e in ev] == [1]
+    assert without(ev[0]["data"], "seq", "at", "ts") == talk()
+    result = {}
+
+    def listen():
+        with client.stream("GET", "/stream", params={"max_events": 1}) as r:
+            result["raw"] = r.read().decode("utf-8")
+
+    th = threading.Thread(target=listen, daemon=True)
+    th.start()
+    relay = client.app.state.relay
+    deadline = time.time() + 5
+    while not relay.subscribers and time.time() < deadline:
+        time.sleep(0.02)
+    time.sleep(0.3)
+    live = talk(speaker="C", fly_index=2, to="B", engine_seq=3, basis=["C  approaches D: 2.6 mm"])
+    assert client.post("/turn", json=live, headers=auth()).status_code == 200
+    th.join(timeout=5)
+    ev = parse_sse(result["raw"])
+    assert [e["id"] for e in ev] == [2]
+    assert without(ev[0]["data"], "seq", "at", "ts") == live
+
+
+def test_talk_turns_persist_and_restore(tmp_path, clock):
+    data = tmp_path / "data"
+    data.mkdir()
+    app = create_app(token=TOKEN, data_dir=str(data), clock=clock)
+    with TestClient(app) as c:
+        assert c.post("/turn", json=turn(text="legacy first"), headers=auth()).status_code == 200
+        assert c.post("/turn", json=talk(), headers=auth()).status_code == 200
+    app2 = create_app(token=TOKEN, data_dir=str(data), clock=clock)
+    with TestClient(app2) as c:
+        turns = c.get("/turns").json()["turns"]
+        assert [t["seq"] for t in turns] == [1, 2]
+        assert without(turns[1], "seq", "at", "ts") == talk()
+        assert list(turns[1]["meta"]) == list(relay_mod.TALK_META)
+
+
+def test_largest_talk_body_fits_the_byte_cap(client):
+    # Every allowed character is at most 3 UTF-8 bytes and the engine sends ensure_ascii=False.
+    body = talk(text="…" * 600, basis=["’" * 200] * 6,
+                meta=talk_meta(**{k: 2**53 for k in ("window_steps",)}))
+    raw = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    assert len(raw) <= relay_mod.MAX_BODY_BYTES, len(raw)
+
+
+def test_turn_schema_md_agrees_with_the_relay():
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "backrooms_talk", "TURN_SCHEMA.md")
+    if not os.path.isfile(path):
+        pytest.skip("backrooms_talk/TURN_SCHEMA.md is not beside the relay (deployed copy)")
+    import re
+    text = open(path, encoding="utf-8").read()
+    schema = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
+    props = schema["properties"]
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) | {"to"} == set(props) == set(relay_mod.TalkTurnIn.model_fields)
+    assert set(relay_mod.TALK_ONLY_FIELDS) <= set(schema["required"])
+    assert props["speaker"]["enum"] == props["to"]["enum"] == list(relay_mod.FLY_LABELS)
+    assert props["text"]["maxLength"] == relay_mod.MAX_TEXT_CHARS and props["text"]["minLength"] == 1
+    assert (props["engine_seq"]["minimum"], props["engine_seq"]["maximum"]) == (1, relay_mod.MAX_JSON_INT)
+    assert (props["fly_index"]["minimum"], props["fly_index"]["maximum"]) == (0, len(relay_mod.FLY_LABELS) - 1)
+    assert props["basis"]["maxItems"] == relay_mod.BASIS_MAX_ITEMS
+    assert props["basis"]["items"]["maxLength"] == relay_mod.BASIS_ITEM_MAX_CHARS
+    meta = props["meta"]
+    assert meta["additionalProperties"] is False and set(meta["required"]) == set(relay_mod.TALK_META)
+    assert list(meta["properties"]) == list(relay_mod.TALK_META)
+    for k, (kind, lo, hi) in relay_mod.TALK_META.items():
+        p = meta["properties"][k]
+        assert (p["type"], p.get("minimum"), p.get("maximum")) == (kind, lo, hi), k

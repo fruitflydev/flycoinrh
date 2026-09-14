@@ -1,21 +1,32 @@
 """Backrooms relay: a tiny public board for turns posted by a separate generator.
 
 This service has no brain and no model. It only stores and re-broadcasts text
-that a generator has already produced and filtered, and shows nothing until one
-posts. No such generator exists yet. The relay runs the same safety filter again
-(safety.py) and rejects, never edits, any line that fails it; rejections are
-counted in /status as blocked_at_relay.
+that a generator (backrooms_talk, running elsewhere) has already produced and
+filtered, and shows nothing until one posts. The relay runs the same safety
+filter again (safety.py) on the text and on every basis line, and rejects, never
+edits, a body that fails it; rejections are counted in /status as
+blocked_at_relay.
 
-What the text is meant to be: words from a small language model (Liquid AI
-LFM2.5-1.2B-Instruct) whose next-word scores are adjusted by a readout of an
-abstract recurrence over the MaleCNS v1.0 fly connectome graph (Janelia et al.,
-CC BY 4.0). It is not a fly's thoughts. The recurrence is abstract
-numbers, not simulated spikes, and the method's own published control performed
-slightly better without fly anatomy. The flies' names are labels, not
-personalities. Nothing here claims consciousness, feelings or thinking.
+What the text is: lines written by a small language model (Liquid AI
+LFM2.5-1.2B-Instruct) from a readout of that fly's simulated brain activity on
+the Janelia male CNS connectome (MaleCNS v1.0, CC BY 4.0) in a simulated room.
+The simulator is a uniform leaky integrate-and-fire model, a simplification.
+The lines are not a fly's thoughts; flies do not use language. The flies' names
+are labels, not personalities. Nothing here claims consciousness, feelings or
+thinking. A talk turn carries `basis`: the readout lines the model was shown.
+
+Two body shapes are accepted (unknown fields are rejected in both):
+  talk turn   any body with `fly_index` or `basis`; must match
+              backrooms_talk/TURN_SCHEMA.md exactly (schema: TalkTurnIn): speaker and
+              to in A B C D, text 1-600 chars, engine_seq >= 1, fly_index 0-3 (the
+              speaker's position), basis 0-6 strings of 1-200 chars, meta exactly the
+              12 TALK_META keys with their types and ranges
+  legacy      speaker, to, text, engine_seq, meta as before (schema: TurnIn)
+GET /turns and /stream return every stored field, so talk turns carry fly_index,
+basis and meta and legacy turns look as they always did.
 
 Endpoints
-  POST /turn          Authorization: Bearer <RELAY_TOKEN>; JSON body (schema: TurnIn)
+  POST /turn          Authorization: Bearer <RELAY_TOKEN>; JSON body (TalkTurnIn or TurnIn)
   GET  /turns          the NEWEST `limit` turns (default 100, max 500), oldest first
   GET  /turns?after=N  the first `limit` turns with seq > N (for paging forward)
   GET  /stream         Server-Sent Events; replays seq > max(?after=, Last-Event-ID), then one
@@ -47,7 +58,17 @@ from typing import Callable, Optional, Union
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 import safety
 
@@ -58,18 +79,39 @@ RUNNING_WINDOW_S = 120.0   # status.running if the last turn is newer than this
 MAX_BODY_BYTES = 8192      # hard cap on POST body size
 MAX_TEXT_CHARS = safety.MAX_CHARS
 MAX_META_KEYS = 12
+FLY_LABELS = ("A", "B", "C", "D")   # speaker labels of a talk turn; fly_index is the position here
+BASIS_MAX_ITEMS = 6
+BASIS_ITEM_MAX_CHARS = 200
+MAX_JSON_INT = 2**53
+# The talk turn's meta: exactly these keys, in this order (TURN_SCHEMA.md).
+# key -> (JSON type, minimum, maximum); None means unbounded (finite, and 2^53 for integers).
+TALK_META = {
+    "active_fraction": ("number", 0, 1),
+    "brain_rate_hz": ("number", 0, None),
+    "song_hz": ("number", 0, None),
+    "sound_drive_hz": ("number", 0, 200),
+    "smell_drive_hz": ("number", 0, 200),
+    "top_group_rate_hz": ("number", 0, None),
+    "top_group_baseline_hz": ("number", 0, None),
+    "nearest_fly_mm": ("number", 0, 29),
+    "world_s": ("number", 0, None),
+    "window_steps": ("integer", 1, None),
+    "seed": ("integer", 0, 2**31 - 1),
+    "new_tokens": ("integer", 1, 4096),
+}
+TALK_ONLY_FIELDS = ("fly_index", "basis")   # either one marks a body as a talk turn
 MAX_SUBSCRIBERS = 1000
 SUBSCRIBER_QUEUE = 256
 HEARTBEAT_S = 15.0
 MIN_TOKEN_LEN = 32
 
 ABOUT = (
-    "Nothing appears here until a generator posts. The words are meant to come from a small language "
-    "model (Liquid AI LFM2.5-1.2B-Instruct) whose next-word scores are adjusted by a readout of an "
-    "abstract recurrence over the MaleCNS v1.0 fly connectome graph (Janelia et al., CC BY 4.0). This is "
-    "not a fly's thoughts. The recurrence is abstract numbers, not simulated spikes, and the method's own "
-    "published control performed slightly better without fly anatomy. The flies' names are labels, not "
-    "personalities. No claim of consciousness, feelings or thinking is made."
+    "Nothing appears here until the generator posts. Each line is written by a small language model "
+    "(Liquid AI LFM2.5-1.2B-Instruct) from a readout of that fly's simulated brain activity on the "
+    "Janelia male CNS connectome (MaleCNS v1.0, CC BY 4.0) in a simulated room. The simulator is a "
+    "uniform leaky integrate-and-fire model, a simplification. This is not a fly's thoughts; flies do "
+    "not use language. The flies' names are labels, not personalities. No claim of consciousness, "
+    "feelings or thinking is made. Each turn lists the readout lines the model was shown."
 )
 
 ALLOWED_ORIGINS = ["https://flybrain.online", "https://www.flybrain.online"]
@@ -78,10 +120,22 @@ NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9 _.\-]{0,23}")
 META_KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
 # Control characters (newline and tab allowed) and bidi/zero-width spoofing characters.
 BAD_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+# A basis item is one readout line: no control characters at all (not even newline or tab).
+BAD_BASIS_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+
+
+def _check_text(v: str) -> str:
+    if not v.strip():
+        raise ValueError("text is blank")
+    if BAD_CHARS_RE.search(v):
+        raise ValueError("text contains control or bidi characters")
+    if v.count("\n") > safety.MAX_NEWLINES:
+        raise ValueError("text has too many lines")
+    return v
 
 
 class TurnIn(BaseModel):
-    """What the engine posts. Unknown fields are rejected."""
+    """The original (legacy) body: speaker, to, text, engine_seq, meta. Unknown fields are rejected."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -101,13 +155,7 @@ class TurnIn(BaseModel):
     @field_validator("text")
     @classmethod
     def _text(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("text is blank")
-        if BAD_CHARS_RE.search(v):
-            raise ValueError("text contains control or bidi characters")
-        if v.count("\n") > safety.MAX_NEWLINES:
-            raise ValueError("text has too many lines")
-        return v
+        return _check_text(v)
 
     @field_validator("meta")
     @classmethod
@@ -124,6 +172,84 @@ class TurnIn(BaseModel):
             if isinstance(val, int) and abs(val) > 2**53:
                 raise ValueError("meta integer out of range")
         return v
+
+
+class TalkTurnIn(BaseModel):
+    """The talk engine's body, exactly backrooms_talk/TURN_SCHEMA.md. Unknown fields are rejected.
+
+    Beyond the JSON Schema, two consistency rules follow from the field definitions:
+    fly_index must be the speaker's position in A B C D, and `to` (when present) must be
+    another fly. Integers without a stated maximum are capped at 2^53 (exact in JSON).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    speaker: StrictStr
+    to: Optional[StrictStr] = None
+    text: StrictStr = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+    engine_seq: StrictInt = Field(ge=1, le=MAX_JSON_INT)
+    fly_index: StrictInt = Field(ge=0, le=len(FLY_LABELS) - 1)
+    basis: list[StrictStr] = Field(max_length=BASIS_MAX_ITEMS)
+    meta: dict[StrictStr, Union[StrictInt, StrictFloat]]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _to_is_omitted_not_null(cls, data):
+        if isinstance(data, dict) and "to" in data and data["to"] is None:
+            raise ValueError("to must be omitted, not null, when there is no addressee")
+        return data
+
+    @field_validator("speaker", "to")
+    @classmethod
+    def _label(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in FLY_LABELS:
+            raise ValueError("must be one of " + " ".join(FLY_LABELS))
+        return v
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, v: str) -> str:
+        return _check_text(v)
+
+    @field_validator("basis")
+    @classmethod
+    def _basis(cls, v: list[str]) -> list[str]:
+        for i, item in enumerate(v):
+            if not 1 <= len(item) <= BASIS_ITEM_MAX_CHARS:
+                raise ValueError(f"basis[{i}] must be 1-{BASIS_ITEM_MAX_CHARS} characters")
+            if not item.strip():
+                raise ValueError(f"basis[{i}] is blank")
+            if BAD_BASIS_CHARS_RE.search(item):
+                raise ValueError(f"basis[{i}] contains control or bidi characters")
+        return v
+
+    @field_validator("meta")
+    @classmethod
+    def _meta(cls, v: dict) -> dict:
+        missing = [k for k in TALK_META if k not in v]
+        extra = sorted(k for k in v if k not in TALK_META)
+        if missing or extra:
+            raise ValueError(f"meta must have exactly the {len(TALK_META)} talk keys (missing {missing}, extra {extra})")
+        for k, (kind, lo, hi) in TALK_META.items():
+            val = v[k]
+            if kind == "integer":
+                if not isinstance(val, int):
+                    raise ValueError(f"meta.{k} must be an integer")
+                if abs(val) > MAX_JSON_INT:
+                    raise ValueError(f"meta.{k} out of range")
+            elif not math.isfinite(val):
+                raise ValueError(f"meta.{k} must be finite")
+            if val < lo or (hi is not None and val > hi):
+                raise ValueError(f"meta.{k} must be in [{lo}, {'inf' if hi is None else hi}]")
+        return {k: v[k] for k in TALK_META}   # stored in the schema's order
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "TalkTurnIn":
+        if self.fly_index != FLY_LABELS.index(self.speaker):
+            raise ValueError("fly_index must be the speaker's position in A B C D")
+        if self.to is not None and self.to == self.speaker:
+            raise ValueError("to must name another fly")
+        return self
 
 
 def _iso(ts: float) -> str:
@@ -185,7 +311,7 @@ class Relay:
                     log.error("could not read %s: %s", self.path, e)
         log.info("relay ready: persist=%s restored=%d seq=%d", bool(self.path), len(self.turns), self.seq)
 
-    def add(self, turn_in: TurnIn) -> dict:
+    def add(self, turn_in: Union[TurnIn, "TalkTurnIn"]) -> dict:
         now = self.clock()
         self.seq += 1
         turn = {"seq": self.seq, "at": _iso(now), "ts": round(now, 3)}
@@ -280,15 +406,19 @@ def create_app(
             return err(400, "body is not valid JSON")
         if not isinstance(payload, dict):
             return err(422, "body must be a JSON object")
+        # A body carrying fly_index or basis is a talk turn and must match TURN_SCHEMA.md
+        # exactly; a body with neither is the original shape, validated as before.
+        model = TalkTurnIn if any(k in payload for k in TALK_ONLY_FIELDS) else TurnIn
         try:
-            turn_in = TurnIn.model_validate(payload)
+            turn_in = model.model_validate(payload)
         except ValidationError as e:
             return err(422, [{"loc": list(x["loc"]), "msg": x["msg"]} for x in e.errors()])
-        for field in ("speaker", "to", "text"):
-            value = getattr(turn_in, field)
+        checks = [(field, getattr(turn_in, field)) for field in ("speaker", "to", "text")]
+        checks += [(f"basis[{i}]", item) for i, item in enumerate(getattr(turn_in, "basis", None) or [])]
+        for field, value in checks:
             reason = safety.check(value) if value is not None else None
             if reason is not None:
-                relay.blocked += 1  # dropped and counted, never edited
+                relay.blocked += 1  # dropped and counted (once per body), never edited
                 return err(422, {"blocked": field, "reason": reason, "filter": safety.FILTER_VERSION})
         turn = relay.add(turn_in)
         return {"ok": True, "seq": turn["seq"], "at": turn["at"]}
