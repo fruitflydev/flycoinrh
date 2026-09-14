@@ -127,6 +127,12 @@ def _entry(name, types, role, citation, confidence, *, present=True,
 
 
 DICTIONARY = {
+    "female_scent_orn": _entry(
+        "female scent ORN", ["^ORN_VA1v$"],
+        "Or47b volatile female pheromone receptor neurons",
+        "Kurtovic, Widmer & Dickson 2007 Nature 446:542 (pheromone pathways); "
+        "Lin et al. 2016 Neuron 90:1272 (Or47b); " + _FIG_NOT_VERIFIED + ".",
+        MEASURED, channel="smell"),
     # ---- smell: the cVA pathway -------------------------------------------
     "ORN_DA1": _entry(
         "ORN_DA1", ["ORN_DA1"],

@@ -25,7 +25,7 @@ MEASURED (this connectome, build/graph.npz; counts checked in this session)
     time, so every per-cell rate is a multiple of 83.3 Hz.
 
 CHOSEN (every number below is a choice, disclosed by describe())
-  * The room: 20 x 20 mm, a courtship-chamber scale (real assays use 10-30 mm
+  * The room: 20 x 20 mm, a fly-chamber scale (real assays use 10-30 mm
     chambers). World step 50 ms. Walking up to 20 mm/s, turning up to 360
     deg/s; the command is clipped to [-1, 1] and scales those. The fly turns,
     then walks along its new heading. Walls clamp the position. Starts are
@@ -732,7 +732,7 @@ class FlyBody:
     """
 
     def __init__(self, name, fb, eye, groups, motor, gains=None, sim_steps=SIM_STEPS,
-                 seed=0, gaze=(FRAME_W / 2.0, FRAME_H / 2.0), sides=None):
+                 seed=0, gaze=(FRAME_W / 2.0, FRAME_H / 2.0), sides=None, *, smell_key=SMELL_KEY):
         self.name = str(name)
         self.fb = fb
         self.eye = eye
@@ -750,16 +750,17 @@ class FlyBody:
         missing = [k for k in MOTOR_NAMES if k not in motor]
         if missing:
             raise KeyError(f"motor groups missing: {missing}")
-        if SMELL_KEY not in self.groups:
-            raise KeyError(f"no {SMELL_KEY} cells: the smell channel has nowhere to go")
+        self.smell_key = smell_key
+        if smell_key not in self.groups:
+            raise KeyError(f"no {smell_key} cells: the smell channel has nowhere to go")
         sound_parts = [(k, self.groups[k]) for k in SOUND_KEYS if k in self.groups]
         if not sound_parts:
             raise KeyError(f"no {'/'.join(SOUND_KEYS)} cells: the sound channel has nowhere to go")
-        self.smell_idx = self.groups[SMELL_KEY]
+        self.smell_idx = self.groups[smell_key]
         # per-side equalisation, per driven group (JO-A and JO-B separately,
         # since they are distinct classes with their own L/R splits)
         self.side_scales = {}
-        self.smell_scale, self.side_scales[SMELL_KEY] = per_side_scales(self.smell_idx, self.sides)
+        self.smell_scale, self.side_scales[smell_key] = per_side_scales(self.smell_idx, self.sides)
         cat_idx, cat_scale = [], []
         for k, v in sound_parts:
             sc, self.side_scales[k] = per_side_scales(v, self.sides)
@@ -782,6 +783,19 @@ class FlyBody:
         clash = np.intersect1d(eye_idx, np.concatenate([self.smell_idx, self.sound_idx]))
         if clash.size:
             raise ValueError(f"eye cells overlap smell/sound cells: {clash[:5].tolist()}")
+
+        # Cache all selectable scent scales and input overlaps once. side_scales
+        # remains the public metadata for the default smell and sound groups.
+        self.group_scales = {smell_key: self.smell_scale}
+        drive_groups = {**self.groups, None: self.sound_idx}
+        self.eye_overlaps = {key: bool(np.intersect1d(idx, eye_idx).size)
+                             for key, idx in drive_groups.items()}
+        self.drive_overlaps = {key: {other for other, cells in drive_groups.items()
+                                    if np.intersect1d(idx, cells).size}
+                               for key, idx in drive_groups.items()}
+        for k, idx in self.groups.items():
+            if k not in self.group_scales:
+                self.group_scales[k] = per_side_scales(idx, self.sides)[0]
 
         # one recorded array for everything, split afterwards: run() counts
         # spikes per recorded cell, so recording the union once and slicing is
@@ -807,12 +821,16 @@ class FlyBody:
         per-cell arrays, the nominal rate times each cell's side scale.
         """
         d = dict(self.eye.look(frame, self.gaze[0], self.gaze[1]))
-        for idx, scale, hz in ((self.smell_idx, self.smell_scale, smell_hz),
-                               (self.sound_idx, self.sound_scale, sound_hz)):
+        scent = ([(k, self.groups[k], self.group_scales[k], hz)
+                  for k, hz in smell_hz.items()] if isinstance(smell_hz, dict)
+                 else [(self.smell_key, self.smell_idx, self.smell_scale, smell_hz)])
+        driven = set()
+        for group, idx, scale, hz in [*scent, (None, self.sound_idx, self.sound_scale, sound_hz)]:
             key = tuple(idx.tolist())
-            if key in d:
+            if key in d or self.eye_overlaps[group] or not self.drive_overlaps[group].isdisjoint(driven):
                 raise ValueError("smell/sound drive overlaps the eye's own input")
             d[key] = (scale * float(max(0.0, hz))).astype(np.float32)
+            driven.add(group)
         return d
 
     def step(self, frame, smell_hz, sound_hz):
@@ -851,10 +869,17 @@ class FlyBody:
             "turn": float(turn), "speed": float(speed), **parts,
             "motor": motor,
             "song_hz": song_hz, "song_group": self.song_key,
+            # MEASURED: P1 mean and the two motor population sums, without a gate.
+            "p1_hz": rates.get("P1"),
+            "pulse_hz": (float(per_cell[self.rec_pos["song_pulse_mn"]].sum())
+                         if "song_pulse_mn" in self.rec_pos else None),
+            "sine_hz": (float(per_cell[self.rec_pos["song_sine_hg1"]].sum())
+                        if "song_sine_hg1" in self.rec_pos else None),
             "song_cells": int(self.rec_pos[self.song_key].size),
-            "in": {"smell_hz": float(max(0.0, smell_hz)), "sound_hz": float(max(0.0, sound_hz)),
+            "in": {"smell_hz": (dict(smell_hz) if isinstance(smell_hz, dict) else float(max(0.0, smell_hz))),
+                   "sound_hz": float(max(0.0, sound_hz)),
                    "eye_on_hz": float(on.mean()), "eye_off_hz": float(off.mean())},
-            "out": {SMELL_KEY: rates[SMELL_KEY],
+            "out": {self.smell_key: rates[self.smell_key],
                     **{k: rates[k] for k in SOUND_KEYS if k in rates}},
             "rates": rates, "counts": counts,
             "fired": int(len(fired)) if fired is not None else 0,
@@ -915,6 +940,10 @@ def step_bodies(bodies, inputs):
 # the room: arena + channels + two bodies on one brain
 # =============================================================================
 
+# CHOSEN: contact scent reaches ppk23 only within 2.0 mm; touch needs proximity.
+CONTACT_MM = 2.0
+
+
 class Room:
     """
     One world step: render each fly's frame, compute smell and sound from the
@@ -924,24 +953,50 @@ class Room:
     """
 
     def __init__(self, fb, eye, groups, motor, gains=None, seed=0, sim_steps=SIM_STEPS,
-                 arena=None, channels=None, sides=None, min_radius_px=None):
+                 arena=None, channels=None, sides=None, min_radius_px=None, body_b=None):
         self.fb = fb
         self.arena = arena or Arena(seed=seed)
+        paired_listener = getattr(body_b, "listens_in_pairs", False)
+        if paired_listener:
+            groups = dict(groups)
+            groups["female_scent_orn"] = fb.where(type_re="^ORN_VA1v$")
+            # Thistle et al. 2012 Cell 149:1140; Toda et al. 2012 Cell Reports 1:599.
+            # Figures not verified; putative receptor label, not verified ppk23 expression.
+            groups["female_scent_contact"] = fb.where(receptor="^putative_ppk23$")
         self.bodies = {
-            "A": FlyBody("A", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 1, sides=sides),
-            "B": FlyBody("B", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 2, sides=sides),
+            "A": FlyBody("A", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 1, sides=sides,
+                         smell_key="female_scent_orn" if paired_listener else SMELL_KEY),
+            "B": body_b if body_b is not None else FlyBody(
+                "B", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 2, sides=sides),
         }
         # the song reference follows the song group actually present and the
         # brain's own refractory period, so a fallback group or another brain
         # class keeps the listener's scale honest
         refractory = getattr(getattr(fb, "p", None), "refractory", REFRACTORY_MS)
         self.song_full_hz = song_full_hz(self.bodies["A"].rec_pos[self.bodies["A"].song_key].size, refractory)
+        if paired_listener:
+            required = ("song_pulse_mn", "song_sine_hg1")
+            missing = [k for k in required if k not in self.bodies["A"].rec_pos
+                       or not self.bodies["A"].rec_pos[k].size]
+            if missing:
+                raise ValueError(f"paired listener protocol requires both male song groups; missing: {missing}")
+            self.song_pair_full_hz = tuple(song_full_hz(self.bodies["A"].rec_pos[k].size, refractory)
+                                           for k in required)
         if channels is None:
             kw = {} if min_radius_px is None else {"min_radius_px": float(min_radius_px)}
             channels = Channels(song_full_hz=self.song_full_hz, **kw)
         self.channels = channels
         self.song = {"A": 0.0, "B": 0.0}
+        self.song_pair = (0.0, 0.0)
         self.seed = int(seed)
+
+    def listener_sound(self, sound_hz):
+        """Room-level control point for the sound delivered to B."""
+        return sound_hz
+
+    def listener_scent(self, smell):
+        """Identity hook for paired scent controls; default inputs are unchanged."""
+        return smell
 
     def step(self):
         t0 = time.time()
@@ -951,16 +1006,32 @@ class Room:
         smell = self.channels.smell_hz(d)
         heard = {"A": self.channels.sound_hz(self.song["B"], d),
                  "B": self.channels.sound_hz(self.song["A"], d)}
+        sound_clipped = (False, False)
+        if getattr(self.bodies["B"], "listens_in_pairs", False):
+            # CHOSEN: pulse drives JO-A and sine drives JO-B; separate full-rate
+            # references preserve each population's fraction of its ceiling.
+            heard["B"] = tuple(self.channels.sound_hz(
+                rate * self.channels.song_full / reference, d)
+                for rate, reference in zip(self.song_pair, self.song_pair_full_hz))
+            # MEASURED: attempted clipping before the listener override.
+            sound_clipped = tuple(rate > reference for rate, reference in
+                                  zip(self.song_pair, self.song_pair_full_hz))
+            smell = {"A": {"female_scent_orn": smell,
+                            "female_scent_contact": smell if d <= CONTACT_MM else 0.,
+                            SMELL_KEY: 0.}, "B": 0.}
+        smell = self.listener_scent(smell)
+        heard["B"] = self.listener_sound(heard["B"])
         seen = {"A": self.channels.ellipse_of(a, b), "B": self.channels.ellipse_of(b, a)}
         rec = {}
         for name, me, other in (("A", a, b), ("B", b, a)):
             frame = self.channels.sight_frame(me, other)
-            rec[name] = self.bodies[name].step(frame, smell, heard[name])
+            rec[name] = self.bodies[name].step(frame, smell[name] if isinstance(smell, dict) else smell, heard[name])
         self.song = {n: rec[n]["song_hz"] for n in rec}
+        self.song_pair = (rec["A"].get("pulse_hz"), rec["A"].get("sine_hz"))
         after = self.arena.step((rec["A"]["turn"], rec["A"]["speed"]),
                                 (rec["B"]["turn"], rec["B"]["speed"]))
         return {"t": before["t"], "time_s": before["time_s"], "before": before, "after": after,
-                "smell_hz": smell, "sound_hz": heard, "seen": seen,
+                "smell_hz": smell, "sound_hz": heard, "sound_clipped": sound_clipped, "seen": seen,
                 "A": rec["A"], "B": rec["B"], "step_s": time.time() - t0}
 
     def sight_check(self, distances=(2.0, 3.0, 5.0, 10.0, 20.0)):

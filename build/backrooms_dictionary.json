@@ -850,6 +850,40 @@
     "IN08B001"
    ]
   },
+  "female_scent_orn": {
+   "channel": "smell",
+   "citation": "Kurtovic, Widmer & Dickson 2007 Nature 446:542 (pheromone pathways); Lin et al. 2016 Neuron 90:1272 (Or47b); figure not verified in this session.",
+   "confidence": "measured",
+   "contains": [],
+   "counts": {
+    "L": 15,
+    "R": 73,
+    "dimorphism": {
+     "": 130
+    },
+    "fruDsx": {
+     "fru_high": 130
+    },
+    "n": 130,
+    "per_type": {
+     "ORN_VA1v": 130
+    },
+    "side_other": 42,
+    "side_source": "rootSide",
+    "subclass": {
+     "": 130
+    }
+   },
+   "motor": false,
+   "name": "female scent ORN",
+   "note": "",
+   "present": true,
+   "resolved": true,
+   "role": "Or47b volatile female pheromone receptor neurons",
+   "types": [
+    "^ORN_VA1v$"
+   ]
+  },
   "mAL": {
    "channel": "courtship",
    "citation": "Kimura et al. 2005 Nature 438:229 (mAL, fru+, male-enlarged); Clowney et al. 2015 Neuron 87:1036 Fig. 3-4 (mAL inhibition converges on P1); Kallman, Kim & Scott 2015 eLife 4:e11188. Identity: type names mAL_m1..m11 (fru_high, male-specific).",
