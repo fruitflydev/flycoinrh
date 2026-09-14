@@ -12,12 +12,11 @@ max_new_tokens.
 import time
 
 # CHOSEN sampling settings; the engine passes them per call and records them
-MAX_NEW_TOKENS = 60
-TEMPERATURE = 0.4            # the model card suggests 0.1; 0.4 still gives a retry a different sample.
-                             # At 0.8 a local probe on the dry runs' readouts drifted from the readout far more often
+MAX_NEW_TOKENS = 70
+TEMPERATURE = 0.85           # free, varied talk; the checks drop what drifts
 TOP_P = 0.9
 TOP_K = 0                    # 0: no top-k cut, so top_p alone limits the choice
-REPETITION_PENALTY = 1.05    # the model card's recommended value
+REPETITION_PENALTY = 1.1
 
 
 def is_cuda_oom(exc):

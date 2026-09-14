@@ -3,7 +3,7 @@ python -m backrooms_talk [--dry] [--turns N] [--relay URL] --home DIR
 
   --home DIR     the local runtime folder (or env BACKROOMS_TALK_HOME): holds
                  models/LFM2.5-1.2B-Instruct (with its LICENSE), .env
-                 (RELAY_TOKEN, RELAY_URL), archive.jsonl and logs/
+                 (RELAY_TOKEN, RELAY_URL), archive.jsonl, recent_topics.json and logs/
   --dry          print every turn, post nothing (no token is read)
   --turns N      stop after N turn slots (0 = forever)
   --relay URL    post here instead of RELAY_URL (a local test relay)
@@ -103,9 +103,10 @@ def main(argv=None):
             say(f"CUDA out of memory loading the model; waiting {E.OOM_WAIT_S:.0f} s")
             time.sleep(E.OOM_WAIT_S)
 
-    engine_seq0, history0, next_fly = 0, [], 0
+    engine_seq0, history0, next_fly, topics0 = 0, [], 0, None
     if not a.dry:
         engine_seq0, history0, next_fly = E.resume_from_archive(archive, mode)
+        topics0 = E.resume_topics(archive, mode)
     kw = {}
     if a.turn_seconds is not None:
         kw["turn_seconds"] = a.turn_seconds
@@ -115,7 +116,8 @@ def main(argv=None):
                    sampling={"max_new_tokens": lm.MAX_NEW_TOKENS, "temperature": lm.TEMPERATURE,
                              "top_p": lm.TOP_P, "top_k": lm.TOP_K,
                              "repetition_penalty": lm.REPETITION_PENALTY},
-                   engine_seq0=engine_seq0, history0=history0, next_fly=next_fly, **kw)
+                   engine_seq0=engine_seq0, history0=history0, next_fly=next_fly, topics0=topics0,
+                   recent_topics_path=home / "recent_topics.json", **kw)
     t0 = time.time()
     try:
         eng.run(a.turns)

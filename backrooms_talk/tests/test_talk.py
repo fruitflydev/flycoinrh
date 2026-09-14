@@ -10,13 +10,15 @@ What is held to:
   * turn order: round-robin A, B, C, D; the world steps between turns; a
     dropped turn passes to the next fly after at most two new samples;
   * the prompt holds only the fixed instruction, the fixed frame text, the
-    last six accepted lines and the readout lines shown (the basis);
+    topic, the hints and the last six accepted lines;
+  * topics: the opening topic from a seed theme, a switch on a brain jump or
+    after TOPIC_MAX lines, topic drops by reason, the payload's topic fields;
   * normalisation is exactly the disclosed list and changes no word;
   * filter drops are counted per reason, archived with the text, never
     posted and never edited; readout strings that fail are left out;
-  * the grounding check keeps only lines whose numbers, neuron groups and
-    fly distances are in their own readout, and drops repeats, uncounted
-    never, edited never;
+  * the line checks drop names, brands and the listed subjects, long and
+    unfinished lines, numbers with units not in the hints, and repeats;
+    uncounted never, edited never;
   * every payload matches the JSON Schema in TURN_SCHEMA.md;
   * the relay client retries 5xx and network errors with backoff, not 4xx;
   * the supervisor backs off, resets after a long run and stops on low RAM.
@@ -52,6 +54,7 @@ from backrooms_talk import prompt as P
 from backrooms_talk import readout as R
 from backrooms_talk import relay_client as RC
 from backrooms_talk import supervise as S
+from backrooms_talk import topics as T
 from backrooms_talk import world as W
 
 PKG = Path(backrooms_talk.__file__).resolve().parent
@@ -109,14 +112,23 @@ class FakeWorld:
         return {"step": self.n, "t": self.n * self.dt, "flies": flies, "step_s": 0.0}
 
 
-class FakeModel:
-    """Scripted replies; records every call. script(name, call_no) -> (text, tokens, finished)."""
+FAKE_TOPIC_WORDS = ("amber", "basil", "cedar", "delta", "ember", "fjord", "grove", "heron", "ivory")
 
-    def __init__(self, script=None):
-        self.calls = []
+
+class FakeModel:
+    """Scripted replies; records every call. script(name, call_no) -> (text, tokens, finished);
+    topic(call_no) -> (topic, tokens, finished) for topic requests (recorded in topic_calls)."""
+
+    def __init__(self, script=None, topic=None):
+        self.calls, self.topic_calls = [], []
         self.script = script or (lambda name, k: (f"I am at {k} mm from the wall, fly {name} here.", 12, True))
+        self.topic = topic or (lambda k: (f"the {FAKE_TOPIC_WORDS[k % len(FAKE_TOPIC_WORDS)]} question", 4, True))
 
     def generate(self, messages, seed, **kw):
+        if messages[0]["content"] == T.TOPIC_SYSTEM:
+            self.topic_calls.append({"messages": messages, "seed": seed, "kw": kw})
+            text, n, fin = self.topic(len(self.topic_calls))
+            return text, n, fin, 0.01
         name = re.search(r"Write fly (\w)'s line in the first person",
                          messages[1]["content"]).group(1)
         self.calls.append({"messages": messages, "seed": seed, "kw": kw, "name": name})
@@ -184,6 +196,8 @@ def validate(value, schema, where="$"):
         assert isinstance(value, str), f"{where}: not a string"
         assert len(value) >= schema.get("minLength", 0), f"{where}: too short"
         assert len(value) <= schema.get("maxLength", 10 ** 9), f"{where}: too long"
+    elif t == "boolean":
+        assert isinstance(value, bool), f"{where}: not a boolean"
     elif t == "integer":
         assert isinstance(value, int) and not isinstance(value, bool), f"{where}: not an integer"
     elif t == "number":
@@ -238,31 +252,55 @@ class TurnOrder(unittest.TestCase):
 
 
 class Prompt(unittest.TestCase):
-    def test_prompt_is_system_frame_history_and_basis_only(self):
+    def test_prompt_is_system_frame_topic_hints_and_history_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             eng, _, _ = make_engine(tmp)
-            res = eng.run(9)
+            res = eng.run(11)
             calls = eng.model.calls
             for k, (call, r) in enumerate(zip(calls, res)):
                 sys_msg, user = call["messages"]
                 self.assertEqual(sys_msg, {"role": "system", "content": P.SYSTEM_PROMPT})
                 self.assertEqual(len(call["messages"]), 2)
-                name = r["speaker"]
+                name, pl = r["speaker"], r["payload"]
                 lines = user["content"].split("\n")
                 hist = [(x["speaker"], x["text"]) for x in res[max(0, k - E.HISTORY):k]]
                 to = hist[-1][0] if hist and hist[-1][0] != name else None
-                shown = hist[-P.PROMPT_LINES:]
-                expect = [P.READOUT_HEADER.format(name=name)] + ([f"- {b}" for b in r["basis"]] or [P.NO_READOUT]) + \
+                switched_lines = pl["topic_id"] > 1 and pl["topic_turn"] <= 2
+                n_shown = (min(P.PROMPT_LINES, max(P.SWITCH_LINES, pl["topic_turn"] - 1)) if pl["topic_id"] > 1
+                           else P.PROMPT_LINES)
+                shown = hist[-n_shown:]
+                note = P.topic_note(pl["topic_id"], pl["topic_turn"] == 1)
+                answer = P.ANSWER.format(to=to) if to and hist[-1][1].endswith("?") else ""
+                focus = P.FOCUS.format(topic=pl["topic"]) if switched_lines else ""
+                expect = [P.TOPIC_LINE.format(topic=pl["topic"]), note, "", P.HINTS_HEADER.format(name=name)] + \
+                         ([f"- {h}" for h in r["hints"]] or [P.NO_HINTS]) + \
                          ["", P.TRANSCRIPT_HEADER] + ([f"{s}: {t}" for s, t in shown] or [P.NO_LINES]) + \
-                         ["", P.CLOSING.format(name=name, reply=P.REPLY.format(to=to) if to else "")]
+                         ["", P.CLOSING.format(name=name, reply=P.REPLY.format(to=to) if to else "", answer=answer,
+                                               move=r["move"], focus=focus,
+                                               opener=r["opener"].format(to=to) if r["opener"] else "")]
                 self.assertEqual(lines, expect)
-                # what the page is sent as basis is what the model was shown
-                self.assertEqual(r["payload"]["basis"], r["basis"])
-                self.assertEqual(r["payload"].get("to"), to)
-            self.assertEqual(P.PROMPT_LINES, 1)
-            self.assertEqual(len([l for l in calls[8]["messages"][1]["content"].split("\n")
-                                  if re.match(r"^[ABCD]: ", l)]), 1)   # only the last line
-            self.assertEqual(len(eng.history), E.HISTORY)                # six kept for the repeat check
+                self.assertEqual(r["move"], P.pick_move(E.turn_seed(eng.seed, r["turn"], E.MOVE_ATTEMPT), to))
+                earlier = [x["opener"] for x in res[max(0, k - P.OPENER_MEMORY):k]]
+                self.assertEqual(r["opener"], P.pick_opener(E.turn_seed(eng.seed, r["turn"], E.OPENER_ATTEMPT), to,
+                                                            earlier))
+                self.assertTrue(r["opener"] == "" or r["opener"] not in earlier)
+                self.assertTrue(R.HINTS_MIN <= len(r["hints"]) <= R.HINTS_MAX, r["hints"])
+                self.assertEqual(pl["basis"], r["basis"])                    # the numeric readout is posted
+                self.assertEqual(pl.get("to"), to)
+                for b in r["basis"]:
+                    if b not in r["hints"]:
+                        self.assertNotIn(f"- {b}", lines)                    # the model is shown hints, not the basis
+            self.assertEqual(res[0]["payload"]["topic"], "the basil question")
+            self.assertIn(P.TOPIC_OPEN, calls[0]["messages"][1]["content"])
+            self.assertIn(P.TOPIC_KEEP, calls[1]["messages"][1]["content"])
+            self.assertEqual(P.PROMPT_LINES, 6)
+            self.assertEqual(len([l for l in calls[10]["messages"][1]["content"].split("\n")
+                                  if re.match(r"^[ABCD]: ", l)]), 4)   # topic 2's own four lines, not six
+            self.assertEqual(res[T.TOPIC_MAX]["payload"]["topic_turn"], 1)          # a switched topic's first line
+            new_topic_user = calls[T.TOPIC_MAX]["messages"][1]["content"]
+            self.assertEqual(len([l for l in new_topic_user.split("\n") if re.match(r"^[ABCD]: ", l)]), P.SWITCH_LINES)
+            self.assertTrue(new_topic_user.endswith(P.FOCUS.format(topic=res[T.TOPIC_MAX]["payload"]["topic"])))
+            self.assertEqual(len(eng.history), E.HISTORY)                # eight kept for the repeat check
 
     def test_readout_strings_that_fail_the_filter_are_left_out_and_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -270,27 +308,35 @@ class Prompt(unittest.TestCase):
             real_take = eng.readout.take
 
             def take(name):
-                basis, numbers = real_take(name)
-                return basis + ["MDN 83 Hz (backward walking descending neurons (moonwalker))", "x" * 301], numbers
+                basis, hints, numbers = real_take(name)
+                return (basis + ["MDN 83 Hz (backward walking descending neurons (moonwalker))", "x" * 301],
+                        hints + ["the price of sugar is high"], numbers)
             eng.readout.take = take
             r = eng.run(1)[0]
             self.assertNotIn("moonwalker", eng.model.calls[0]["messages"][1]["content"])
+            self.assertNotIn("price", eng.model.calls[0]["messages"][1]["content"])
             self.assertFalse(any("moonwalker" in b for b in r["payload"]["basis"]))
-            self.assertEqual(eng.basis_drops, {"financial": 1, "basis_length": 1})
+            self.assertEqual(eng.basis_drops, {"financial": 2, "basis_length": 1})
             rows = [x for x in archive_rows(tmp) if x["kind"] == "dropped_basis"]
             self.assertEqual(sorted(x["reason"] for x in rows), ["basis_length", "financial"])
+            self.assertEqual([x["text"] for x in archive_rows(tmp) if x["kind"] == "dropped_hint"],
+                             ["the price of sugar is high"])
 
     def test_system_prompt_rules(self):
         s = P.SYSTEM_PROMPT
-        for must in ("first person", "readout", "Do not mention people, the internet, money",
-                     "Do not claim feelings", "consciousness", "one or two short sentences",
-                     "the last line another fly said", "Never repeat a recent line",
-                     "number and unit exactly as written", "cannot see another fly's neurons"):
+        for must in ("four curious flies", "endless yellow room", "one or two short casual sentences",
+                     "Stay on the current topic unless you are told the topic has changed",
+                     "Reply to the last fly who spoke", "ask a question or disagree", "use them or ignore them",
+                     "Do not start every line with I", "unless you copy its number exactly from your hints",
+                     "humans", "Use plain words", "real named people, brands, politics, elections, religion",
+                     "money or trading, medical claims, hate, sexual content or how to harm anyone"):
             self.assertIn(must, s)
-        # the instruction is published by the page, not posted as a line; its one
-        # filter hit is the word "money" in "do not mention ... money"
-        self.assertEqual(SAFETY.check(s, max_chars=10_000), "financial")
-        self.assertIsNone(SAFETY.check(s.replace("money ", ""), max_chars=10_000))
+        self.assertNotIn("Do not mention people", s)                    # humans are fine now
+        # the instruction is published by the page, not posted as a line; its filter
+        # hits are the safety list's own words
+        self.assertIsNotNone(SAFETY.check(s, max_chars=10_000))
+        clean = s.replace("money or trading, ", "").replace("sexual content ", "")
+        self.assertIsNone(SAFETY.check(clean, max_chars=10_000))
 
 
 class Normalisation(unittest.TestCase):
@@ -298,17 +344,21 @@ class Normalisation(unittest.TestCase):
         n = P.normalise
         self.assertEqual(n("‘a’ ‚b‛", "A"), "'a' 'b'")
         self.assertEqual(n("“c” „d‟", "A"), '"c" "d"')
-        for d in "‐‑‒–—―":
+        for d in "‐‑‒–":
             self.assertEqual(n(f"left{d}right", "A"), "left-right")
+        for d in "—―":
+            self.assertEqual(n(f"dream{d}maybe", "A"), "dream - maybe")
+            self.assertEqual(n(f"dream {d} maybe", "A"), "dream - maybe")
         self.assertEqual(n("so… on", "A"), "so... on")
         self.assertEqual(n("  \n\tspaced out \n ", "A"), "spaced out")
+        self.assertEqual(n("much.  \nWhat do you think?", "A"), "much. What do you think?")
         self.assertEqual(n("A: my line", "A"), "my line")
         self.assertEqual(n("Fly A : my line", "A"), "my line")
         self.assertEqual(n("fly A:my line", "A"), "my line")
         self.assertEqual(n("A: A: twice", "A"), "A: twice")            # one label only
         self.assertEqual(n("B: not mine", "A"), "B: not mine")         # another fly's label stays
         self.assertEqual(n("A is near: yes", "A"), "A is near: yes")   # not a label
-        self.assertEqual(n("—A: x", "A"), "-A: x")                # the label must lead
+        self.assertEqual(n("—A: x", "A"), "- A: x")               # the label must lead
 
     def test_no_word_changes(self):
         rng = np.random.default_rng(3)
@@ -316,7 +366,7 @@ class Normalisation(unittest.TestCase):
         for _ in range(500):
             s = "".join(rng.choice(alphabet, size=int(rng.integers(1, 80))))
             out = P.normalise(s, "Q")
-            self.assertEqual(out, s.strip())
+            self.assertEqual(out, re.sub(r"\s+", " ", s).strip())
 
     def test_the_list_is_disclosed_in_the_engine_docstring(self):
         doc = E.__doc__
@@ -384,6 +434,7 @@ class Schema(unittest.TestCase):
             for p in relay.payloads:
                 validate(p, schema)
                 self.assertEqual(list(p["meta"]), list(E.META_KEYS))
+                self.assertTrue(set(E.TOPIC_KEYS) <= set(p))
                 self.assertEqual(p["fly_index"], NAMES.index(p["speaker"]))
             self.assertNotIn("to", relay.payloads[0])
             self.assertEqual(relay.payloads[1]["to"], "A")
@@ -396,9 +447,12 @@ class Schema(unittest.TestCase):
     def test_the_checker_rejects_what_the_schema_forbids(self):
         schema = schema_from_md()
         good = E.make_payload("A", "B", "a line", 1, 0, ["x"], {k: (1 if k in ("window_steps", "seed", "new_tokens") else 0.5)
-                                                                for k in E.META_KEYS})
+                                                                for k in E.META_KEYS},
+                              {"topic": "the light", "topic_id": 2, "topic_turn": 1, "switched": True})
         validate(good, schema)
         bad = [dict(good, extra=1), dict(good, basis=["x"] * 7), dict(good, speaker="E"),
+               dict(good, topic=""), dict(good, topic="x" * 121), dict(good, topic_id=0), dict(good, topic_turn=0),
+               dict(good, switched=1), {k: v for k, v in good.items() if k != "topic"},
                dict(good, fly_index=4), dict(good, text=""), dict(good, meta=dict(good["meta"], seed=True)),
                dict(good, meta=dict(good["meta"], song_hz=float("nan"))),
                dict(good, meta={k: v for k, v in good["meta"].items() if k != "seed"})]
@@ -573,8 +627,11 @@ class FourFlyRoom(unittest.TestCase):
         ro.settle()
         for _ in range(10):
             ro.update(room.step())
-        basis, numbers = ro.take("A")
+        basis, hints, numbers = ro.take("A")
         self.assertLessEqual(len(basis), R.BASIS_MAX)
+        self.assertTrue(R.HINTS_MIN <= len(hints) <= R.HINTS_MAX)
+        for h in hints:
+            self.assertIsNone(SAFETY.check(h), h)
         self.assertEqual(sum(b.startswith("walked ") for b in basis), 1)
         self.assertEqual(len([b for b in basis if re.match(r"^[BCD] is \d+\.\d mm away, ", b)]), 3)
         self.assertEqual(numbers["window_steps"], 10)
@@ -614,7 +671,21 @@ class ReadoutTemplatesPassTheFilter(unittest.TestCase):
             t = ro.song_line(float(song), float(song % 201), float((song * 7) % 201))
             if SAFETY.check(t):
                 bad.append(t)
+        hints = set()
+        for k in ro.keys:
+            for score in (-2.0, -0.1, 0.3, 1.5, 9.0):
+                hints.add(ro.group_hint(k, score))
+        for change in (-0.5, -0.05, 0.0, 0.05, 0.5):
+            hints.add(ro._first(R.BRAIN_WORDS, change))
+        hints.update(R.SENSE_WORDS.values())
+        for d10 in range(0, 290):
+            hints.add(ro.walk_hint(d10 / 7.0, 2.0))
+            for b in (0.1, 45.0, -45.0, 170.0):
+                for o in NAMES:
+                    hints.add(ro.nearest_hint(o, {"distance": d10 / 10.0, "bearing": b}))
+        bad += [h for h in sorted(hints) if SAFETY.check(h) or G.check(h + ".", [h])]
         self.assertEqual(bad[:5], [])
+        self.assertTrue(set(R.ROLE_WORDS) >= set(ro.keys))                 # every captioned group has a role word
 
 
 class ReadoutRanking(unittest.TestCase):
@@ -626,7 +697,7 @@ class ReadoutRanking(unittest.TestCase):
         ro.settle()
         for _ in range(15):                                    # P1 jumps to 40 Hz at step 30
             ro.update(world.step())
-        basis, numbers = ro.take("A")
+        basis, hints, numbers = ro.take("A")
         top_b = ro.top_groups("B")
         # steps 21-35 in A's window, P1 at 40 Hz on steps 30-35: 16 Hz against a 0 Hz baseline
         self.assertEqual(basis[0], "P1 neurons: 16 Hz now, baseline 0 Hz")
@@ -642,6 +713,14 @@ class ReadoutRanking(unittest.TestCase):
         # B's rates never changed: every score is 0 and the tie goes to dictionary order
         self.assertEqual([k for k, *_ in top_b], ["ORN_DA1", "LC10a"])
         self.assertEqual([s for *_, s in top_b], [0.0, 0.0])
+        # hints: P1 rose far above its 0 Hz baseline (score 16 / floor); no previous window yet
+        self.assertEqual(hints, ["your courtship neurons are firing far more than usual",
+                                 "B is 4.0 mm away, straight ahead, the closest fly",
+                                 "you walked 1.5 mm since your last turn"])
+        self.assertEqual(ro.sense_hint((150.0, 12.0), 150.0, 12.0), None)
+        self.assertEqual(ro.sense_hint((200.0, 150.0), 190.0, 60.0), "the wing song you hear got quieter")
+        self.assertEqual(ro.sense_hint((100.0, 150.0), 190.0, 160.0), "the smell of the other flies got stronger")
+        self.assertIsNone(numbers["brain_change"])
         self.assertEqual(R.bearing_words(35), "35 deg to the left")
         self.assertEqual(R.bearing_words(-120.4), "120 deg to the right")
 
@@ -659,7 +738,7 @@ class ReadoutRanking(unittest.TestCase):
         new = []
         for _ in range(10):
             new += ro.update(world.step())
-        basis, _ = ro.take("A")
+        basis, _, _ = ro.take("A")
         a_lines = [ln["text"] for ln in new if ln["fly"] == "A"]
         self.assertTrue(a_lines)                               # the captioner still runs
         self.assertEqual(R.EVENT_LINES, 0)
@@ -668,77 +747,221 @@ class ReadoutRanking(unittest.TestCase):
 
 
 class Grounding(unittest.TestCase):
-    BASIS = ["vPR6 neurons: 48 Hz now, baseline 0 Hz", "LC1 neurons: 345 Hz now, baseline 338 Hz",
-             "walked 14.6 mm in the last 6.5 s", "D is 2.6 mm away, 31 deg to the right",
-             "A is 4.6 mm away, 131 deg to the right", "B is 11.5 mm away, 95 deg to the right"]
+    HINTS = ["your courtship neurons are firing much more than usual", "your whole brain got a little busier",
+             "B is 4.0 mm away, to your left, the closest fly", "you hear faint wing song",
+             "you walked 14.6 mm since your last turn"]
 
-    def test_kept_lines_quote_their_own_readout(self):
-        for t in ("My vPR6 neurons are at 48 Hz now. Fly B is 11.5 mm away.",
-                  "I walked 14.6 mm in the last 6.5 seconds. B, you are 11.5 mm away.",
-                  "LC1 is at 345 Hz, up from 338 Hz; D is 2.6 mm away, 31 degrees to the right.",
-                  "I am 4.6 mm away from A.",
-                  "My LC1 neurons: 345Hz."):
-            self.assertIsNone(G.check(t, self.BASIS), t)
+    def test_free_talk_is_kept(self):
+        for t in ("Do you think the humans ever notice us?",
+                  "I walked 14.6 mm and the walls still look the same. Why is everything yellow?",
+                  "No, B, the light is not warmer here.",
+                  "B is 4.0 mm away from me, and I can hear a little wing song.",
+                  "Being small means every crumb is a feast!",
+                  "Fly B, what do you smell right now?",
+                  "I disagree... the hum is coming from the ceiling.",
+                  "I'm not sure I agree with D-that helping might matter more.",       # a dash normalised to "-"
+                  "I can't deny it, A-there definitely feels different lately."):
+            self.assertIsNone(G.check(t, self.HINTS), t)
 
     def test_each_reason(self):
         cases = {
-            "The network responded strongly across several pathways.": "ungrounded",     # no number
-            "I see a clear spike pattern that matches what was recorded.": "ungrounded",
-            "My vPR6 neurons are at 49 Hz.": "ungrounded",                                # not in the readout
-            "I detected 277 hg1 MN neurons. D is 2.6 mm away.": "ungrounded",             # a bare number
-            "My vPR6 neurons are at 48 mm.": "ungrounded",                                # wrong unit
-            "My pCd neurons are at 48 Hz.": "wrong_group",
-            "My LC1 neurons fire at 345 Hz. Fly A is 2.6 mm away.": "wrong_fly",
-            "I walked 14.6 mm, and I am 11.5 mm from D.": "wrong_fly",
-            "I have 14.6 mm of distance to fly B.": "wrong_fly",                          # the first dry run kept this
-            "My distance to B is 4.6 mm.": "wrong_fly",
+            "I heard Elon talking about the room.": "name",
+            "My friend Gerald lives by the window.": "name",
+            "The NASA people would love this room.": "name",
+            "Maybe the humans are drinking pepsi again.": "name",
+            "Do flies vote in elections?": "politics",
+            "Maybe the light is heaven.": "religion",
+            "Our wings could cure a disease.": "medical",
+            "Those racist humans again.": "hate",
+            "Here is how to make poison from sugar.": "harm_instructions",
+            "One. Two. Three. Four sentences is too many.": "too_long",
+            "a" * 250 + ".": "too_long",
+            "I think the light is": "unfinished",
+            "I walked 12.0 mm today.": "number",
+            "My brain runs at 40 Hz.": "number",
+            "C is 4.0 mm away.": "number",                                 # B's distance given to C
+            "It took 3 seconds to cross.": "number",
+            "The walls beat faster when I walk closer, about half a centimeter.": "number",
+            "You are five millimeters from me.": "number",
+            "I walked 14.6 millimeters and a few inches more.": "number",
         }
         for t, why in cases.items():
-            self.assertEqual(G.check(t, self.BASIS), why, t)
+            self.assertEqual(G.check(t, self.HINTS), why, t)
 
-    def test_repeats(self):
-        recent = ["My vPR6 neurons are at 48 Hz now. Fly B is 11.5 mm away."]
-        self.assertEqual(G.check("My vPR6 neurons are at 48 Hz now. Fly B is 11.5 mm away.", self.BASIS, recent), "repeat")
-        self.assertEqual(G.check("I walked 14.6 mm. My vPR6 neurons are at 48 Hz now.", self.BASIS, recent), "repeat")
-        self.assertIsNone(G.check("I walked 14.6 mm in the last 6.5 s. A is 4.6 mm away.", self.BASIS, recent))
+    def test_repeats_over_the_last_lines(self):
+        recent = ["Do you think the humans ever notice us?"]
+        self.assertEqual(G.check("Do you think the humans ever notice us?", self.HINTS, recent), "repeat")
+        self.assertEqual(G.check("Do you think humans ever notice us?", self.HINTS, recent), "repeat")
+        self.assertIsNone(G.check("The humans never notice anything, I think.", self.HINTS, recent))
 
-    def test_numbers_inside_names_are_not_numbers(self):
-        self.assertEqual(G.quantities("hg1 MN, LC10a, pC2l and vMS11 at 3 Hz"), {(3.0, "hz")})
-        self.assertEqual(G.quantities("125-degree turn, 2.2 seconds, 8 cells"),
-                         {(125.0, "deg"), (2.2, "s"), (8.0, "")})
+    def test_short_third_sentence_is_kept(self):
+        self.assertIsNone(G.check("I disagree. It is not a language. What about you, B?", self.HINTS))
 
-    def test_every_readout_template_grounds_itself(self):
-        sizes = {k: 5 for k, e in bd.DICTIONARY.items() if e["present"]}
-        ro = R.Readout(sizes, NAMES)
-        for k in ro.keys:
-            line = ro.group_line(k, 57.0, 21.0)
-            self.assertIsNone(G.check(line, [line]), line)
-        for o in "BCD":
-            line = ro.other_line(o, {"distance": 7.3, "bearing": -40.0})
-            self.assertIsNone(G.check(line, [line]), line)
-            self.assertEqual(G.fly_distances(line), [(o, 7.3)])
+    def test_echoes_same_openings_and_off_topic(self):
+        recent = ["I feel my neurons buzzing, just like the room's pulse.",
+                  "Maybe the walls are connected to something bigger, beyond our senses.",
+                  "The walls are talking in a language only we can hear, our thoughts sync up."]
+        line = "Really sensing that pulse now, like the walls whisper. Our feelings sync up."
+        self.assertEqual(G.echoes(line, recent, "the rhythm of the walls breathing"), {"puls", "sens", "sync"})
+        self.assertEqual(G.check(line, self.HINTS, recent, topic="the rhythm of the walls breathing", topic_slot=5),
+                         "repeat")
+        self.assertIsNone(G.check("Humans build rooms like this one, do they not?", self.HINTS, recent,
+                                  topic="the rhythm of the walls breathing", topic_slot=5))
+        self.assertEqual(G.check("I think it hums.", self.HINTS, ["I think the light is warm."]), "same_opening")
+        loop = ["Why does the distance clue matter?", "Well, the distance feels important.", "The distance is odd."]
+        self.assertEqual(G.motifs("Hmm, that distance again.", loop), {"distanc"})
+        self.assertEqual(G.check("Hmm, that distance again.", self.HINTS, loop), "repeat")
+        self.assertIsNone(G.check("Hmm, that distance again.", self.HINTS, loop[1:]))
+        self.assertEqual(G.check("Fly C, I agree. Fly D, that is a good guess.", self.HINTS, speaker="D"), "self_name")
+        self.assertIsNone(G.check("Fly C, I agree with you.", self.HINTS, speaker="D"))
+        self.assertIsNone(G.check("I wonder if it hums.", self.HINTS, ["I think the light is warm."]))
+        topic = "the color of shadows shifting on the floor"
+        self.assertEqual(G.check("Listening to the walls' pulse, it gets louder.", self.HINTS, [], topic=topic,
+                                 topic_slot=1), "off_topic")
+        self.assertIsNone(G.check("My shadow looks bigger on this floor.", self.HINTS, [], topic=topic, topic_slot=2))
+        self.assertIsNone(G.check("Listening to the walls' pulse, it gets louder.", self.HINTS, [], topic=topic,
+                                  topic_slot=3))
 
-    def test_the_engine_drops_ungrounded_lines_and_never_edits_or_keeps_them(self):
+    def test_numbers(self):
+        self.assertEqual(G.quantities("LC10a at 3 Hz, 125-degree turn, 2.2 seconds, 8 cells, 50%"),
+                         {(3.0, "hz"), (125.0, "deg"), (2.2, "s"), (8.0, ""), (50.0, "%")})
+        self.assertIsNone(G.check("There are 4 of us and 6 legs each.", self.HINTS))   # bare numbers are fine
+        self.assertIsNone(G.check("I walked 14.6 mm.", self.HINTS))
+        self.assertEqual(G.check("I walked 14.6 cm.", self.HINTS), "number")
+
+    def test_proper_names(self):
+        self.assertEqual(G.proper_names("Hello. Why is it yellow? I'm not sure, B."), [])
+        self.assertEqual(G.proper_names("I think Paris is far."), ["Paris"])
+        self.assertEqual(G.content_reason("the walls of the room"), None)
+
+    def test_the_engine_drops_by_reason_and_never_edits_or_keeps_them(self):
         def script(name, k):
             if name == "A":
-                return ("The network responded strongly across several pathways.", 9, True)
+                return ("Let us talk about politics.", 9, True)
             return ("I walked 99.9 mm in the last 1.0 s.", 12, True) if k % 2 else (
-                "I note B is 4.0 mm away." if name != "B" else "I note A is 4.0 mm away.", 8, True)
+                "Fly A, I wonder what the humans are doing today.", 8, True)
         with tempfile.TemporaryDirectory() as tmp:
             relay = FakeRelay()
-            eng, _, _ = make_engine(tmp, model=FakeModel(script), dry=False, relay=relay, ground=G.check)
+            eng, _, _ = make_engine(tmp, model=FakeModel(script, topic=lambda k: ("what humans do", 3, True)),
+                                    dry=False, relay=relay, ground=G.check)
             res = eng.run(4)
             self.assertFalse(res[0]["accepted"])
-            self.assertEqual(eng.model.calls[0]["name"], "A")
-            self.assertGreaterEqual(eng.drops["ungrounded"], 3)            # A: three samples, none kept
+            self.assertEqual(eng.drops["politics"], 3)
             self.assertTrue(set(eng.drops) <= set(G.REASONS))
             self.assertTrue(relay.payloads)
             for p in relay.payloads:
-                self.assertIsNone(G.check(p["text"], p["basis"]))
-            self.assertNotIn("network", " ".join(t for _, t in eng.history))
+                self.assertIsNone(G.check(p["text"], []))
+            self.assertNotIn("politics", " ".join(t for _, t in eng.history))
             dropped = [x for x in archive_rows(tmp) if x["kind"] == "dropped"]
             self.assertTrue(all(x["reason"] in G.REASONS for x in dropped))
-            self.assertEqual(dropped[0]["text"], "The network responded strongly across several pathways.")
+            self.assertEqual(dropped[0]["text"], "Let us talk about politics.")
+
+
+class Topics(unittest.TestCase):
+    def test_switch_rule(self):
+        tp = T.Topics(seed=1)
+        self.assertEqual(tp.switch_reason(None), "opening")
+        tp.set("the hum", "opening")
+        self.assertEqual(tp.fields(), {"topic": "the hum", "topic_id": 1, "topic_turn": 1, "switched": False})
+        self.assertIsNone(tp.switch_reason(0.5))                       # a jump before TOPIC_MIN lines
+        for _ in range(T.TOPIC_MIN):
+            tp.accepted()
+        self.assertIsNone(tp.switch_reason(T.SWITCH_JUMP * 0.99))
+        self.assertIsNone(tp.switch_reason(None))
+        self.assertEqual(tp.switch_reason(T.SWITCH_JUMP), "brain_jump")
+        self.assertEqual(tp.switch_reason(-T.SWITCH_JUMP), "brain_jump")   # calmer counts too
+        for _ in range(T.TOPIC_MAX - T.TOPIC_MIN):
+            tp.accepted()
+        self.assertEqual(tp.switch_reason(0.0), "topic_max")
+        tp.set("sleep", "topic_max")
+        self.assertEqual(tp.slots, 0)
+        for k in range(T.TOPIC_MAX_SLOTS - 1):
+            self.assertEqual(tp.slot(), k + 1)
+            self.assertIsNone(tp.switch_reason(0.0))                   # no line yet: the slot cap decides
+        tp.slot()
+        self.assertEqual(tp.switch_reason(0.0), "topic_max")
+        tp.slots = 0
+        self.assertEqual(tp.fields(), {"topic": "sleep", "topic_id": 2, "topic_turn": 1, "switched": True})
+        tp.accepted()
+        self.assertEqual(tp.fields()["switched"], False)
+        self.assertTrue(6 <= T.TOPIC_MAX <= 10)
+        self.assertIn(tp.theme, T.SEED_THEMES)
+        self.assertEqual(T.opening_theme(1), T.opening_theme(1))
+
+    def test_topic_cleaning_and_checks(self):
+        self.assertEqual(T.clean_topic(' Topic: "why the walls hum." '), "why the walls hum")
+        self.assertEqual(T.clean_topic("the smell of rain"), "the smell of rain")
+        self.assertEqual(T.clean_topic("1. the texture of walls  \nthe taste of dew\nthe"), "the texture of walls")
+        self.assertEqual(T.first_line("- a\n- b"), ("- a", True))
+        openers = {P.pick_opener(k, "B", [P.OPENERS[2], ""]) for k in range(300)}
+        self.assertEqual(openers, set(P.OPENERS) - {P.OPENERS[2]})
+        self.assertFalse(any("{to}" in P.pick_opener(k, None) for k in range(100)))
+        moves = {P.pick_move(k, "B") for k in range(200)}
+        self.assertEqual(moves, {m.format(to="B") for m in P.MOVES})
+        self.assertTrue(all("fly" not in P.pick_move(k, None) or "yourself" in P.pick_move(k, None) for k in range(50)))
+        recent = ["the smell of rain"]
+        cases = {"the smell of rain": "topic_repeat", "The Smell of Rain": "name",
+                 "buying sugar cheap": "financial", "a very long topic with far too many words in it": "topic_too_long",
+                 "flies and religion": "religion", "": "empty"}
+        for t, why in cases.items():
+            self.assertEqual(T.check_topic(t, recent, SAFETY), why, t)
+        self.assertEqual(T.check_topic("why the light", recent, SAFETY, finished=False), "unfinished")
+        self.assertEqual(T.check_topic("walls that breathe in rhythm", ["the rhythm of the walls breathing"], SAFETY),
+                         "topic_repeat")
+        used = ["the room", "humans", "ideas"]
+        cats = {T.next_category(k, used) for k in range(100)}
+        self.assertEqual(cats, set(T.CATEGORIES) - set(used))
+        self.assertTrue(set(T.THEME_CATEGORY.values()) <= set(T.CATEGORIES))
+        self.assertIsNone(T.check_topic("how humans see us", recent, SAFETY))
+
+    def test_the_engine_switches_and_posts_topic_fields(self):
+        topics = iter([("the endless yellow walls", 4, True), ("Topic: Elon", 3, True), ("sugar and crumbs", 4, True)])
+        with tempfile.TemporaryDirectory() as tmp:
+            relay = FakeRelay()
+            model = FakeModel(topic=lambda k: next(topics))
+            eng, _, _ = make_engine(tmp, model=model, dry=False, relay=relay)
+            res = eng.run(T.TOPIC_MAX + 2)
+            ps = relay.payloads
+            self.assertEqual([(p["topic_id"], p["topic_turn"], p["switched"]) for p in ps],
+                             [(1, i + 1, False) for i in range(T.TOPIC_MAX)] + [(2, 1, True), (2, 2, False)])
+            self.assertEqual(ps[0]["topic"], "the endless yellow walls")
+            self.assertEqual(ps[T.TOPIC_MAX]["topic"], "sugar and crumbs")
+            self.assertEqual(eng.topic_drops, {"name": 1})
+            self.assertEqual(res[T.TOPIC_MAX]["topic_switch"], {"topic": "sugar and crumbs", "kept": True, "tries": 2,
+                                                                "reason": "topic_max"})
+            self.assertIn(P.TOPIC_NEW, model.calls[T.TOPIC_MAX]["messages"][1]["content"])
+            self.assertIn("the endless yellow walls", model.topic_calls[1]["messages"][1]["content"])   # recent topics
+            cat = [x for x in archive_rows(tmp) if x["kind"] == "topic"][1]["category"]
+            self.assertIn(T.CATEGORIES[cat], model.topic_calls[1]["messages"][1]["content"])
+            self.assertNotEqual(cat, T.THEME_CATEGORY[eng.topics.theme])
+            self.assertEqual(model.topic_calls[0]["kw"]["max_new_tokens"], T.TOPIC_MAX_NEW_TOKENS)
+            self.assertIn(f"Seed theme: {eng.topics.theme}.", model.topic_calls[0]["messages"][1]["content"])
+            rows = archive_rows(tmp)
+            self.assertEqual([(x["kind"], x.get("reason")) for x in rows if "topic" in x["kind"]],
+                             [("topic", "opening"), ("dropped_topic", "name"), ("topic", "topic_max")])
+            self.assertEqual(E.resume_topics(Path(tmp) / "archive.jsonl", eng.mode),
+                             {"topic": "sugar and crumbs", "topic_id": 2, "turns": 2,
+                              "recent": ["the endless yellow walls", "sugar and crumbs"]})
+
+    def test_a_brain_jump_switches_and_the_opening_falls_back_to_its_theme(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = FakeModel(topic=lambda k: ("buy low", 3, True) if k <= 3 else (f"new topic {k}", 3, True))
+            eng, _, _ = make_engine(tmp, model=model)
+            real_take = eng.readout.take
+            jumps = iter([None, None, None, None, 0.2, 0.0])
+
+            def take(name):
+                b, h, n = real_take(name)
+                return b, h, dict(n, brain_change=next(jumps))
+            eng.readout.take = take
+            res = eng.run(6)
+            self.assertEqual(res[0]["payload"]["topic"], eng.topics.recent[0])
+            self.assertEqual(res[0]["payload"]["topic"], eng.topics.theme)       # three dropped: the seed theme
+            self.assertEqual(eng.topic_drops, {"financial": 3})
+            self.assertEqual(res[4]["topic_switch"]["reason"], "brain_jump")
+            self.assertEqual(res[4]["payload"]["topic"], "new topic 4")
+            self.assertTrue(res[4]["payload"]["switched"])
+            self.assertIsNone(res[5]["topic_switch"])
 
 
 class Supervisor(unittest.TestCase):
@@ -829,25 +1052,36 @@ class Honesty(unittest.TestCase):
         h = backrooms_talk.HOW_LINES_ARE_MADE
         for must in ("LFM2.5-1.2B-Instruct", "not a fly's thoughts", "flies do not use language", "labels",
                      "MaleCNS v1.0", "CC BY 4.0", "leaky integrate-and-fire", "simplification",
-                     "grounding check", "can still misstate the readout", "never edited", "measured", "chosen"):
+                     "3-5 plain hints", "use or ignore", "jumps past a chosen threshold", "the model picks the new topic",
+                     "can still say things the hints do not support", "never edited", "measured", "chosen"):
             self.assertIn(must, h)
         doc = backrooms_talk.__doc__
         self.assertIn("MEASURED", doc)
         self.assertIn("CHOSEN", doc)
         self.assertIsNone(SAFETY.check(h[:600]))
 
-    def test_the_page_shows_the_instruction_word_for_word_and_no_retired_method(self):
-        page = W.REPO / "site" / "web" / "backrooms.html"
-        if not page.exists():
-            self.skipTest("no site copy in this checkout")
-        html = page.read_text(encoding="utf-8")
-        self.assertIn(P.SYSTEM_PROMPT, html)
-        self.assertIn(P.CLOSING.format(name="A", reply=P.REPLY.format(to="D")), html)
-        for gone in ("abstract recurrence", "next-word scores", "Nothing is generating", "graph statistics"):
-            self.assertNotIn(gone, html)
+    def test_the_readme_publishes_the_instruction_word_for_word_and_no_retired_method(self):
+        # the page shows only the room and the lines; the instruction and credits are published here
+        text = (PKG / "README.md").read_text(encoding="utf-8")
+        self.assertIn(P.SYSTEM_PROMPT, text)
+        self.assertIn(P.CLOSING.format(name="A", reply=P.REPLY.format(to="D"), answer="<answer>", move="<move>",
+                                       focus="<focus>", opener="<opener>"), text)
+        self.assertIn(P.CLOSING.format(name="A", reply="", answer="", move="", focus="", opener=""), text)
+        for opener in P.OPENERS:
+            self.assertIn(opener.strip(), text)
+        self.assertIn(P.ANSWER.format(to="{to}").strip(), text)
+        self.assertIn(P.FOCUS.format(topic="{topic}").strip(), text)
+        for frame in (P.TOPIC_OPEN, P.TOPIC_NEW, P.TOPIC_KEEP, P.HINTS_HEADER.format(name="A"), P.NO_HINTS,
+                      P.TRANSCRIPT_HEADER, P.NO_LINES, P.TOPIC_LINE.format(topic="<topic>")):
+            self.assertIn(frame, text)
+        for move in P.MOVES:
+            self.assertIn(move.strip(), text)
+        for gone in ("abstract recurrence", "next-word scores", "Nothing is generating", "graph statistics",
+                     "on the page"):
+            self.assertNotIn(gone, text)
         for must in ("leaky integrate-and-fire", "MaleCNS v1.0", "CC BY 4.0", "not a fly's thoughts",
                      "LFM Open License", "basis"):
-            self.assertIn(must, html)
+            self.assertIn(must, text)
 
     def test_no_unnamed_upstream_project_is_named(self):
         banned = [("f" + "lm"), ("nft" + "echie"), ("Worm" + "uth")]

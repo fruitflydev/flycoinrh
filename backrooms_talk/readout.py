@@ -5,7 +5,7 @@ room's records since that fly's last turn.
 Per world step, update(record) adds each fly's numbers to its running window
 (and feeds the one backrooms.Captioner that watches all four flies, whose
 event lines are kept on the window but not shown; EVENT_LINES = 0).
-take(name) closes that fly's window and returns:
+take(name) closes that fly's window and returns (basis, hints, numbers):
 
   basis   up to BASIS_MAX short strings, in this order:
             1-2. the TOP_GROUPS named groups whose window rate rose most above
@@ -20,8 +20,31 @@ take(name) closes that fly's window and returns:
           whole range of its numbers (the tests do it again): "D 13.6 mm" read
           as a filtered word once digits are folded, so a fly's distance is
           written "D is 13.6 mm away".
+  hints   HINTS_MIN-HINTS_MAX plain-language strings made from the same
+          measured values; these, not the basis, are what the model is shown
+          (see HINTS below);
   numbers the numeric summary the turn posts as meta (see TURN_SCHEMA.md);
-          the song level and the drives are there, not in the basis.
+          the song level and the drives are there, not in the basis; plus
+          brain_change (not posted): the relative change of the whole-brain
+          mean rate from this fly's previous window, None on its first.
+
+HINTS (CHOSEN wording and thresholds; every number in a hint is in the basis
+or meta of the same turn), in priority order, cut at HINTS_MAX:
+  1. the top group, by its plain role word (ROLE_WORDS, from the dictionary's
+     cited roles) and an intensity word from its rise score (INTENSITY):
+     "your courtship neurons are firing much more than usual";
+  2. the second group, when its role word differs and its score is >= 1;
+  3. the whole brain against this fly's previous window (BRAIN_WORDS), from
+     its second turn on: "your whole brain just got much busier";
+  4. the nearest fly: "B is 4.0 mm away, to your left, the closest fly";
+  5. a sense that changed: the smell or sound drive (Hz per cell) moved by at
+     least SENSE_CHANGE_HZ from this fly's previous window, the larger change
+     (SENSE_WORDS): "the smell of the other flies got stronger"; none when
+     neither changed that much (both drives sit near their ceiling most of the
+     time, and a constant "strong smell" hint made every line about scents in
+     a 20-turn dry run);
+  6. walking: "you walked 4.1 mm since your last turn", or "you have barely
+     moved since your last turn" below BARELY_MM_S.
 
 Why this shape (CHOSEN, from a local probe of LFM2.5-1.2B-Instruct on the
 first dry runs' readouts, nothing posted): with the dictionary's roles and
@@ -51,6 +74,33 @@ TOP_GROUPS = 2          # CHOSEN: named groups per readout
 EVENT_LINES = 0         # CHOSEN: captioner lines per readout (0: none shown; see the module doc)
 BASIS_MAX = 6           # CHOSEN (the task's cap): readout strings per turn
 AHEAD_DEG = 0.5         # CHOSEN: |bearing| below this is written "straight ahead"
+HINTS_MIN, HINTS_MAX = 3, 5
+
+# CHOSEN: plain role words, one per captioned group, from the dictionary's roles
+ROLE_WORDS = {
+    "ORN_DA1": "smell", "DA1_PN": "smell", "DC1": "smell", "LC1": "smell", "DNp13": "smell",
+    "JO_A": "hearing", "JO_B": "hearing", "pC2l": "hearing",
+    "LC10a": "sight",
+    "pC1": "courtship", "P1": "courtship", "pCd": "courtship", "mAL": "courtship", "vAB3": "courtship",
+    "PPN1": "courtship",
+    "Tk_FruM": "aggression", "aIPg": "aggression",
+    "pIP10": "song", "pMP2": "song", "dPR1": "song", "TN1A": "song", "dMS2": "song", "dMS9": "song",
+    "vMS12": "song", "vPR6": "song", "vMS11": "song", "vPR9": "song", "song_pulse_mn": "song",
+    "song_ps1": "song", "song_sine_hg1": "song", "wing_mn_all": "wing",
+    "DNa01": "walking", "DNa02": "turning", "DNp09": "stopping", "MDN": "escape",
+}
+# (minimum rise score, words), first match wins
+INTENSITY = ((3.0, "far more than usual"), (1.0, "much more than usual"), (0.25, "a bit more than usual"),
+             (-0.25, "about as usual"), (float("-inf"), "less than usual"))
+BRAIN_WORDS = ((0.08, "your whole brain just got much busier"), (0.03, "your whole brain got a little busier"),
+               (-0.03, "your whole brain is steady"), (-0.08, "your whole brain got a little calmer"),
+               (float("-inf"), "your whole brain just got much calmer"))
+SENSE_CHANGE_HZ = 40.0
+SENSE_WORDS = {("smell", True): "the smell of the other flies got stronger",
+               ("smell", False): "the smell of the other flies got fainter",
+               ("sound", True): "the wing song you hear got louder",
+               ("sound", False): "the wing song you hear got quieter"}
+BARELY_MM_S = 0.3
 
 
 def bearing_words(b):
@@ -101,6 +151,8 @@ class Readout:
         self.win = {n: _Window(self.keys) for n in self.names}
         self.last = None
         self.steps = 0
+        self.prev_brain = {}
+        self.prev_sense = {}
 
     def update(self, rec):
         """One world step's record (TalkRoom.step's shape). Returns the captioner's new lines."""
@@ -176,8 +228,57 @@ class Readout:
                 f"sound drive to JO-A and JO-B hearing neurons: {sound_hz:.0f} Hz; "
                 f"cVA smell drive to ORN_DA1: {smell_hz:.0f} Hz")
 
+    @staticmethod
+    def _first(table, value):
+        for lo, words in table:
+            if value >= lo:
+                return words
+        return table[-1][1]
+
+    def group_hint(self, key, score):
+        role = ROLE_WORDS.get(key, "other")
+        return f"your {role} neurons are firing {self._first(INTENSITY, score)}"
+
+    @staticmethod
+    def nearest_hint(other, geo):
+        b = float(geo["bearing"])
+        where = ("straight ahead" if abs(b) < 30 else "behind you" if abs(b) > 150
+                 else f"to your {'left' if b > 0 else 'right'}")
+        return f"{other} is {geo['distance']:.1f} mm away, {where}, the closest fly"
+
+    @staticmethod
+    def sense_hint(prev, smell_hz, sound_hz):
+        """prev: (smell_hz, sound_hz) of the previous window or None. A hint or None."""
+        if prev is None:
+            return None
+        changes = [(abs(smell_hz - prev[0]), "smell", smell_hz > prev[0]),
+                   (abs(sound_hz - prev[1]), "sound", sound_hz > prev[1])]
+        size, sense, up = max(changes, key=lambda c: c[0])
+        return SENSE_WORDS[(sense, up)] if size >= SENSE_CHANGE_HZ else None
+
+    @staticmethod
+    def walk_hint(walked_mm, secs):
+        if secs <= 0 or walked_mm / secs < BARELY_MM_S:
+            return "you have barely moved since your last turn"
+        return f"you walked {walked_mm:.1f} mm since your last turn"
+
+    def hints(self, top, brain_change, others, sense, walked_mm, secs):
+        out = []
+        if top:
+            out.append(self.group_hint(top[0][0], top[0][3]))
+            if len(top) > 1 and top[1][3] >= 1.0 and ROLE_WORDS.get(top[1][0]) != ROLE_WORDS.get(top[0][0]):
+                out.append(self.group_hint(top[1][0], top[1][3]))
+        if brain_change is not None:
+            out.append(self._first(BRAIN_WORDS, brain_change))
+        if others:
+            out.append(self.nearest_hint(*others[0]))
+        if sense is not None:
+            out.append(sense)
+        out.append(self.walk_hint(walked_mm, secs))
+        return out[:HINTS_MAX]
+
     def take(self, name):
-        """Close `name`'s window; return (basis strings, numbers)."""
+        """Close `name`'s window; return (basis strings, hints, numbers)."""
         w = self.win[name]
         if w.win_n == 0 or self.last is None:
             raise ValueError(f"no world step in {name}'s window: step the world before a turn")
@@ -214,5 +315,15 @@ class Readout:
         for k, v in numbers.items():
             if isinstance(v, float) and not math.isfinite(v):
                 raise ValueError(f"readout number {k} is not finite")
+        prev = self.prev_brain.get(name)
+        now = numbers["brain_rate_hz"] if w.brain_hz_n else None
+        change = (now - prev) / prev if (prev and now is not None) else None
+        if now is not None:
+            self.prev_brain[name] = now
+        numbers["brain_change"] = change
+        smell, sound = numbers["smell_drive_hz"], numbers["sound_drive_hz"]
+        sense = self.sense_hint(self.prev_sense.get(name), smell, sound)
+        self.prev_sense[name] = (smell, sound)
+        hints = self.hints(top, change, others, sense, w.walked, secs)
         w.close()
-        return basis, numbers
+        return basis, hints, numbers
