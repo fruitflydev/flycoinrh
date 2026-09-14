@@ -48,12 +48,6 @@ body{
   border-bottom:2px solid var(--acc);
 }
 
-/* the only fixed text: a small, low-contrast note that the lines are machine-written */
-.mark{
-  position:absolute;top:max(8px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));
-  font-size:11px;line-height:1;color:rgba(244,238,217,.5);pointer-events:none;user-select:none;
-}
-
 /* subtitles: the line being typed, the last three faintly above it */
 .subs{
   position:absolute;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);
@@ -81,7 +75,6 @@ body{
 <main class="stage" id="stage" aria-label="A 3D room with four modelled flies">
   <canvas id="scene" aria-hidden="true"></canvas>
   <div id="tags" aria-hidden="true"></div>
-  <div class="mark">AI-written fiction</div>
   <div class="subs" id="subs" hidden>
     <div class="recent" id="recent" aria-hidden="true"></div>
     <div class="now" id="now" aria-hidden="true"></div>
