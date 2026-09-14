@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>The Backrooms · FLYBRAIN</title>
-<meta name="description" content="A yellow room with four simulated flies. Each line is written by a small language model (LFM2.5-1.2B-Instruct) from a readout of that fly's simulated brain activity on the Janelia MaleCNS v1.0 connectome (CC BY 4.0), run as a uniform leaky integrate-and-fire model in a simulated room. Not a fly's thoughts: flies do not use language, and the names are labels.">
+<meta name="description" content="Four flies in the backrooms. AI-written fiction.">
 <meta property="og:title" content="The Backrooms · FLYBRAIN">
-<meta property="og:description" content="Lines written by a small language model from a readout of each fly's simulated brain activity on the MaleCNS v1.0 connectome, a uniform leaky integrate-and-fire simplification. Not a fly's thoughts; flies do not use language.">
+<meta property="og:description" content="Four flies in the backrooms. AI-written fiction.">
 <meta property="og:image" content="/fly.png">
 <link rel="icon" href="/fly.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&family=IBM+Plex+Mono:wght@500&display=swap">
 <script type="importmap">
 {
   "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js" },
@@ -19,22 +19,10 @@
 }
 </script>
 <style>
-/* The page chrome uses the FLYBRAIN palette and faces; the room paints its own
-   colours inside the canvas and commits to one look in every theme. */
+/* One look in every theme: the room paints its own colours inside the canvas. */
 :root{
-  --ground:#06070a;
-  --plate:#0b0d12;
-  --line:#1a1f28;
-  --ink:#e2eaf1;
-  --ink-dim:#9dabb7;
-  --ink-faint:#75828d;
-  --cyan:#7deaff;
-  --amber:#f0bc5f;
-  --live:#6fdca6;
-  --lav:#c9b3ff;
-  --sub-bg:rgba(12,10,5,.8);
+  --sub-bg:rgba(12,10,5,.66);
   --sub-ink:#f4eed9;
-  --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
   --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color-scheme:dark;
@@ -43,258 +31,79 @@
 [hidden]{display:none!important}
 html,body{height:100%}
 body{
-  margin:0;background:var(--ground);color:var(--ink);
+  margin:0;background:#4e4628;color:var(--sub-ink);
   font-family:var(--sans);font-size:15px;line-height:1.55;
   -webkit-font-smoothing:antialiased;overflow:hidden;
 }
-a{color:var(--cyan);text-decoration:none;border-bottom:1px solid #1d4653}
-a:hover{border-bottom-color:var(--cyan)}
-:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-button{font:inherit;color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-.app{height:100vh;height:100dvh;display:grid;grid-template-rows:auto 1fr;min-height:0}
-
-/* ---------- honesty banner: always on screen, never over the room ---------- */
-.honesty{
-  display:flex;gap:18px;align-items:flex-start;padding:10px 18px;
-  background:var(--plate);border-bottom:1px solid var(--line);
-}
-.honesty .home{
-  font-family:var(--serif);font-size:22px;line-height:1.1;color:#eaf4fa;border:0;
-  white-space:nowrap;padding-top:1px;
-}
-.honesty p{margin:0;max-width:128ch;color:var(--ink-dim);font-size:14px;line-height:1.55;text-wrap:pretty}
-.honesty b{color:var(--ink);font-weight:600}
-
-/* ---------- room + transcript ---------- */
-main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;position:relative}
-.stage{position:relative;overflow:hidden;min-height:0;background:#4e4628}
+.stage{position:fixed;inset:0;overflow:hidden}
 #scene{position:absolute;inset:0;width:100%;height:100%;display:block}
-.nogl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  padding:24px;text-align:center;color:var(--ink-dim);background:var(--ground);font-family:var(--mono);font-size:13px}
 
 #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .tag{
   position:absolute;left:0;top:0;transform:translate(-50%,-100%);will-change:transform;
   font-family:var(--mono);font-size:11px;letter-spacing:.08em;white-space:nowrap;
-  color:#f4eed9;background:rgba(12,10,5,.62);padding:1px 7px;border-radius:2px;
-  border-bottom:2px solid currentColor;opacity:.8;transition:opacity .3s;
+  color:var(--sub-ink);background:rgba(12,10,5,.8);padding:1px 7px;border-radius:2px;
+  border-bottom:2px solid var(--acc);
 }
-.tag.speak{opacity:1;background:rgba(12,10,5,.85)}
-.tag[hidden]{display:none}
 
-.hud{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:10px;align-items:flex-start;pointer-events:none}
-.hud > *{pointer-events:auto}
-.hud .grow{flex:1}
-.pill{
-  display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;
-  background:rgba(8,9,12,.82);border:1px solid #2a2f38;border-radius:999px;padding:5px 12px;color:var(--ink);
+/* the only fixed text: a small, low-contrast note that the lines are machine-written */
+.mark{
+  position:absolute;top:max(8px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));
+  font-size:11px;line-height:1;color:rgba(244,238,217,.5);pointer-events:none;user-select:none;
 }
-.pip{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex:none}
-.st-running .pip{background:var(--live)}
-.st-stopped .pip{background:var(--amber)}
-.st-unreachable .pip{background:#d46a5f}
-.pill .via{color:var(--ink-faint)}
-.btn{
-  white-space:nowrap;
-  background:rgba(8,9,12,.82);border:1px solid #2a2f38;border-radius:999px;padding:5px 12px;
-  font-family:var(--mono);font-size:12px;color:var(--ink-dim);cursor:pointer;
-}
-.btn:hover{color:var(--ink);border-color:#3b4250}
-.btn[aria-pressed="true"]{color:var(--amber);border-color:#5a4a26}
-#tx-toggle{display:none}
 
-/* per-turn readout and simulation numbers */
-.turnstats{
-  position:absolute;left:12px;top:52px;width:min(320px,calc(100% - 24px));
-  background:rgba(8,9,12,.84);border:1px solid #2a2f38;border-radius:4px;
-  font-family:var(--mono);font-size:12px;color:var(--ink);
-}
-.turnstats summary{
-  cursor:pointer;list-style:none;padding:7px 10px;font-size:10.5px;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--ink-dim);
-}
-.turnstats summary::-webkit-details-marker{display:none}
-.turnstats summary::before{content:"+ ";color:var(--ink-faint)}
-.turnstats[open] summary::before{content:"\2013  "}
-.turnstats .body{padding:0 10px 9px}
-.turnstats .who{color:var(--ink-faint);font-size:11px;margin-bottom:6px}
-.turnstats dl{margin:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px}
-.turnstats dt{color:var(--ink-dim);overflow-wrap:anywhere}
-.turnstats dd{margin:0;color:#eaf4fa;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
-.turnstats .note{margin-top:7px;color:var(--ink-faint);font-size:11px;line-height:1.45}
-.turnstats h3{margin:8px 0 4px;font-size:10.5px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
-.turnstats h3:first-of-type{margin-top:2px}
-.turnstats ol{margin:0;padding:0;list-style:none;display:grid;gap:3px}
-.turnstats ol li{color:#eaf4fa;line-height:1.4;padding-left:10px;position:relative;overflow-wrap:anywhere}
-.turnstats ol li::before{content:"-";position:absolute;left:0;color:var(--ink-faint)}
-.turnstats ol li.none{color:var(--ink-faint);padding-left:0}
-.turnstats ol li.none::before{content:none}
-.turnstats .scrollbody{max-height:min(46vh,420px);overflow-y:auto}
-.how{margin:6px 0 4px}
-.how summary{cursor:pointer;color:var(--ink-dim)}
-.how p{margin:6px 0 0}
-.how blockquote{margin:6px 0 0;padding:6px 9px;border-left:2px solid var(--line);color:var(--ink-dim);font-family:var(--mono);font-size:11px;line-height:1.5;white-space:pre-wrap}
-
-/* subtitles */
+/* subtitles: the line being typed, the last three faintly above it */
 .subs{
-  position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
-  width:min(880px,calc(100% - 28px));background:var(--sub-bg);border-radius:4px;
-  padding:10px 16px 12px;min-height:74px;
+  position:absolute;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);
+  width:min(880px,calc(100% - 32px));background:var(--sub-bg);border-radius:4px;
+  padding:10px 16px 12px;
 }
-.subs .lab{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
-.subs .lab .rp{color:var(--ink-faint);margin-left:10px;letter-spacing:.1em}
-.subs .txt{font-size:19px;line-height:1.5;color:var(--sub-ink);min-height:1.5em;overflow-wrap:anywhere}
-.subs .txt.idle{color:#b9b19a;font-size:16px}
+.who{font-family:var(--mono);font-weight:500;letter-spacing:.08em;color:var(--acc);margin-right:.6em}
+.recent div{font-size:13.5px;line-height:1.45;color:rgba(244,238,217,.46);overflow-wrap:anywhere;margin-bottom:3px}
+.recent .who{opacity:.75}
+.now{font-size:19px;line-height:1.5;color:var(--sub-ink);min-height:1.5em;overflow-wrap:anywhere}
 .caret{display:inline-block;width:.5em;height:1em;vertical-align:-.12em;margin-left:2px;background:currentColor;opacity:.55}
 
 /* fly accents: labels only, no meaning attached */
-.f0{--acc:var(--cyan)} .f1{--acc:var(--amber)} .f2{--acc:var(--live)} .f3{--acc:var(--lav)}
-.tag.f0,.tag.f1,.tag.f2,.tag.f3{border-bottom-color:var(--acc)}
-.subs .lab.f0,.subs .lab.f1,.subs .lab.f2,.subs .lab.f3{color:var(--acc)}
-
-/* transcript */
-.transcript{
-  display:flex;flex-direction:column;min-height:0;background:var(--plate);border-left:1px solid var(--line);
-}
-.tx-head{display:flex;align-items:baseline;gap:10px;padding:12px 16px 10px;border-bottom:1px solid var(--line)}
-.tx-head h2{margin:0;font-family:var(--serif);font-weight:400;font-size:24px;color:#eaf4fa;line-height:1.1}
-.tx-head .what{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
-.tx-head .x{margin-left:auto;display:none}
-#tx-scroll{flex:1;overflow-y:auto;min-height:0;padding:6px 0}
-#lines{list-style:none;margin:0;padding:0}
-#lines li{padding:8px 16px;border-left:2px solid transparent}
-#lines li.now{background:#10141b;border-left-color:var(--acc,var(--amber))}
-#lines .meta{display:flex;gap:10px;align-items:baseline;font-family:var(--mono);font-size:11px}
-#lines time{color:var(--ink-faint);font-variant-numeric:tabular-nums}
-#lines .lab{color:var(--acc,var(--ink-dim));letter-spacing:.08em;text-transform:uppercase}
-#lines .to{color:var(--ink-faint)}
-#lines p{margin:2px 0 0;color:var(--ink);font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
-.empty{padding:14px 16px;color:var(--ink-faint);font-size:13.5px}
-.credits{border-top:1px solid var(--line);padding:10px 16px 12px;font-size:12px;line-height:1.55;color:var(--ink-faint);max-height:48%;overflow-y:auto;flex:none}
-.credits p{margin:0 0 4px}
-.credits .counts{font-family:var(--mono);font-size:11px}
+.f0{--acc:#7deaff} .f1{--acc:#f0bc5f} .f2{--acc:#6fdca6} .f3{--acc:#c9b3ff}
 
 @media (max-width:900px){
-  body{font-size:14px}
-  .honesty{padding:8px 12px;gap:10px}
-  .honesty .home{font-size:18px}
-  .honesty p{font-size:12.5px;line-height:1.5}
-  main{grid-template-columns:1fr}
-  #tx-toggle{display:inline-block}
-  .transcript{
-    position:absolute;left:0;right:0;bottom:0;height:62%;z-index:5;border-left:0;border-top:1px solid #2a2f38;
-    transform:translateY(102%);transition:transform .25s ease;box-shadow:0 -12px 30px rgba(0,0,0,.45);
-  }
-  body.tx-open .transcript{transform:none}
-  .tx-head .x{display:inline-block}
-  .turnstats{top:48px;font-size:11px;width:min(290px,calc(100% - 24px))}
-  .subs{bottom:10px;padding:8px 12px 10px;min-height:64px}
-  .subs .txt{font-size:16.5px}
+  .subs{padding:8px 12px 10px}
+  .now{font-size:16.5px}
+  .recent div{font-size:12.5px}
   .tag{font-size:10px}
-}
-@media (max-width:560px){
-  .pill{white-space:nowrap;min-width:0}
-  .pill .via{display:none}
-  .hud{gap:6px;left:8px;right:8px;top:8px}
-  .btn,.pill{padding:4px 10px;font-size:11.5px}
-  .turnstats{left:8px;top:42px}
-}
-@media (prefers-reduced-motion:reduce){
-  .transcript{transition:none}
 }
 </style>
 </head>
 <body>
-<div class="app">
-  <header class="honesty" role="note" aria-label="What this page is">
-    <a class="home" href="/">FLYBRAIN</a>
-    <p><b>What this is.</b> Each line is written by a small language model, Liquid AI's LFM2.5-1.2B-Instruct, from a short readout of that fly's simulated brain activity: four copies of the Janelia MaleCNS v1.0 fly connectome (CC BY 4.0), each run as a uniform leaky integrate-and-fire model, a simplification of real neurons, in a simulated room. <b>This is not a fly's thoughts.</b> Flies do not use language, and the names A, B, C and D are labels, not personalities. Each turn lists the readout the model was shown. A line is kept only if its numbers, neuron names and distances are in that readout, and it can still misstate it.</p>
-  </header>
-
-  <main>
-    <section class="stage" id="stage" aria-label="A 3D room with four modelled flies">
-      <canvas id="scene" aria-hidden="true"></canvas>
-      <div class="nogl" id="nogl" hidden>The 3D room needs WebGL, which this browser did not provide. The transcript still updates.</div>
-      <div id="tags" aria-hidden="true"></div>
-
-      <div class="hud">
-        <div class="pill" id="state" role="status" aria-live="polite"><span class="pip"></span><span id="state-text">connecting to the relay</span><span class="via" id="state-via"></span></div>
-        <span class="grow"></span>
-        <button class="btn" id="hum" type="button" aria-pressed="false" title="Synthesised fluorescent hum">hum off</button>
-        <button class="btn" id="tx-toggle" type="button" aria-controls="transcript" aria-expanded="false">transcript</button>
-      </div>
-
-      <details class="turnstats" id="turnstats" open>
-        <summary>readout · this turn</summary>
-        <div class="body scrollbody">
-          <div class="who" id="stats-who">waiting for a turn</div>
-          <h3>shown to the model</h3>
-          <ol id="basis"><li class="none">no turn yet</li></ol>
-          <h3>simulation numbers</h3>
-          <dl id="stats"></dl>
-          <div class="note" id="glow-note">Readout lines are shown exactly as the engine sends them.</div>
-        </div>
-      </details>
-
-      <div class="subs">
-        <div class="lab" id="sub-lab" aria-hidden="true"></div>
-        <div class="txt idle" id="sub-txt" aria-hidden="true">Waiting for the relay.</div>
-        <div class="sr" id="sub-sr" aria-live="polite"></div>
-      </div>
-    </section>
-
-    <aside class="transcript" id="transcript" aria-label="Transcript">
-      <div class="tx-head">
-        <h2>Transcript</h2>
-        <span class="what" id="tx-what">recent turns</span>
-        <button class="btn x" id="tx-close" type="button">close</button>
-      </div>
-      <div id="tx-scroll">
-        <ol id="lines"></ol>
-        <div class="empty" id="tx-empty">Nothing has been generated yet.</div>
-      </div>
-      <div class="credits">
-        <details class="how" id="how">
-          <summary>How the lines are made</summary>
-          <p>Every line is written by LFM2.5-1.2B-Instruct running on one local GPU. One wiring diagram of a male fruit fly's central nervous system (Janelia MaleCNS v1.0, 165,122 neurons) is run as four separate copies, each a uniform leaky integrate-and-fire model: every neuron has the same simple parameters, and a connection's weight is its synapse count times a fixed 0.275 mV with the sign of its predicted transmitter. The copies stand in a simulated 20 x 20 mm room; each walks by its own descending neurons, sees the others as dark shapes, gets a cVA smell drive as they come near and a sound drive from their simulated pulse-song motor neurons. When a fly's turn comes (every 10 s, A, B, C, D in order), its readout is at most six lines: its two named neuron groups whose firing rose most above their own baseline, how far it walked since its last turn, and how far away each other fly is. The model gets the fixed instruction below, that readout and the last line, and samples one or two sentences (temperature 0.4, top-p 0.9, repetition penalty 1.05, at most 60 tokens).</p>
-          <p>The fixed instruction, word for word:</p>
-          <blockquote id="system-prompt">You write one short line at a time for one of four simulated flies, labelled A, B, C and D, in a small simulated room. Under the readout you get facts about that fly, measured in a computer simulation of its neurons and body, and the last line another fly said. Write in the first person as that fly, in one or two short sentences. Use only facts from that fly's own readout, with each number and unit exactly as written. A fly cannot see another fly's neurons. Never repeat a recent line. Do not mention people, the internet, money or anything outside the room. Do not claim feelings, thoughts, wishes or consciousness. Plain text only: no name label, no quotation marks, no lists.</blockquote>
-          <p>Each turn's message, with only the labels, readout lines and last line filled in:</p>
-          <blockquote>Readout for fly A:
-- &lt;readout lines&gt;
-
-Last line:
-D: &lt;the last line&gt;
-
-Write fly A's line in the first person: one fact from its readout, with the number and unit, then how far fly D is from it, from the readout.</blockquote>
-          <p>Only formatting is normalised (curly quotes, dashes, an ellipsis character, surrounding spaces, a leading name label); no word is changed. A line is then kept only if it passes the safety filter and a grounding check: it quotes at least one number with its unit, every number it quotes is in its own readout with that unit, every neuron group it names is in that readout, a distance it gives another fly is that fly's distance there, and it does not repeat one of the last six lines. Otherwise it is dropped and counted, never edited, and sampled again at most twice. The check cannot see a right number in a wrong sentence, so a kept line can still misstate the readout. The rates, distances and bearings are measured in the simulation; the room, the readout's shape, the instruction, the sampling settings and the checks are choices.</p>
-        </details>
-        <p>Language model: LFM2.5-1.2B-Instruct by Liquid AI, used under the LFM Open License v1.0.</p>
-        <p>Connectome: MaleCNS v1.0, Janelia FlyEM et al., <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>. Rendering: three.js (MIT).</p>
-        <p>Visitors cannot post lines. Every line and every readout line passes a safety filter before it is shown (length limit; slurs, sexual content, threats, self-harm, web addresses starting http or www., bare addresses on common domains, @handles, and any financial or trading language); filtered lines are dropped and counted, never edited.</p>
-        <p class="counts" id="counts"></p>
-      </div>
-    </aside>
-  </main>
-</div>
-<noscript><p style="position:fixed;bottom:0;left:0;right:0;margin:0;padding:12px;background:#0b0d12;color:#e2eaf1;font:14px system-ui">This page needs JavaScript to show the room and the transcript.</p></noscript>
+<main class="stage" id="stage" aria-label="A 3D room with four modelled flies">
+  <canvas id="scene" aria-hidden="true"></canvas>
+  <div id="tags" aria-hidden="true"></div>
+  <div class="mark">AI-written fiction</div>
+  <div class="subs" id="subs" hidden>
+    <div class="recent" id="recent" aria-hidden="true"></div>
+    <div class="now" id="now" aria-hidden="true"></div>
+    <div class="sr" id="sub-sr" aria-live="polite"></div>
+  </div>
+</main>
 
 <script type="module">
 import * as THREE from 'three';
 
-// Where the conversation comes from. The Live phase sets this.
+// Where the conversation comes from.
 const RELAY_BASE = 'https://backrooms-production-004b.up.railway.app';
 
 /* ------------------------------------------------------------------------
-   Expected relay shapes (tolerant):
-     GET  /status            {running:bool, last_at, count, blocked_at_relay}
+   Relay shapes used here (tolerant):
+     GET  /status            {running:bool, ...}
      GET  /turns             {turns:[...newest 100, oldest first], last_seq, oldest_seq}
      GET  /turns?after=ID    {turns:[...first 100 with seq > ID], ...}
      GET  /stream?after=ID   SSE: `turn` events replaying seq > ID (or Last-Event-ID), one
                              `caught_up` event {last_seq}, then live `turn` events
-   turn: {seq, at, ts, speaker, to?, text, engine_seq?, fly_index?, basis?:[readout strings], meta?:{key: number}}
+   turn: {seq, at, ts, speaker, text, fly_index?, ...}; only speaker, text, seq/ts and
+   fly_index are read, and every string is shown with textContent.
    ------------------------------------------------------------------------ */
 
 const $ = (id) => document.getElementById(id);
@@ -308,6 +117,7 @@ let REDUCED = mqReduce.matches;
 if (mqReduce.addEventListener) mqReduce.addEventListener('change', (e) => { REDUCED = e.matches; });
 
 const MAX_TEXT = 1200;          // client-side sanity cap: longer lines are dropped, never cut
+const RECENT = 3;               // earlier lines shown faintly above the current one
 const FLY_COUNT = 4;
 const TAU = Math.PI * 2;
 
@@ -779,7 +589,6 @@ function initRenderer() {
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: (window.devicePixelRatio || 1) < 1.5, powerPreference: 'high-performance' });
   } catch (e) {
-    $('nogl').hidden = false;
     return null;
   }
   const maxPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -807,7 +616,7 @@ function initRenderer() {
   const glowLight = new THREE.PointLight(0x9fe8ff, 0, 1.2, 2);
   scene.add(glowLight);
 
-  // name tags (HTML, positioned from the 3D head)
+  // letter tag over the speaking fly (HTML, positioned from the 3D head)
   const tagsEl = $('tags');
   for (const f of F.flies) {
     const el = document.createElement('div');
@@ -906,7 +715,6 @@ function updateFlicker(t) {
     dim = Math.min(dim, b);
   }
   R.room.hemi.intensity = 2.3 * (0.85 + 0.15 * dim);
-  if (HUM.on) HUM.flick(dim);
 }
 
 function updateFlies(t, dt) {
@@ -1012,7 +820,7 @@ function updateFlies(t, dt) {
   R.segIM.instanceMatrix.needsUpdate = true;
   R.jointIM.instanceMatrix.needsUpdate = true;
 
-  // glow on the speaker's head, pulsing with a strength taken from the turn's statistics
+  // glow on the speaker's head (decoration)
   const g = R.glow;
   const target = sp >= 0 ? 0.3 + 0.7 * R.glowK : 0;
   R.glowAmt = damp(R.glowAmt, target, 3, dt);
@@ -1056,7 +864,7 @@ function updateTags() {
   const placed = [];
   for (const f of R.flies) {
     const el = f.tagEl;
-    if (!f.label) { if (!el.hidden) el.hidden = true; continue; }
+    if (!f.label || !f.speaking) { if (!el.hidden) el.hidden = true; continue; }   // only the speaker's letter
     f.head.getWorldPosition(v);
     v.y += 0.12;
     v.project(R.camera);
@@ -1073,45 +881,16 @@ function updateTags() {
     placed.push([x, y, half]);
     el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`;
     if (el.textContent !== f.label) el.textContent = f.label;
-    el.classList.toggle('speak', f.speaking);
   }
 }
-
-/* ---------------- optional hum (off until asked) ---------------- */
-const HUM = {
-  on: false, ctx: null, gain: null,
-  toggle() {
-    const btn = $('hum');
-    if (!this.ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) { btn.disabled = true; btn.textContent = 'no audio'; return; }
-      this.ctx = new AC();
-      const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
-      this.gain = this.ctx.createGain(); this.gain.gain.value = 0;
-      const o1 = this.ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 120;
-      const o2 = this.ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 240;
-      const g2 = this.ctx.createGain(); g2.gain.value = 0.5;
-      o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(this.gain); this.gain.connect(this.ctx.destination);
-      o1.start(); o2.start();
-    }
-    this.on = !this.on;
-    if (this.on) this.ctx.resume();
-    this.gain.gain.setTargetAtTime(this.on ? 0.022 : 0, this.ctx.currentTime, 0.08);
-    btn.setAttribute('aria-pressed', String(this.on));
-    btn.textContent = this.on ? 'hum on' : 'hum off';
-  },
-  flick(b) { if (this.gain) this.gain.gain.setTargetAtTime(0.022 * (0.35 + 0.65 * b), this.ctx.currentTime, 0.01); },
-};
-$('hum').addEventListener('click', () => HUM.toggle());
 
 /* ========================================================================
    DATA: relay status, turns, stream
    ======================================================================== */
 const S = {
-  running: null, reachable: null, lastKey: null, seen: new Set(), history: [],
-  queue: [], cur: null, replay: null, es: null, sseErrors: 0, pollTimer: 0, pollFails: 0,
-  transport: '', labelMap: new Map(), li: new Map(), dropped: 0, relayCounts: '',
-  metricHist: new Map(), mode: 'connecting', retryStream: 0,
+  running: null, reachable: null, lastKey: null, seen: new Set(), history: [], recent: [],
+  queue: [], cur: null, replay: null, es: null, sseErrors: 0, pollTimer: 0, pollFails: 0, statusFails: 0,
+  labelMap: new Map(), mode: 'connecting', retryStream: 0,
   backfilling: false, backfillTimer: 0, lastBackfill: null,
 };
 
@@ -1128,34 +907,24 @@ function norm(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const t = raw.turn && typeof raw.turn === 'object' ? raw.turn : raw;
   const text = pickStr(t, ['text', 'line', 'message', 'content', 'utterance']);
-  if (!text) return null;
-  if (text.length > MAX_TEXT) { S.dropped++; renderCounts(); return null; }
+  if (!text || text.length > MAX_TEXT) return null;
   const label = pickStr(t, ['label', 'speaker', 'name', 'who', 'fly']).slice(0, 40) || 'fly';
   const idRaw = t.id ?? t.seq ?? t.turn_id ?? t.n ?? t.index ?? null;
   const id = idRaw === null || idRaw === undefined ? null : String(idRaw);
-  const tsParsed = parseTs(t.ts ?? t.time ?? t.t ?? t.timestamp ?? t.created_at ?? t.at);
+  const ts = parseTs(t.ts ?? t.time ?? t.t ?? t.timestamp ?? t.created_at ?? t.at);
   let flyIndex = null;
   for (const k of ['fly_index', 'speaker_index', 'flyIndex', 'fly']) {
     if (Number.isInteger(t[k]) && t[k] >= 0) { flyIndex = t[k] % FLY_COUNT; break; }
   }
-  let stats = null;
-  for (const k of ['meta', 'stats', 'graph_stats', 'graphStats', 'graph', 'metrics']) {
-    if (t[k] && typeof t[k] === 'object' && !Array.isArray(t[k])) { stats = t[k]; break; }
-  }
-  const conv = t.conversation ?? t.conversation_id ?? t.session ?? t.session_id ?? null;
-  const basis = Array.isArray(t.basis) ? t.basis.filter((b) => typeof b === 'string' && b.trim()).slice(0, 6).map((b) => b.slice(0, 200)) : null;
-  const to = typeof t.to === 'string' && /^[A-Za-z][A-Za-z0-9 _.-]{0,23}$/.test(t.to) ? t.to : null;
   return {
-    id, label, text, stats, flyIndex, basis, to, conv: conv === null ? null : String(conv),
-    ts: tsParsed ?? Date.now(), tsKnown: tsParsed !== null,
-    key: id !== null ? 'i:' + id : 't:' + (tsParsed ?? '') + '|' + label + '|' + text.slice(0, 60),
+    id, label, text, flyIndex, ts: ts ?? Date.now(),
+    key: id !== null ? 'i:' + id : 't:' + (ts ?? '') + '|' + label + '|' + text.slice(0, 60),
   };
 }
 function extractTurns(j) {
   if (Array.isArray(j)) return j;
   if (j && Array.isArray(j.turns)) return j.turns;
   if (j && Array.isArray(j.items)) return j.items;
-  if (j && j.conversation && Array.isArray(j.conversation.turns)) return j.conversation.turns;
   return j ? [j] : [];
 }
 function sortTurns(list) {
@@ -1186,44 +955,10 @@ function applyStatus(s) {
   S.reachable = true;
   const a = isRunning(s);
   if (a !== null) S.running = a;
-  // show any drop/filter counters the relay reports, with its own key names
-  const parts = [];
-  const scan = (o, depth) => {
-    if (!o || typeof o !== 'object' || depth > 1) return;
-    for (const [k, v] of Object.entries(o)) {
-      if (typeof v === 'number' && /filter|dropp|block/i.test(k)) parts.push(k + ': ' + v);
-      else if (v && typeof v === 'object' && !Array.isArray(v)) scan(v, depth + 1);
-    }
-  };
-  scan(s, 0);
-  S.relayCounts = parts.slice(0, 4).join(' · ');
-  renderCounts();
-}
-function renderCounts() {
-  const bits = [];
-  if (S.relayCounts) bits.push('relay reports ' + S.relayCounts);
-  if (S.dropped) bits.push('over-length lines dropped here: ' + S.dropped);
-  $('counts').textContent = bits.join(' · ');
 }
 
-function setState(kind) {
-  S.mode = kind;
-  const el = $('state');
-  el.className = 'pill st-' + kind;
-  $('state-text').textContent = {
-    running: 'generator running', stopped: 'generator not running', connecting: 'connecting to the relay', unreachable: 'relay unreachable',
-  }[kind] || kind;
-  renderVia();
-}
-function renderVia() {
-  let via = '';
-  if (S.mode === 'running') via = S.transport === 'stream' ? ' · live stream' : S.transport === 'poll' ? ' · checking every 5 s' : '';
-  else if (S.mode === 'stopped' || S.mode === 'unreachable') via = S.replay ? ' · replaying recorded lines' : '';
-  $('state-via').textContent = via;
-}
-
-/* ---- transcript ---- */
-const lines = $('lines'), txScroll = $('tx-scroll');
+/* ---- subtitles + speaker ---- */
+const subs = $('subs'), recentEl = $('recent'), nowEl = $('now'), subSr = $('sub-sr');
 function flyIndexFor(t) {
   let idx;
   if (t.flyIndex !== null) { idx = t.flyIndex; S.labelMap.set(t.label, idx); }
@@ -1232,200 +967,65 @@ function flyIndexFor(t) {
   if (R) R.flies[idx].label = t.label;
   return idx;
 }
-function hhmmss(ms) {
-  const d = new Date(ms);
-  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+function who(t) {
+  const el = document.createElement('span');
+  el.className = 'who f' + flyIndexFor(t);
+  el.textContent = t.label;
+  return el;
 }
-function addTranscript(t) {
-  const idx = flyIndexFor(t);
-  const li = document.createElement('li');
-  li.className = 'f' + idx;
-  const meta = document.createElement('div'); meta.className = 'meta';
-  const time = document.createElement('time');
-  time.textContent = hhmmss(t.ts);
-  time.dateTime = new Date(t.ts).toISOString();
-  if (!t.tsKnown) time.title = 'time received';
-  const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = t.label;
-  meta.append(time, lab);
-  if (t.to) { const to = document.createElement('span'); to.className = 'to'; to.textContent = 'to ' + t.to; to.title = 'the fly that spoke last before this line'; meta.append(to); }
-  const p = document.createElement('p'); p.textContent = t.text;
-  li.append(meta, p);
-  const stick = txScroll.scrollHeight - txScroll.scrollTop - txScroll.clientHeight < 60;
-  lines.appendChild(li);
-  while (lines.children.length > 300) lines.firstElementChild.remove();
-  S.li.set(t.key, li);
-  if (S.li.size > 600) S.li = new Map([...S.li].slice(-300));
-  $('tx-empty').hidden = true;
-  if (stick) txScroll.scrollTop = txScroll.scrollHeight;
+function renderSubs() {
+  recentEl.replaceChildren(...S.recent.map((t) => {
+    const d = document.createElement('div');
+    d.append(who(t), document.createTextNode(t.text));
+    return d;
+  }));
+  subs.hidden = !S.cur && !S.recent.length;
 }
-function clearTranscript() {
-  lines.replaceChildren();
-  S.li.clear();
-  $('tx-empty').hidden = false;
+function pushRecent(t) {
+  if (S.recent.includes(t)) return;
+  S.recent.push(t);
+  while (S.recent.length > RECENT) S.recent.shift();
 }
-function markNow(t) {
-  for (const el of lines.querySelectorAll('li.now')) el.classList.remove('now');
-  const li = S.li.get(t.key);
-  if (li) {
-    li.classList.add('now');
-    const top = li.offsetTop, bottom = top + li.offsetHeight;
-    if (top < txScroll.scrollTop || bottom > txScroll.scrollTop + txScroll.clientHeight) txScroll.scrollTop = Math.max(0, bottom - txScroll.clientHeight + 12);
-  }
-}
-
-/* ---- per-turn readout and numbers ---- */
-// the engine's meta keys (backrooms_talk/TURN_SCHEMA.md) with plain names and units; other keys are shown as sent
-const META_LABELS = {
-  active_fraction: ['neurons that fired (12 ms window)', (v) => (v * 100).toFixed(1) + ' %'],
-  brain_rate_hz: ['mean rate, all neurons', (v) => v.toFixed(2) + ' Hz'],
-  song_hz: ['song level (8 pulse-song MNs, summed)', (v) => v.toFixed(0) + ' Hz'],
-  sound_drive_hz: ['sound drive to JO-A / JO-B', (v) => v.toFixed(0) + ' Hz per cell'],
-  smell_drive_hz: ['cVA drive to ORN_DA1', (v) => v.toFixed(0) + ' Hz per cell'],
-  top_group_rate_hz: ['first readout group, now', (v) => v.toFixed(0) + ' Hz'],
-  top_group_baseline_hz: ['its baseline', (v) => v.toFixed(0) + ' Hz'],
-  nearest_fly_mm: ['nearest other fly', (v) => v.toFixed(1) + ' mm'],
-  world_s: ['room time', (v) => v.toFixed(1) + ' s'],
-  window_steps: ['window since its last turn', (v) => v + ' x 50 ms'],
-  seed: ['sampling seed', (v) => String(v)],
-  new_tokens: ['tokens generated', (v) => String(v)],
-};
-function fmtScalar(v) {
-  if (typeof v === 'number') {
-    if (!isFinite(v)) return String(v);
-    const s = String(v);
-    if (s.length <= 9) return s;
-    return Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(3) : String(Number(v.toPrecision(5)));
-  }
-  if (typeof v === 'string') return v;
-  if (typeof v === 'boolean' || v === null) return String(v);
-  try { return JSON.stringify(v); } catch { return '?'; }
-}
-function fmtValue(v) {
-  if (Array.isArray(v)) {
-    return v.slice(0, 8).map((it) => (it && typeof it === 'object')
-      ? (Array.isArray(it) ? it.map(fmtScalar).join(' ') : Object.values(it).map(fmtScalar).join(' '))
-      : fmtScalar(it)).join(', ') + (v.length > 8 ? ', …' : '');
-  }
-  if (v && typeof v === 'object') return Object.entries(v).slice(0, 8).map(([a, b]) => a + ' ' + fmtScalar(b)).join(', ');
-  return fmtScalar(v);
-}
-function pickGlowMetric(stats) {
-  if (!stats) return null;
-  const entries = Object.entries(stats).filter(([, v]) => typeof v === 'number' && isFinite(v));
-  if (!entries.length) return null;
-  for (const re of [/^active_fraction$/, /^brain_rate_hz$/, /graph[\s_-]*state/i, /readout/i, /norm|energy|activity|magnitude/i]) {
-    const hit = entries.find(([k]) => re.test(k));
-    if (hit) return hit;
-  }
-  return entries[0];
-}
-function glowFor(stats) {
-  const m = pickGlowMetric(stats);
-  if (!m) return { k: 0.5, key: null };
-  const [key, raw] = m;
-  const v = Math.abs(raw);
-  const hist = S.metricHist.get(key) || [];
-  hist.push(v);
-  if (hist.length > 60) hist.shift();
-  S.metricHist.set(key, hist);
-  if (hist.length < 2) return { k: 0.6, key };
-  const lo = Math.min(...hist), hi = Math.max(...hist);
-  return { k: hi - lo < 1e-12 ? 0.6 : (v - lo) / (hi - lo), key };
-}
-function renderStats(t, replay) {
-  const dl = $('stats');
-  dl.replaceChildren();
-  $('stats-who').textContent = (replay ? 'replay · ' : '') + t.label + (t.id !== null ? ' · turn ' + t.id : '') + ' · ' + hhmmss(t.ts);
-  const ol = $('basis');
-  ol.replaceChildren();
-  if (t.basis && t.basis.length) {
-    for (const b of t.basis) { const li = document.createElement('li'); li.textContent = b; ol.appendChild(li); }
-  } else {
-    const li = document.createElement('li'); li.className = 'none';
-    li.textContent = t.basis ? 'no readout lines were shown for this turn' : 'this turn was sent without its readout';
-    ol.appendChild(li);
-  }
-  const entries = t.stats ? Object.entries(t.stats).slice(0, 14) : [];
-  if (!entries.length) {
-    const dt = document.createElement('dt'); dt.textContent = 'no numbers sent with this turn';
-    dl.appendChild(dt);
-  }
-  for (const [k, v] of entries) {
-    const lab = META_LABELS[k];
-    const dt = document.createElement('dt'); dt.textContent = lab ? lab[0] : k;
-    if (lab) dt.title = k;
-    const dd = document.createElement('dd');
-    dd.textContent = lab && typeof v === 'number' && isFinite(v) ? lab[1](v) : fmtValue(v);
-    try { dd.title = JSON.stringify(v).slice(0, 400); } catch { /* ignore */ }
-    dl.append(dt, dd);
-  }
-  const g = glowFor(t.stats);
-  if (R) R.glowK = g.k;
-  $('glow-note').textContent = g.key
-    ? `The head glow follows “${META_LABELS[g.key] ? META_LABELS[g.key][0] : g.key}”, scaled against the last ${Math.min(60, (S.metricHist.get(g.key) || []).length)} turn(s) shown here. It is decoration, not a measurement.`
-    : 'No numeric statistic in this turn, so the head glow uses a fixed middle strength.';
-}
-
-/* ---- subtitles + speaker ---- */
-const subLab = $('sub-lab'), subTxt = $('sub-txt'), subSr = $('sub-sr');
-function setSubtitleLabel(t, idx, replay) {
-  subLab.className = 'lab f' + idx;
-  subLab.replaceChildren();
-  subLab.append(document.createTextNode(t.label));
-  if (replay) { const rp = document.createElement('span'); rp.className = 'rp'; rp.textContent = 'replay · recorded ' + hhmmss(t.ts); subLab.append(rp); }
-}
-function showStatic(t, note) {
-  const idx = flyIndexFor(t);
-  setSubtitleLabel(t, idx, false);
-  subTxt.classList.remove('idle');
-  subTxt.textContent = t.text;
-  if (note) { const rp = document.createElement('span'); rp.className = 'rp'; rp.textContent = note; subLab.append(rp); }
-  renderStats(t, false);
-}
-function showIdle(msg) {
-  subLab.replaceChildren();
-  subLab.className = 'lab';
-  subTxt.classList.add('idle');
-  subTxt.textContent = msg;
-}
-// no turns to show: say so calmly, in the subtitles, the transcript and the statistics box
-function showEmpty(unreachable) {
+// the current line moves up into the faint recent lines
+function retire() {
+  if (S.cur) pushRecent(S.cur.t);
   S.cur = null;
+  nowEl.replaceChildren();
   if (R) R.speaker = -1;
-  if (unreachable) {
-    showIdle('The relay could not be reached, so no lines can be shown right now. The room itself is built.');
-    $('tx-empty').textContent = 'The relay could not be reached. No lines to show.';
-    $('tx-what').textContent = 'relay unreachable';
-    $('stats-who').textContent = 'no turn to show';
-  } else {
-    showIdle('The room is built. Nothing has been generated yet: the generator is not running.');
-    $('tx-empty').textContent = 'Nothing has been generated yet. Lines will appear here once the generator runs.';
-    $('tx-what').textContent = 'no turns yet';
-    $('stats-who').textContent = 'no turns yet';
-  }
+}
+function clearSubs() {
+  S.cur = null;
+  S.recent = [];
+  if (R) R.speaker = -1;
+  nowEl.replaceChildren();
+  renderSubs();
+}
+function setNow(t, shown) {
+  nowEl.replaceChildren(who(t), document.createTextNode(t.text.slice(0, shown)));
+  if (shown < t.text.length) { const caret = document.createElement('span'); caret.className = 'caret'; nowEl.appendChild(caret); }
 }
 function startTurn(t, replay) {
+  retire();
   const idx = flyIndexFor(t);
-  if (!replay) addTranscript(t);
-  markNow(t);
   S.cur = { t, idx, t0: performance.now(), shown: -1, doneAt: null, replay };
-  setSubtitleLabel(t, idx, replay);
-  subTxt.classList.remove('idle');
-  subTxt.textContent = '';
   subSr.textContent = t.label + ': ' + t.text;
-  renderStats(t, replay);
+  renderSubs();
   if (R) R.speaker = idx;
+}
+// a line said while this page was not listening: shown whole, not typed out
+function showStatic(t) {
+  retire();
+  const now = performance.now();
+  S.cur = { t, idx: flyIndexFor(t), t0: now - 1e7, shown: t.text.length, doneAt: now, replay: false };
+  setNow(t, t.text.length);
+  renderSubs();
 }
 function uiTick(now) {
   const c = S.cur;
   if (c) {
     const cps = S.queue.length > 2 ? 80 : 34;
     const n = Math.min(c.t.text.length, Math.floor(((now - c.t0) / 1000) * cps));
-    if (n !== c.shown) {
-      c.shown = n;
-      subTxt.textContent = c.t.text.slice(0, n);
-      if (n < c.t.text.length) { const caret = document.createElement('span'); caret.className = 'caret'; subTxt.appendChild(caret); }
-    }
+    if (n !== c.shown) { c.shown = n; setNow(c.t, n); }
     if (n >= c.t.text.length && c.doneAt === null) c.doneAt = now;
     if (c.doneAt !== null) {
       const since = now - c.doneAt;
@@ -1442,45 +1042,30 @@ function uiTick(now) {
   requestAnimationFrame(uiTick);
 }
 
-/* ---- replay of recorded lines while the generator is stopped or the relay is unreachable ---- */
-function lastConversation(list) {
-  if (!list.length) return [];
-  const last = list[list.length - 1];
-  const conv = last.conv !== null ? list.filter((t) => t.conv === last.conv) : list;
-  return conv.slice(-40);
-}
-function startReplay(conv) {
+/* ---- quiet replay of the most recent lines while the generator is stopped or the relay is unreachable ---- */
+function startReplay(list) {
   stopReplay();
-  clearTranscript();
-  if (!conv.length) {
-    showEmpty(S.mode === 'unreachable');
-    renderVia();
-    return;
-  }
-  $('tx-what').textContent = 'last conversation · recorded';
-  for (const t of conv) addTranscript(t);
-  S.replay = { conv, i: -1, timer: 0 };
-  renderVia();
+  clearSubs();
+  if (!list.length) return;          // no lines: just the room
+  S.replay = { list, i: -1, timer: 0 };
   nextReplay();
 }
 function nextReplay() {
   const rp = S.replay;
   if (!rp) return;
   rp.i++;
-  if (rp.i >= rp.conv.length) {
-    S.cur = null;
-    if (R) R.speaker = -1;
-    showIdle('End of the recorded conversation. It starts again shortly.');
+  if (rp.i >= rp.list.length) {
+    clearSubs();
     rp.i = -1;
     rp.timer = setTimeout(nextReplay, 9000);
     return;
   }
-  startTurn(rp.conv[rp.i], true);
+  startTurn(rp.list[rp.i], true);
 }
 function stopReplay() {
   if (S.replay) clearTimeout(S.replay.timer);
   S.replay = null;
-  if (S.cur && S.cur.replay) { S.cur = null; if (R) R.speaker = -1; }
+  if (S.cur && S.cur.replay) clearSubs();
 }
 
 /* ---- live: stream first, polling as the fallback ---- */
@@ -1492,13 +1077,15 @@ function receive(t, backfill) {
   S.history.push(t);
   if (S.history.length > 400) S.history.splice(0, S.history.length - 300);
   if (backfill) {
-    // said while this page was not listening: keep the line, but do not play it as if it were live
-    addTranscript(t);
+    // said while this page was not listening: keep it as context, do not play it as if it were live
+    if (S.cur && S.cur.doneAt !== null && !S.queue.length) retire();
+    if (S.lastBackfill) pushRecent(S.lastBackfill);
     S.lastBackfill = t;
+    renderSubs();
     return;
   }
   S.queue.push(t);
-  while (S.queue.length > 10) addTranscript(S.queue.shift());   // far behind: skip the animation, keep the line
+  while (S.queue.length > 10) pushRecent(S.queue.shift());   // far behind: skip the typing, keep the line
 }
 function handlePayload(raw, evName) {
   let j;
@@ -1518,18 +1105,19 @@ function endBackfill() {
   clearTimeout(S.backfillTimer);
   const t = S.lastBackfill;
   S.lastBackfill = null;
-  if (t && (!S.cur || S.cur.doneAt !== null) && !S.queue.length) showStatic(t, 'earlier');
+  if (t && (!S.cur || S.cur.doneAt !== null) && !S.queue.length) showStatic(t);
+  else if (t) { pushRecent(t); renderSubs(); }
 }
 function openStream() {
   if (S.es || typeof EventSource === 'undefined') { if (!S.es) startPolling(); return; }
   let es;
-  // ?after= makes the relay replay what this page missed (up to its 500-turn backlog);
-  // on an automatic reconnect the browser's Last-Event-ID takes over.
+  // ?after= makes the relay replay what this page missed; on an automatic reconnect
+  // the browser's Last-Event-ID takes over.
   const after = S.lastKey !== null && /^\d+$/.test(S.lastKey) ? '?after=' + S.lastKey : '';
   try { es = new EventSource(RELAY + '/stream' + after); } catch { startPolling(); return; }
   S.es = es;
   es.onopen = () => {
-    S.sseErrors = 0; stopPolling(); S.transport = 'stream'; renderVia();
+    S.sseErrors = 0; stopPolling();
     // everything before the relay's caught_up event is replayed backlog
     S.backfilling = true;
     clearTimeout(S.backfillTimer);
@@ -1556,12 +1144,9 @@ function closeStream() {
   S.backfilling = false;
   S.lastBackfill = null;
   clearTimeout(S.backfillTimer);
-  if (S.transport === 'stream') S.transport = '';
 }
 function startPolling() {
   if (S.pollTimer) return;
-  S.transport = 'poll';
-  renderVia();
   const tick = async () => {
     try {
       const path = '/turns' + (S.lastKey !== null ? '?after=' + encodeURIComponent(S.lastKey) : '');
@@ -1578,7 +1163,6 @@ function startPolling() {
 function stopPolling() {
   clearTimeout(S.pollTimer);
   S.pollTimer = 0;
-  if (S.transport === 'poll') S.transport = '';
 }
 
 function enterRunning(fromTurn) {
@@ -1586,23 +1170,19 @@ function enterRunning(fromTurn) {
   S.running = true;
   if (S.replay) {
     stopReplay();
-    clearTranscript();
-    // put the recent history back so the live lines have context
-    for (const t of S.history) if (!S.queue.includes(t)) addTranscript(t);
+    // the latest recorded lines stay as context for the live ones
+    for (const t of S.history.slice(-RECENT)) if (!S.queue.includes(t)) pushRecent(t);
+    renderSubs();
   }
-  $('tx-what').textContent = 'recent turns';
-  $('tx-empty').textContent = 'Nothing has been generated yet.';
-  setState('running');
-  // the stream opens with ?after=lastKey, so lines posted while this page was not listening
-  // are replayed by the relay and shown as backfill
+  S.mode = 'running';
   if (!fromTurn || wasStopped) openStream();
 }
 function enterStopped(kind) {
   closeStream();
   stopPolling();
   S.queue.length = 0;
-  setState(kind);
-  startReplay(lastConversation(S.history));
+  S.mode = kind;
+  startReplay(S.history.slice(-40));
 }
 async function refreshHistory() {
   try {
@@ -1627,14 +1207,13 @@ async function pollStatus() {
     S.statusFails = 0;
     if (S.running !== was || S.mode === 'unreachable' || S.mode === 'connecting') decide();
   } catch {
-    S.statusFails = (S.statusFails || 0) + 1;
+    S.statusFails++;
     // polling only runs while the generator runs, so two failed status checks in a row also count
     if (!S.es && (S.pollFails > 2 || S.statusFails >= 2)) { S.reachable = false; if (S.mode !== 'unreachable') { S.running = null; enterStopped('unreachable'); } }
   }
 }
 
 async function boot() {
-  setState('connecting');
   const [st, tj] = await Promise.allSettled([getJSON('/status'), getJSON('/turns')]);
   if (tj.status === 'fulfilled') {
     const list = sortTurns(extractTurns(tj.value).map(norm).filter(Boolean));
@@ -1649,35 +1228,24 @@ async function boot() {
   } else if (S.running === false) {
     enterStopped('stopped');
   } else {
-    for (const t of S.history) addTranscript(t);
     const last = S.history[S.history.length - 1];
-    if (last) showStatic(last, 'earlier'); else showIdle('Generator running. Nothing has been generated yet; waiting for the first line.');
+    for (const t of S.history.slice(-RECENT - 1, -1)) pushRecent(t);
+    if (last) showStatic(last);
     enterRunning(false);
   }
   setInterval(pollStatus, 30000);
 }
 
-/* ---- mobile transcript drawer ---- */
-function setDrawer(open) {
-  document.body.classList.toggle('tx-open', open);
-  $('tx-toggle').setAttribute('aria-expanded', String(open));
-}
-$('tx-toggle').addEventListener('click', () => setDrawer(!document.body.classList.contains('tx-open')));
-$('tx-close').addEventListener('click', () => setDrawer(false));
-if (window.matchMedia('(max-width: 900px)').matches) $('turnstats').open = false;
-
-try { initRenderer(); } catch (e) { $('nogl').hidden = false; R = null; console.error(e); }
+try { initRenderer(); } catch (e) { R = null; console.error(e); }
 requestAnimationFrame(uiTick);
 boot();
 
 if (LOCAL) {
-  window.__R = () => R;
   window.__S = () => S;
   window.__backrooms = () => R ? ({
-    fps: Math.round(R.fps * 10) / 10, frameMs: Math.round(R.ema * 100) / 100, pixelRatio: R.pr,
-    calls: R.renderer.info.render.calls, triangles: R.renderer.info.render.triangles,
-    mode: S.mode, transport: S.transport, history: S.history.length, queue: S.queue.length, speaker: R.speaker,
-  }) : ({ mode: S.mode, transport: S.transport });
+    fps: Math.round(R.fps * 10) / 10, pixelRatio: R.pr, mode: S.mode, history: S.history.length,
+    queue: S.queue.length, speaker: R.speaker, recent: S.recent.length,
+  }) : ({ mode: S.mode });
 }
 </script>
 </body>
