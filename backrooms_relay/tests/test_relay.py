@@ -398,7 +398,7 @@ def test_about_is_honest(client):
     about = client.get("/").json()["about"]
     for phrase in ("LFM2.5-1.2B-Instruct", "MaleCNS v1.0", "CC BY 4.0", "not a fly's thoughts",
                    "flies do not use language", "leaky integrate-and-fire", "a simplification",
-                   "labels, not personalities", "readout lines the model was shown"):
+                   "labels, not personalities", "numeric readout", "hints the model was shown"):
         assert phrase in about
     for stale in ("abstract recurrence", "not simulated spikes", "better without fly anatomy"):
         assert stale not in about
@@ -657,9 +657,70 @@ def test_talk_turns_persist_and_restore(tmp_path, clock):
         assert list(turns[1]["meta"]) == list(relay_mod.TALK_META)
 
 
+TOPIC = {"topic": "why the light never moves", "topic_id": 3, "topic_turn": 1, "switched": True}
+
+
+def test_topic_turn_accepted_and_returned_in_order(client):
+    r = client.post("/turn", json=talk(**TOPIC), headers=auth())
+    assert r.status_code == 200, r.text
+    body = talk(**dict(TOPIC, topic_turn=2, switched=False))
+    assert client.post("/turn", json=body, headers=auth()).status_code == 200
+    turns = client.get("/turns").json()["turns"]
+    assert list(turns[0]) == ["seq", "at", "ts", "speaker", "to", "text", "engine_seq", "fly_index",
+                              "topic", "topic_id", "topic_turn", "switched", "basis", "meta"]
+    assert without(turns[0], "seq", "at", "ts") == talk(**TOPIC)
+    assert turns[1]["switched"] is False and turns[1]["topic_turn"] == 2
+    # a talk body from before topics is still accepted and comes back without topic fields
+    assert client.post("/turn", json=talk(), headers=auth()).status_code == 200
+    assert not set(relay_mod.TOPIC_FIELDS) & set(client.get("/turns").json()["turns"][2])
+
+
+def _topic_rejects():
+    cases = [(f"topic without {k}", talk(**without(TOPIC, k))) for k in TOPIC]
+    cases += [(f"only {k}", talk(**{k: TOPIC[k]})) for k in TOPIC]
+    cases += [
+        ("topic null", talk(**dict(TOPIC, topic=None))),
+        ("switched null", talk(**dict(TOPIC, switched=None))),
+        ("topic empty", talk(**dict(TOPIC, topic=""))),
+        ("topic blank", talk(**dict(TOPIC, topic="   "))),
+        ("topic 121", talk(**dict(TOPIC, topic="a" * 121))),
+        ("topic newline", talk(**dict(TOPIC, topic="light\nwalls"))),
+        ("topic bidi", talk(**dict(TOPIC, topic="light‮walls"))),
+        ("topic number", talk(**dict(TOPIC, topic=3))),
+        ("topic_id 0", talk(**dict(TOPIC, topic_id=0))),
+        ("topic_id bool", talk(**dict(TOPIC, topic_id=True))),
+        ("topic_id float", talk(**dict(TOPIC, topic_id=3.0))),
+        ("topic_id over 2^53", talk(**dict(TOPIC, topic_id=2**53 + 1))),
+        ("topic_turn 0", talk(**dict(TOPIC, topic_turn=0))),
+        ("topic_turn string", talk(**dict(TOPIC, topic_turn="1"))),
+        ("switched int", talk(**dict(TOPIC, switched=1))),
+        ("switched string", talk(**dict(TOPIC, switched="true"))),
+        ("switched on a later line", talk(**dict(TOPIC, topic_turn=2))),
+    ]
+    return cases
+
+
+TOPIC_REJECTS = _topic_rejects()
+
+
+@pytest.mark.parametrize("name,body", TOPIC_REJECTS, ids=[c[0] for c in TOPIC_REJECTS])
+def test_topic_validation_rejects(client, name, body):
+    r = client.post("/turn", json=body, headers=auth())
+    assert r.status_code == 422, (name, r.status_code, r.text)
+    assert client.get("/status").json()["count"] == 0
+
+
+def test_filter_checks_the_topic_and_counts(client):
+    r = client.post("/turn", json=talk(**dict(TOPIC, topic="when to buy more")), headers=auth())
+    assert r.status_code == 422
+    assert r.json()["detail"]["blocked"] == "topic" and r.json()["detail"]["reason"] == "financial"
+    assert client.get("/status").json()["blocked_at_relay"] == 1
+
+
 def test_largest_talk_body_fits_the_byte_cap(client):
     # Every allowed character is at most 3 UTF-8 bytes and the engine sends ensure_ascii=False.
-    body = talk(text="…" * 600, basis=["’" * 200] * 6,
+    body = talk(text="…" * 600, basis=["’" * 200] * 6, topic="’" * 120, topic_id=2**53, topic_turn=2**53,
+                switched=False,
                 meta=talk_meta(**{k: 2**53 for k in ("window_steps",)}))
     raw = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     assert len(raw) <= relay_mod.MAX_BODY_BYTES, len(raw)
@@ -683,6 +744,13 @@ def test_turn_schema_md_agrees_with_the_relay():
     assert (props["fly_index"]["minimum"], props["fly_index"]["maximum"]) == (0, len(relay_mod.FLY_LABELS) - 1)
     assert props["basis"]["maxItems"] == relay_mod.BASIS_MAX_ITEMS
     assert props["basis"]["items"]["maxLength"] == relay_mod.BASIS_ITEM_MAX_CHARS
+    assert (props["topic"]["type"], props["topic"]["minLength"], props["topic"]["maxLength"]) == (
+        "string", 1, relay_mod.TOPIC_MAX_CHARS)
+    for k in ("topic_id", "topic_turn"):
+        assert (props[k]["type"], props[k]["minimum"], props[k]["maximum"]) == ("integer", 1, relay_mod.MAX_JSON_INT)
+    assert props["switched"]["type"] == "boolean"
+    assert set(relay_mod.TOPIC_FIELDS) <= set(schema["required"])
+    assert [k for k in props if k in relay_mod.TalkTurnIn.model_fields] == list(relay_mod.TalkTurnIn.model_fields)
     meta = props["meta"]
     assert meta["additionalProperties"] is False and set(meta["required"]) == set(relay_mod.TALK_META)
     assert list(meta["properties"]) == list(relay_mod.TALK_META)

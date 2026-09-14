@@ -3,8 +3,8 @@
 This service has no brain and no model. It only stores and re-broadcasts text
 that a generator (backrooms_talk, running elsewhere) has already produced and
 filtered, and shows nothing until one posts. The relay runs the same safety
-filter again (safety.py) on the text and on every basis line, and rejects, never
-edits, a body that fails it; rejections are counted in /status as
+filter again (safety.py) on the text, the topic and every basis line, and
+rejects, never edits, a body that fails it; rejections are counted in /status as
 blocked_at_relay.
 
 What the text is: lines written by a small language model (Liquid AI
@@ -13,14 +13,17 @@ the Janelia male CNS connectome (MaleCNS v1.0, CC BY 4.0) in a simulated room.
 The simulator is a uniform leaky integrate-and-fire model, a simplification.
 The lines are not a fly's thoughts; flies do not use language. The flies' names
 are labels, not personalities. Nothing here claims consciousness, feelings or
-thinking. A talk turn carries `basis`: the readout lines the model was shown.
+thinking. A talk turn carries `basis`: the numeric readout its hints were made
+from, and (from the topic engine on) `topic`, `topic_id`, `topic_turn`, `switched`.
 
 Two body shapes are accepted (unknown fields are rejected in both):
   talk turn   any body with `fly_index` or `basis`; must match
               backrooms_talk/TURN_SCHEMA.md exactly (schema: TalkTurnIn): speaker and
               to in A B C D, text 1-600 chars, engine_seq >= 1, fly_index 0-3 (the
               speaker's position), basis 0-6 strings of 1-200 chars, meta exactly the
-              12 TALK_META keys with their types and ranges
+              12 TALK_META keys with their types and ranges; topic (1-120 chars, one
+              line), topic_id >= 1, topic_turn >= 1, switched (boolean; true only with
+              topic_turn 1) all four together or none (a talk body from before topics)
   legacy      speaker, to, text, engine_seq, meta as before (schema: TurnIn)
 GET /turns and /stream return every stored field, so talk turns carry fly_index,
 basis and meta and legacy turns look as they always did.
@@ -62,6 +65,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictFloat,
     StrictInt,
     StrictStr,
@@ -82,6 +86,8 @@ MAX_META_KEYS = 12
 FLY_LABELS = ("A", "B", "C", "D")   # speaker labels of a talk turn; fly_index is the position here
 BASIS_MAX_ITEMS = 6
 BASIS_ITEM_MAX_CHARS = 200
+TOPIC_MAX_CHARS = 120
+TOPIC_FIELDS = ("topic", "topic_id", "topic_turn", "switched")   # all four or none
 MAX_JSON_INT = 2**53
 # The talk turn's meta: exactly these keys, in this order (TURN_SCHEMA.md).
 # key -> (JSON type, minimum, maximum); None means unbounded (finite, and 2^53 for integers).
@@ -111,7 +117,8 @@ ABOUT = (
     "Janelia male CNS connectome (MaleCNS v1.0, CC BY 4.0) in a simulated room. The simulator is a "
     "uniform leaky integrate-and-fire model, a simplification. This is not a fly's thoughts; flies do "
     "not use language. The flies' names are labels, not personalities. No claim of consciousness, "
-    "feelings or thinking is made. Each turn lists the readout lines the model was shown."
+    "feelings or thinking is made. Each turn lists its topic and the numeric readout behind the hints "
+    "the model was shown."
 )
 
 ALLOWED_ORIGINS = ["https://flybrain.online", "https://www.flybrain.online"]
@@ -189,15 +196,35 @@ class TalkTurnIn(BaseModel):
     text: StrictStr = Field(min_length=1, max_length=MAX_TEXT_CHARS)
     engine_seq: StrictInt = Field(ge=1, le=MAX_JSON_INT)
     fly_index: StrictInt = Field(ge=0, le=len(FLY_LABELS) - 1)
+    topic: Optional[StrictStr] = Field(default=None, min_length=1, max_length=TOPIC_MAX_CHARS)
+    topic_id: Optional[StrictInt] = Field(default=None, ge=1, le=MAX_JSON_INT)
+    topic_turn: Optional[StrictInt] = Field(default=None, ge=1, le=MAX_JSON_INT)
+    switched: Optional[StrictBool] = None
     basis: list[StrictStr] = Field(max_length=BASIS_MAX_ITEMS)
     meta: dict[StrictStr, Union[StrictInt, StrictFloat]]
 
     @model_validator(mode="before")
     @classmethod
     def _to_is_omitted_not_null(cls, data):
-        if isinstance(data, dict) and "to" in data and data["to"] is None:
-            raise ValueError("to must be omitted, not null, when there is no addressee")
+        if isinstance(data, dict):
+            if "to" in data and data["to"] is None:
+                raise ValueError("to must be omitted, not null, when there is no addressee")
+            present = [k for k in TOPIC_FIELDS if k in data]
+            if present and len(present) != len(TOPIC_FIELDS):
+                raise ValueError("topic, topic_id, topic_turn and switched come all together or not at all")
+            if any(data[k] is None for k in present):
+                raise ValueError("topic fields must not be null")
         return data
+
+    @field_validator("topic")
+    @classmethod
+    def _topic(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            if not v.strip():
+                raise ValueError("topic is blank")
+            if BAD_BASIS_CHARS_RE.search(v):
+                raise ValueError("topic contains control or bidi characters")
+        return v
 
     @field_validator("speaker", "to")
     @classmethod
@@ -249,6 +276,8 @@ class TalkTurnIn(BaseModel):
             raise ValueError("fly_index must be the speaker's position in A B C D")
         if self.to is not None and self.to == self.speaker:
             raise ValueError("to must name another fly")
+        if self.switched and self.topic_turn != 1:
+            raise ValueError("switched is true only on a topic's first line (topic_turn 1)")
         return self
 
 
@@ -413,7 +442,7 @@ def create_app(
             turn_in = model.model_validate(payload)
         except ValidationError as e:
             return err(422, [{"loc": list(x["loc"]), "msg": x["msg"]} for x in e.errors()])
-        checks = [(field, getattr(turn_in, field)) for field in ("speaker", "to", "text")]
+        checks = [(field, getattr(turn_in, field, None)) for field in ("speaker", "to", "text", "topic")]
         checks += [(f"basis[{i}]", item) for i, item in enumerate(getattr(turn_in, "basis", None) or [])]
         for field, value in checks:
             reason = safety.check(value) if value is not None else None
