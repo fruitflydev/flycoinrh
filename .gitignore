@@ -11,10 +11,22 @@ data/
 build/
 scratch/
 __pycache__/
+.pytest_cache/
 .venv/
+.venv*/
 *.pyc
 *.mp4
 *.webm
+
+# backrooms talk runtime: language model weights (not ours to redistribute),
+# the line archive and the supervisor logs stay on the machine that runs it
+models/
+*.safetensors
+archive/
+archive*.jsonl
+logs/
+*.log
+*.pid
 
 # trained gains are small and reproducible, but they ARE a result - keep them
 !build/gains_ui.npz
