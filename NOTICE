@@ -9,5 +9,11 @@ The connectome is not ours to license. The male Drosophila CNS dataset is
 released under CC-BY 4.0, and it stays under CC-BY wherever it goes. If you
 fork this, keep that attribution: it is the whole reason any of this is real.
 
+The backrooms lines (backrooms_talk/) are written by LFM2.5-1.2B-Instruct, a
+language model by Liquid AI, used under the LFM Open License v1.0. The model
+weights are not included in this repository and are not redistributed here;
+anyone running the generator downloads them from Liquid AI and keeps the
+licence with them.
+
 No part of this repository is financial advice, and $FLYBRAIN is an art
 experiment rather than an investment.
