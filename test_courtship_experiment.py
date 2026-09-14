@@ -82,6 +82,40 @@ def test_annotation_eye_and_sides_recorded(tmp_path):
     assert all(len(room.bodies["A"].motor[k]) == 0 for k in ("fwd_L", "fwd_R", "steer_L", "steer_R"))
 
 
+@pytest.mark.skipif(os.environ.get("COURTSHIP_REAL_BRAIN") != "1", reason="set COURTSHIP_REAL_BRAIN=1")
+def test_real_cpu_gpu_song_exact():
+    results = []
+    for cls in ("flysim.FlyBrain", "flysim_gpu.FlyBrainGPU"):
+        room = ce.build_room(0, "song", brain_class=cls)
+        results.append(ce.run_trial(room, 10, 0, "song"))
+        del room
+    (cpu_row, cpu), (gpu_row, gpu) = results
+    differences = []
+    for key in cpu:
+        indices = np.flatnonzero(cpu[key] != gpu[key])
+        if indices.size:
+            step = int(indices[0])
+            differences.append((step, key, cpu[key][step], gpu[key][step]))
+    assert not differences, f"first differing step (zero-based), channel, CPU, GPU: {min(differences) if differences else None}"
+    assert cpu_row == gpu_row
+
+
+def test_build_room_selected_class(monkeypatch, tmp_path):
+    from test_courtship import female_fake
+    calls = []
+    def selected():
+        calls.append("male")
+        return make_parts()[0]
+    def female(**kwargs):
+        assert kwargs == dict(exc_scale=ce.FEMALE_EXC_SCALE, brain_class=selected)
+        calls.append("female")
+        return female_fake()
+    monkeypatch.setattr(bw, "SelectedMale", selected, raising=False)
+    monkeypatch.setattr(ce, "load_female", female)
+    ce.build_room(0, "song", brain_class="backrooms_world.SelectedMale", annotations_path=tmp_path / "missing")
+    assert calls == ["male", "female"]
+
+
 class FakeFly:
     def __init__(self, name, seed, ignores_sound=False):
         self.name, self.seed, self.window = name, seed, 0
@@ -219,11 +253,15 @@ class MainWithFakes(unittest.TestCase):
             self.assertEqual(len(data["outcomes"]), 8)
             self.assertEqual({(r["seed"], r["condition"]) for r in data["outcomes"]}, {(s, c) for s in (0, 1) for c in ce.CONDITIONS})
             self.assertEqual(data["steps"], 80)
+            self.assertEqual(data["environment"], dict(brain_class="flysim.FlyBrain",
+                torch_devices=dict(male=None, female=None)))
             self.assertEqual(data["budget_ladder"]["selected"], 2)
             self.assertEqual(data["summary"]["P0"]["expected_active_windows"], 0)
             self.assertEqual(data["summary"]["P0"]["per_seed"], [dict(seed=s, condition=c, active_windows=0) for s in (0, 1) for c in ("silence", "dark")])
             report = ce.paths(prefix)[3].read_text()
             self.assertIn("## P0: baseline (descriptive, no verdict)", report)
+            self.assertIn("brain class flysim.FlyBrain", report)
+            self.assertIn("same numbers on either device, verified by test", report)
             self.assertIn("## P6 his adaptation (descriptive)", report)
             self.assertIn("P1 active windows", report)
             self.assertIn("Sine-speed lagged rho", report)

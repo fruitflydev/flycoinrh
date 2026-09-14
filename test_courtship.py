@@ -105,10 +105,44 @@ def test_load_female_scale_once(tmp_path, monkeypatch, override, expected):
                                W=SimpleNamespace(data=None))
     monkeypatch.setattr(courtship, "FlyBrain", raw_brain)
     for _ in range(2):
-        fb = load_female(path, exc_scale=override)
+        fb = load_female(path, exc_scale=override, brain_class=raw_brain)
         assert fb.exc_scale == expected
         np.testing.assert_array_equal(fb.wdata, [8 * expected, -6, 0, 4 * expected])
         np.testing.assert_array_equal(fb.W.data, fb.wdata)
+
+
+@pytest.mark.parametrize("as_string", [False, True])
+def test_load_female_class_plumbing(tmp_path, monkeypatch, as_string):
+    from types import SimpleNamespace
+    path = tmp_path / "female.npz"
+    np.savez(path, soma_side=np.array(["L", "R"]))
+    calls = []
+    class Selected:
+        def __init__(self, path, p):
+            calls.append((path, p))
+            self.wdata = np.array([8., -6.], dtype=np.float32)
+            self.W = SimpleNamespace(data=None)
+    monkeypatch.setattr(bw, "SelectedFemale", Selected, raising=False)
+    from flysim import Params
+    p = Params()
+    fb = load_female(path, p, .25, "backrooms_world.SelectedFemale" if as_string else Selected)
+    assert isinstance(fb, Selected)
+    assert calls == [(path, p)]
+    np.testing.assert_array_equal(fb.wdata, [2., -6.])
+
+
+@pytest.mark.skipif(os.environ.get("COURTSHIP_REAL_BRAIN") != "1", reason="set COURTSHIP_REAL_BRAIN=1")
+def test_real_scaled_female_gpu_window():
+    from flysim_gpu import FlyBrainGPU
+    cpu = load_female(exc_scale=.5)
+    gpu = load_female(exc_scale=.5, brain_class=FlyBrainGPU)
+    np.testing.assert_array_equal(cpu.wdata, gpu.wdata)
+    drive = {tuple(cpu.where(type_re="^JO-A$")): 120.,
+             tuple(cpu.where(type_re="^JO-B$")): 80.}
+    a = cpu.run(drive, 60, seed=17)
+    b = gpu.run(drive, 60, seed=17)
+    assert gpu.weights_are_current()
+    assert a["_total_hz"] == b["_total_hz"], f"CPU={a['_total_hz']!r}, GPU={b['_total_hz']!r}"
 
 
 def test_blind_body_only_sound():

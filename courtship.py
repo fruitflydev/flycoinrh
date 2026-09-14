@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 from flysim import BUILD, FlyBrain, Params
+import backrooms_world as bw
 from backrooms_world import (FlyBody, FRAME_W, FRAME_H, SIM_STEPS, LIF_DT_MS,
                              MOTOR_NAMES, PlumeFly, motor_groups, per_side_scales)
 
@@ -28,9 +29,10 @@ def female_motor(fb):
     return motor_groups(fb, sides)
 
 
-def load_female(path=BUILD / "graph_female.npz", p=Params(), exc_scale=None):
+def load_female(path=BUILD / "graph_female.npz", p=Params(), exc_scale=None, brain_class=FlyBrain):
     """The stored factor calibrated the web-roaming fork; courtship loads raw for parity with the male."""
-    fb = FlyBrain(path, p=p)
+    cls = bw.brain_class(brain_class) if isinstance(brain_class, str) else brain_class
+    fb = cls(path, p=p)
     with np.load(path, allow_pickle=False) as z:
         # The builder stores raw weights; the fork scaled positive weights
         # at load time. Apply that convention once here, including W itself.
@@ -40,6 +42,7 @@ def load_female(path=BUILD / "graph_female.npz", p=Params(), exc_scale=None):
         fb.soma_side = z["soma_side"].astype(str)
     if not np.isfinite(fb.exc_scale) or fb.exc_scale < 0:
         raise ValueError("exc_scale must be finite and non-negative")
+    # Indexed assignment notifies GPU tracked weights; run() refreshes the device.
     fb.wdata[fb.wdata > 0] *= fb.exc_scale
     fb.W.data = fb.wdata
     return fb

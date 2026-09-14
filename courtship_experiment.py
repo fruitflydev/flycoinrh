@@ -111,9 +111,10 @@ class ExperimentRoom(bw.Room):
 
 
 def build_room(seed, condition, song_sound=None, brains=None,
-               annotations_path="data/body-annotations.feather"):
+               annotations_path="data/body-annotations.feather", brain_class=FlyBrain):
     """One construction for every condition; new bodies reset both states."""
-    male, female = brains if brains is not None else (FlyBrain(), load_female(exc_scale=FEMALE_EXC_SCALE))
+    cls = bw.brain_class(brain_class) if isinstance(brain_class, str) else brain_class
+    male, female = brains if brains is not None else (cls(), load_female(exc_scale=FEMALE_EXC_SCALE, brain_class=cls))
     eye = BlindEye(female) if condition == "dark" or FEMALE_EYE == "blind" else LuminanceEye(female)
     body = HerBody("B", female, eye, female_groups(female),
                    female_motor(female), seed=seed * 2 + 2)
@@ -257,10 +258,12 @@ def assert_not_published(prefix):
 
 def write_report(json_path):
     data = json.loads(Path(json_path).read_text(encoding="utf-8"))
+    environment = data.get("environment", {"brain_class": "flysim.FlyBrain", "torch_devices": {"male": None, "female": None}})
     lines = ["# Courtship experiment", "", f"Run: {len(data['seeds'])} seeds x {len(data['protocol_spec']['conditions'])} conditions x {data['steps']} steps; quick={data['quick']}.",
         "Quick runs are smoke tests; their two-seed verdicts are not the full ten-seed experiment.", "",
         "## Question", "Does his song change her graph's answer and their distance?", "",
         "## Measured versus chosen", "MEASURED: positions and headings, realised female speed, delivered sound, song, pC1 and vpoDN window rates.",
+        f"IMPLEMENTATION: brain class {environment['brain_class']}; torch devices {environment['torch_devices']}. Device is not a scientific choice. Required equivalence: same numbers on either device, verified by test (COURTSHIP_REAL_BRAIN=1); a failing test invalidates this claim.",
         "CHOSEN: accept means vpoDN > 0 Hz in at least 3 windows; approach/retreat compare last and first quarter mean distance. Equal distance is neither. Geometry is sampled before each window; speed is displacement during it.",
         "CHOSEN: paired seeds, annotation-backed male eye when available, uncalibrated gains, 12 ms brain windows, and the rate-to-motion mapping. No outcomes were tuned to differ across seeds.", "",
         f"CHOSEN: FEMALE_EXC_SCALE = {data['female_exc_scale']}; FEMALE_EYE = {data['female_eye']}.",
@@ -367,6 +370,7 @@ def main(argv=None, room_factory=None):
     ap.add_argument("--seeds", type=int, default=10)
     ap.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     ap.add_argument("--quick", type=int, choices=(0, 1), default=0)
+    ap.add_argument("--brain", default="flysim.FlyBrain")
     ap.add_argument("--out", default="build/courtship_v3")
     ap.add_argument("--budget-min", type=float, default=150)
     ap.add_argument("--log")
@@ -399,7 +403,11 @@ def main(argv=None, room_factory=None):
     if n < 1 or steps < 4 or not np.isfinite(args.budget_min) or args.budget_min <= 0:
         ap.error("positive seeds and budget, and at least four steps required")
     factory = room_factory or build_room
-    brains = None if room_factory else (FlyBrain(), load_female(exc_scale=FEMALE_EXC_SCALE))
+    cls = bw.brain_class(args.brain)
+    brains = None if room_factory else (cls(), load_female(exc_scale=FEMALE_EXC_SCALE, brain_class=cls))
+    environment = dict(brain_class=args.brain, torch_devices={
+        name: str(fb.device) if getattr(fb, "device", None) is not None else None
+        for name, fb in zip(("male", "female"), brains or (None, None))})
     rows, traces, timings = [], {}, []
     ladder = None
     seed = 0
@@ -428,7 +436,7 @@ def main(argv=None, room_factory=None):
     data = dict(protocol=args.protocol, protocol_spec=PROTOCOLS[args.protocol], steps=steps,
         seeds=list(range(n)), quick=bool(args.quick), outcomes=rows, summary=summarise(rows),
         female_exc_scale=FEMALE_EXC_SCALE, female_eye=FEMALE_EYE,
-        limitations=LIMITATIONS, budget_ladder=ladder, timing=timings, note=args.note)
+        limitations=LIMITATIONS, budget_ladder=ladder, timing=timings, environment=environment, note=args.note)
     save(prefix, data, traces)
     return 0
 
