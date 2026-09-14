@@ -127,6 +127,18 @@ def _entry(name, types, role, citation, confidence, *, present=True,
 
 
 DICTIONARY = {
+    "female_scent_orn": _entry(
+        "female scent ORN", ["^ORN_VA1v$"],
+        "Or47b volatile female pheromone receptor neurons",
+        "Kurtovic, Widmer & Dickson 2007 Nature 446:542 (pheromone pathways); "
+        "Lin et al. 2016 Neuron 90:1272 (Or47b); " + _FIG_NOT_VERIFIED + ".",
+        MEASURED, channel="smell"),
+    "female_scent_contact": dict(_entry(
+        "female scent contact", [],
+        "putative ppk23 contact chemosensory cells",
+        "Thistle et al. 2012 Cell 149:1140; Toda et al. 2012 Cell Reports 1:599; "
+        + _FIG_NOT_VERIFIED + ". Identity: putative receptor label, not verified ppk23 expression.",
+        UNCERTAIN, channel="smell"), receptor="^putative_ppk23$"),
     # ---- smell: the cVA pathway -------------------------------------------
     "ORN_DA1": _entry(
         "ORN_DA1", ["ORN_DA1"],

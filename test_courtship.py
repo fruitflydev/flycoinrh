@@ -10,7 +10,23 @@ import backrooms_dictionary as bd
 import backrooms_world as bw
 from courtship import BlindEye, HerBody, female_groups, female_motor, load_female
 from flysim import BUILD, FlyBrain
-from test_backrooms_world import FakeBrain, FakeEye, fake_sides, make_parts
+from test_backrooms_world import FakeBrain, FakeEye, fake_sides, FAKE_TYPES
+
+
+class MaleFake(FakeBrain):
+    def __init__(self, spont=None):
+        super().__init__(list(FAKE_TYPES) + ["ORN_VA1v", "contact", "P1", "hg1"], spont)
+
+    def where(self, type_re=None, receptor=None, **kwargs):
+        if receptor is not None:
+            assert receptor == "^putative_ppk23$"
+            return np.flatnonzero(self.types == "contact")
+        return super().where(type_re=type_re, **kwargs)
+
+
+def make_parts(spont=None):
+    fb = MaleFake(spont)
+    return fb, FakeEye(fb), bd.present_groups(fb), bw.motor_groups(fb, fake_sides(fb))
 
 
 def female_fake(types=None):
@@ -27,6 +43,55 @@ def female_fake(types=None):
 def her(fb=None):
     fb = female_fake() if fb is None else fb
     return HerBody("B", fb, FakeEye(fb), female_groups(fb), female_motor(fb), seed=2)
+
+
+def test_male_readouts_are_measured_population_mean_and_sums():
+    fb, eye, groups, motor = make_parts()
+    groups["P1"] = np.array([0, 1])
+    groups["song_sine_hg1"] = np.array([2, 3])
+    body = bw.FlyBody("A", fb, eye, groups, motor)
+    rates = np.arange(body.rec_idx.size, dtype=float) + 1
+    result = body.absorb({"all": rates, "_state": {}}, {}, 0, 0, time.time())
+    assert result["p1_hz"] == rates[body.rec_pos["P1"]].mean()
+    assert result["pulse_hz"] == rates[body.rec_pos["song_pulse_mn"]].sum()
+    assert result["sine_hz"] == rates[body.rec_pos["song_sine_hg1"]].sum()
+    assert result["song_hz"] == result["pulse_hz"]
+    del groups["P1"]
+    body = bw.FlyBody("A", fb, eye, groups, motor)
+    assert body.step(np.zeros((800, 1280)), 0, 0)["p1_hz"] is None
+
+
+def test_pair_routes_separate_jo_populations():
+    body = her()
+    result = body.step(np.zeros((800, 1280)), 999, (80, 23))
+    assert result["out"] == {"JO_A": 80., "JO_B": 23.}
+    assert result["in"]["sound_hz"] == (80., 23.)
+    assert result["sound_hz"] == 80.
+
+
+@pytest.mark.parametrize("distance", [1.9, 2.0, 2.1, 10.0])
+def test_female_scent_contact_boundary_and_zero_cva(distance):
+    fb, eye, groups, motor = make_parts()
+    room = bw.Room(fb, eye, groups, motor, body_b=her())
+    room.arena.A.x, room.arena.A.y = 5., 5.
+    room.arena.B.x, room.arena.B.y = 5. + distance, 5.
+    result = room.step()["A"]
+    expected = room.channels.smell_hz(distance)
+    assert result["rates"]["female_scent_orn"] == pytest.approx(expected)
+    assert result["rates"]["female_scent_contact"] == pytest.approx(expected if distance <= bw.CONTACT_MM else 0.)
+    assert result["rates"]["ORN_DA1"] == 0.
+    assert result["in"]["smell_hz"]["ORN_DA1"] == 0.
+
+
+def test_room_pair_uses_previous_window_and_own_full_rates():
+    fb, eye, groups, motor = make_parts()
+    room = bw.Room(fb, eye, groups, motor, body_b=her())
+    room.song_pair = (bw.song_full_hz(8) * .25, bw.song_full_hz(2) * .75)
+    expected = room.channels.sound_max * room.channels.falloff(room.arena.distance())
+    result = room.step()
+    assert result["B"]["in"]["sound_hz"] == pytest.approx((expected * .25, expected * .75))
+    assert result["A"]["in"]["sound_hz"] == 0.
+    assert room.song_pair == (result["A"]["pulse_hz"], result["A"]["sine_hz"])
 
 
 @pytest.mark.parametrize("override, expected", [(None, .5), (1.0, 1.0), (.25, .25)])
@@ -59,19 +124,21 @@ def test_blind_body_only_sound():
     assert () not in drive
     np.testing.assert_array_equal(drive[tuple(body.sound_idx)], body.sound_scale * 80)
     result = body.step(frame, 999, 80)
-    assert result['in'] == dict(smell_hz=0., sound_hz=80., eye_on_hz=0., eye_off_hz=0.)
+    assert result['in'] == dict(smell_hz=0., sound_hz=(80., 80.), eye_on_hz=0., eye_off_hz=0.)
+    assert result['sound_hz'] == 80.
 
 
 def test_dark_is_blind_and_silent():
     import courtship_experiment as ce
     male, _, _, _ = make_parts()
     with unittest.mock.patch.object(ce, "FEMALE_EYE", "luminance"):
-        room = ce.build_room(3, "dark", brains=(male, female_fake()))
+        room = ce.build_room(3, "dark", brains=(male, female_fake()),
+                             annotations_path="build/test-temp/absent.feather")
     body = room.bodies['B']
     assert isinstance(body.eye, BlindEye)
     room.song['A'] = 1000.
     result = room.step()
-    assert result['B']['in'] == dict(smell_hz=0., sound_hz=0., eye_on_hz=0., eye_off_hz=0.)
+    assert result['B']['in'] == dict(smell_hz=0., sound_hz=(0., 0.), eye_on_hz=0., eye_off_hz=0.)
 
 
 def test_groups_and_motor():
@@ -138,11 +205,12 @@ def test_room_twenty_steps_and_previous_song():
         r = room.step()
         assert r["A"]["song_hz"] == 100.0 * len(groups[bw.SONG_KEY])
         assert r["B"]["song_hz"] == 0.0
-        assert r["sound_hz"]["B"] == room.channels.sound_hz(previous, d)
+        expected = room.channels.sound_hz(previous * room.channels.song_full / bw.song_full_hz(8), d)
+        assert r["sound_hz"]["B"] == (expected, 0.)
         assert r["sound_hz"]["A"] == 0.0
-        assert r["B"]["out"]["JO_A"] == pytest.approx(r["sound_hz"]["B"])
+        assert r["B"]["out"]["JO_A"] == pytest.approx(expected)
         assert np.isfinite(r["B"]["her_answer"]["vpodn_hz"])
-        heard.append(r["sound_hz"]["B"])
+        heard.append(r["sound_hz"]["B"][0])
         previous = r["A"]["song_hz"]
     assert max(heard) > 0.0
     for start, fly in zip(before, (room.arena.A, room.arena.B)):

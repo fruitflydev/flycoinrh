@@ -102,8 +102,18 @@ class HerBody(FlyBody):
         key = tuple(self.sound_idx.tolist())
         if any(np.intersect1d(k, self.sound_idx).size for k in drive):
             raise ValueError("sound drive overlaps the eye's own input")
-        drive[key] = (self.sound_scale * float(max(0.0, sound_hz))).astype(np.float32)
+        a, b = self.sound_pair(sound_hz)
+        hz = np.zeros(self.sound_idx.size, dtype=np.float64)
+        for group, rate in (("JO_A", a), ("JO_B", b)):
+            hz[np.searchsorted(self.sound_idx, self.groups[group])] = rate
+        drive[key] = (self.sound_scale * hz).astype(np.float32)
         return drive
+
+    @staticmethod
+    def sound_pair(sound):
+        """A scalar retains the same nominal rate at both JO groups."""
+        a, b = (sound, sound) if np.isscalar(sound) else sound
+        return float(max(0., a)), float(max(0., b))
 
     def absorb(self, r, drive, smell_hz, sound_hz, t0):
         """Record mean answer rates in the same window telemetry as FlyBody."""
@@ -128,8 +138,9 @@ class HerBody(FlyBody):
             "fly": self.name, "window": self.windows, "state_carried": carried,
             "turn": float(turn), "speed": float(speed), **parts, "motor": motor,
             "song_hz": 0.0, "song_group": None, "song_cells": 0,
+            "sound_hz": max(self.sound_pair(sound_hz)),
             "her_answer": dict(self.answer),
-            "in": {"smell_hz": 0.0, "sound_hz": float(max(0.0, sound_hz)),
+            "in": {"smell_hz": 0.0, "sound_hz": self.sound_pair(sound_hz),
                    "eye_on_hz": eye_rates[0], "eye_off_hz": eye_rates[1]},
             "out": {k: rates[k] for k in ("JO_A", "JO_B")},
             "rates": rates, "counts": counts,

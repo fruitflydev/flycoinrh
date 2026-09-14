@@ -7,10 +7,79 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 import courtship_experiment as ce
 import backrooms_world as bw
-from test_backrooms_world import make_parts
+from test_courtship import make_parts
+
+
+def test_shuffled_preserves_paired_rows():
+    pairs = np.array([[1., 101.], [2., 102.], [3., 103.], [4., 104.]])
+    room = FakeRoom(3, "shuffled", pairs)
+    actual = np.array([room.listener_sound((0., 0.)) for _ in pairs])
+    expected = np.random.default_rng(np.random.SeedSequence([3, 731])).permutation(pairs)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual[:, 1] - actual[:, 0], 100.)
+    for condition in ("silence", "dark"):
+        room.configure(3, condition)
+        assert room.listener_sound((12., 34.)) == (0., 0.)
+
+
+def test_p6_lag_direction_and_p1_threshold():
+    row, trace = trials()["song"]
+    n = len(trace["distance_mm"])
+    trace["p1_hz"] = np.array([0., 1., 0., 2.] + [0.] * (n - 4))
+    trace["distance_mm"] = np.arange(n, dtype=float)
+    trace["her_speed_mm_s"] = -np.arange(n, dtype=float)
+    trace["pulse_hz"] = np.r_[999., np.arange(n - 1)]
+    trace["sine_hz"] = np.r_[-999., -np.arange(n - 1)]
+    result = ce.outcome(0, "song", trace, row["start"])
+    assert result["p1_active_windows"] == 2
+    assert result["pulse_distance_lagged_rho"] == pytest.approx(1.)
+    assert result["pulse_speed_lagged_rho"] == pytest.approx(-1.)
+    assert result["sine_distance_lagged_rho"] == pytest.approx(-1.)
+    assert result["sine_speed_lagged_rho"] == pytest.approx(1.)
+
+
+def test_sight_ok_measures_actual_start_not_only_front_probe():
+    for x, expected in ((12., True), (8., False)):
+        room = FakeRoom(0, "song")
+        room.arena = bw.Arena(start=[(10., 10., 0.), (x, 10., 0.)])
+        row, _ = ce.run_trial(room, 4, 0, "song")
+        assert row["sight_ok"] is expected
+        assert any(c["L1_columns_on_fly"] for c in row["sight_check"]["cases"])
+
+
+def test_annotation_eye_and_sides_recorded(tmp_path):
+    import pandas as pd
+    from flyeye import FlyEye
+    from test_courtship import female_fake
+    from test_backrooms_world import fake_sides
+    male = make_parts()[0]
+    annotations = tmp_path / "body-annotations.feather"
+    sides = fake_sides(male)
+    pd.DataFrame(dict(bodyId=male.bodies[::-1], somaSide=sides[::-1],
+        assignedOlHex1=np.arange(male.n)[::-1],
+        assignedOlHex2=(np.arange(male.n) % 3)[::-1])).to_feather(annotations)
+    room = ce.build_room(0, "song", brains=(male, female_fake()), annotations_path=annotations)
+    assert isinstance(room.bodies["A"].eye, FlyEye)
+    assert room.male_setup["sides_restored"] is True
+    assert room.male_setup["male_eye"] == "columnar"
+    for key in ("fwd_L", "fwd_R", "steer_L", "steer_R"):
+        assert len(room.bodies["A"].motor[key]) == 1
+    assert room.channels.min_radius == pytest.approx(bw.column_spacing_px(bw.distinct_columns(room.bodies["A"].eye)))
+    with patch.object(room, "sight_check", wraps=room.sight_check) as check:
+        row, trace = ce.run_trial(room, 4, 0, "song")
+    check.assert_called_once_with()
+    assert isinstance(row["sight_ok"], bool)
+    assert row["male_eye"] == "columnar" and row["sides_restored"]
+    assert {"p1_hz", "pulse_hz", "sine_hz", "her_sound_a_hz", "her_sound_b_hz"} <= trace.keys()
+    room = ce.build_room(0, "song", brains=(male, female_fake()), annotations_path=tmp_path / "missing")
+    assert isinstance(room.bodies["A"].eye, ce.LuminanceEye)
+    assert room.male_setup["sides_restored"] is False
+    assert room.male_setup["male_eye"] == "luminance"
+    assert all(len(room.bodies["A"].motor[k]) == 0 for k in ("fwd_L", "fwd_R", "steer_L", "steer_R"))
 
 
 class FakeFly:
@@ -20,6 +89,7 @@ class FakeFly:
 
     def step(self, frame, smell, sound):
         self.window += 1
+        sound = max(ce.HerBody.sound_pair(sound))
         answer = 0 if self.ignores_sound else sound * (self.window % 3 != 0)
         return dict(turn=0.05 * np.sin(self.window + self.seed), speed=0.02 + self.seed * 0.01,
             song_hz=float((self.window * 37 + self.seed * 13) % 101) if self.name == "A" else 0.,
@@ -32,6 +102,9 @@ class FakeRoom(ce.ExperimentRoom):
         self.channels = bw.Channels()
         self.song = dict(A=0., B=0.)
         self.bodies = {n: FakeFly(n, seed, ignores_sound) for n in ("A", "B")}
+        from test_backrooms_world import FakeEye
+        self.bodies["A"].eye = FakeEye(make_parts()[0])
+        self.male_setup = dict(male_eye="fake", sides_restored=False)
         self.configure(seed, condition, song_sound)
 
 
@@ -81,12 +154,13 @@ class Paired(unittest.TestCase):
         male, _, _, _ = make_parts()
         for eye_setting in ("blind", "luminance"):
             with patch.object(ce, "FEMALE_EYE", eye_setting):
-                room = ce.build_room(2, "dark", brains=(male, female_fake()))
+                room = ce.build_room(2, "dark", brains=(male, female_fake()),
+                                     annotations_path="build/test-temp/absent.feather")
             body = room.bodies["B"]
             self.assertIsInstance(body.eye, ce.BlindEye)
             room.song["A"] = 1000
             r = room.step()
-            self.assertEqual(r["B"]["in"]["sound_hz"], 0)
+            self.assertEqual(r["B"]["in"]["sound_hz"], (0., 0.))
             drive = body.drive(np.ones((bw.FRAME_H, bw.FRAME_W)), 0, room.listener_sound(1000))
             self.assertEqual(set(drive), {tuple(body.sound_idx)})
             np.testing.assert_array_equal(drive[tuple(body.sound_idx)], 0)
@@ -150,6 +224,9 @@ class MainWithFakes(unittest.TestCase):
             self.assertEqual(data["summary"]["P0"]["per_seed"], [dict(seed=s, condition=c, active_windows=0) for s in (0, 1) for c in ("silence", "dark")])
             report = ce.paths(prefix)[3].read_text()
             self.assertIn("## P0: baseline (descriptive, no verdict)", report)
+            self.assertIn("## P6 his adaptation (descriptive)", report)
+            self.assertIn("P1 active windows", report)
+            self.assertIn("Sine-speed lagged rho", report)
             self.assertIn("FEMALE_EXC_SCALE = 1.0; FEMALE_EYE = blind", report)
             self.assertIn("Seed 1, dark: 0 active windows.", report)
             self.assertIn("<!-- interpretation: to be written after the run -->", report)
@@ -191,5 +268,5 @@ class Outputs(unittest.TestCase):
         self.assertEqual(spread["song"]["accept"], 2)
         identical = [dict(r, approach=True, retreat=False) for r in rows]
         self.assertIn("every seed gives the same outcome", ce.summarise(identical)["seed_spread"]["song"]["sentence"])
-        self.assertEqual(ce.PROTOCOLS["v2"]["default_seeds"], 10)
-        self.assertEqual(ce.PROTOCOLS["v2"]["steps"], 400)
+        self.assertEqual(ce.PROTOCOLS["v3"]["default_seeds"], 10)
+        self.assertEqual(ce.PROTOCOLS["v3"]["steps"], 400)
