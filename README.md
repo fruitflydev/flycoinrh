@@ -140,7 +140,7 @@ broadcast. Three of the launches, including the real one:
 | | first launch | paired against GOOGL | **$FLYBRAIN** |
 |---|---|---|---|
 | token | test (TEST) | test (TEST) | flybrain (FLYBRAIN) |
-| contract | `0xd00d0419651c893e8c04edf5e0e074e950c370d3` | `0xcc80a38afd807bfed1b9c21b6f236ea8ee651dc3` | `0x4eb990547bce4a982432ca88cf5fae7eed1a2d35` |
+| contract | first address below | second address below | third address below |
 | transaction | `0x1b3cda17…45484932` | `0x9602a50f…00e5aca2` | `0x63b2164f…0d12a4f1c` |
 | block | 59557979 | 59581451 | 59614342 |
 | creator | `0x739C…bFc3` | `0x739C…bFc3` | `0x6ce4085E…b42A` (a fresh wallet) |
@@ -148,10 +148,17 @@ broadcast. Three of the launches, including the real one:
 | tax | 2.00% | 2.00% | 1.00% |
 | cost | 0.000973 ETH | 0.000979 ETH | 0.000977 ETH |
 
+Contract addresses, in table order:
+
+- `0xd00d0419651c893e8c04edf5e0e074e950c370d3`
+- `0xcc80a38afd807bfed1b9c21b6f236ea8ee651dc3`
+- `0x4eb990547bce4a982432ca88cf5fae7eed1a2d35`
+
 Every `status` `0x1`, every one 1,000,000,000 supply fixed at launch. The
 test launches came from the first wallet; the real one, $FLYBRAIN, from a
 second wallet created for it. Its creator fees accrue as GOOGL and are shown
-on [its token page](https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432ca88cf5fae7eed1a2d35)
+on [its token page](
+https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432ca88cf5fae7eed1a2d35)
 — read them there rather than here, because they move. The first launch in full:
 
 | | |
@@ -165,12 +172,15 @@ on [its token page](https://www.ponsfamily.com/launchpad/0x4eb990547bce4a982432c
 | cost | 0.000973 ETH — 0.0005 launch fee plus 0.000473 gas |
 
 - https://www.ponsfamily.com/launchpad/0xd00d0419651c893e8c04edf5e0e074e950c370d3
-- https://robinhoodchain.blockscout.com/tx/0x1b3cda17f6456c9a4a67989770be97812e6ca67b3f1f1fb85d2ff04645484932
+- Look up the full transaction above at https://robinhoodchain.blockscout.com/
 
 Read the receipt yourself rather than taking the table's word for it:
 
 ```bash
-curl -s https://rpc.mainnet.chain.robinhood.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0x1b3cda17f6456c9a4a67989770be97812e6ca67b3f1f1fb85d2ff04645484932"]}'
+curl -s https://rpc.mainnet.chain.robinhood.com \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":[
+"0x1b3cda17f6456c9a4a67989770be97812e6ca67b3f1f1fb85d2ff04645484932"]}'
 ```
 
 `from` is the fly's wallet, `status` is `0x1`, and among the logs is a fresh
@@ -456,6 +466,87 @@ If you build something with it, open an issue — we would rather see it than
 not.
 
 
+## A female in the room
+
+`courtship.HerBody` is a second body in `backrooms_world.Room`, with a
+139,255-neuron female brain built from FlyWire FAFB v783.
+He sings, she hears through JO-A and JO-B, and her pC1 and vpoDN are read.
+A pre-registered experiment pairs song, silence, shuffled song and dark on
+ten seeds, for 20 seconds each.
+
+Build the male graph as above, then get the female CSV exports from the
+[FlyWire Codex](https://codex.flywire.ai/) export site.
+An account is required to export; the data stays CC-BY 4.0.
+Put these six files in `data/female/`:
+
+- `classification.csv.gz`
+- `consolidated_cell_types.csv.gz`
+- `neurons.csv.gz`
+- `column_assignment.csv.gz`
+- `coordinates.csv.gz`
+- `connections_princeton.csv.gz`
+
+```bash
+py build_graph_female.py       # -> build/graph_female.npz
+py courtship_experiment.py --quick 1 --out build/courtship_smoke
+py courtship_experiment.py --out build/courtship_local
+```
+
+The quick run is a smoke test: two seeds, 80 steps, not the experiment.
+For the GPU, add `--brain flysim_gpu.FlyBrainGPU` to either experiment command.
+It selects both brains; the CPU and GPU spike-equivalence test is recorded
+in the commits. Each output prefix gets `_experiment.json`,
+`_trajectories.npz`, `_trajectories.png` and `_report.md` under `build/`.
+The published prefix, `build/courtship`, is refused, including
+aliases of its files, so a run cannot overwrite the published evidence.
+
+The ten-seed numbers below are from the published `build/courtship_report.md`.
+Differences are paired across seeds; support requires a difference above
+two standard errors (SE), with n = 10 for each row.
+
+| Prediction | Paired difference | SE | Verdict |
+|---|---:|---:|---|
+| P1: vpoDN, song - silence | +132.7 Hz | 12.6 | supported |
+| P2: pC1, song - silence | +3.2 Hz | 0.5 | supported |
+| P3: vpoDN, song - shuffled | -11.8 Hz | 16.9 | not supported |
+| P4: last distance, silence - song | -3.5 mm | 2.8 | not supported |
+
+Accept was 10/10 with song and shuffled, 0/10 with silence and dark;
+approach was 4/10, 5/10, 2/10 and 2/10 respectively, so distance outcomes vary.
+Accept is a chosen rule: vpoDN above zero in at least three windows.
+P3 failed: shuffled song does as well, as expected when her ear hears a
+rate rather than pulse timing; energy mattered here, timing did not.
+P4 failed: she walks when sung to and stands when not, but a rate-based
+ear does not by itself give her a direction, and distance includes his motion.
+His P1 active windows span 18-400 across seeds and conditions; lagged
+pulse/sine correlations with her previous distance and speed are inconsistent,
+mostly weak, and do not establish adaptation.
+
+What is NOT real here, stated plainly:
+
+- Pulse and sine are summed motor rates, not song waveforms; her ear hears a rate.
+- Her eye is blind in this uniform arena: silence vpoDN was 54-206 Hz with
+  the eye, zero with it blind. Dark and silence therefore coincide.
+- She is loaded raw, excitation scale 1.0, for parity with him; this overrides
+  the female graph's stored scale. It is a choice, not a fitted result.
+- vpoDN is DNp37 by alias, two cells; pC1a-e has ten cells.
+- His P1 is the dictionary's uncertain 86-cell group, not a settled identity.
+- The contact cells carry a putative ppk23 label.
+- Her scent is a chosen drive to him, not a measured plume; cVA is held at
+  zero because there is no other male. She has no pheromone input.
+- He is inside the loop: her position affects his inputs and their distance.
+  No adaptation mechanism was added, and none was established by these readouts.
+- JO-B clips at its two-cell ceiling in some windows; the count is reported
+  per trial. Shuffling preserves input rates, not the downstream response.
+- The brain runs 12 ms per 50 ms world step. Gains, rate-to-motion mappings
+  and outcome rules are chosen; rates and trajectories are measured.
+
+What is next:
+
+- A waveform ear that hears pulse timing, so P3 can be tested properly.
+- Contrast and motion vision for her.
+- A state for her that can say no.
+
 ## Hosting it
 
 The roaming service runs as a single container. Build the graph first, so
@@ -473,7 +564,9 @@ nothing to load. The service reads `PORT` and binds to every interface.
 | variable | purpose |
 |---|---|
 | `PORT` | set by the host |
-| `FLY_STATE_DIR` | where `mb_gains.npz` is kept; point it at a volume such as `/data` so learning survives redeploys |
+| `FLY_STATE_DIR` | where `mb_gains.npz` is kept |
+
+Point `FLY_STATE_DIR` at a volume such as `/data` so learning survives redeploys.
 
 The container has no wallet and no chain keys, and never signs anything.
 

@@ -318,7 +318,10 @@ class Cli(unittest.TestCase):
         self.assertEqual(ce.budget_ladder(2, 100, 100)["selected"], 2)
 
     def test_published_refusal(self):
-        self.assertEqual(ce.main(["--out", str(ce.PUBLISHED)], room_factory=FakeRoom), 4)
+        self.assertEqual(ce.PUBLISHED, Path("build/courtship"))
+        for prefix in ("build/courtship", "build/COURTSHIP", "build/../build/courtship"):
+            with self.subTest(prefix=prefix):
+                self.assertEqual(ce.main(["--out", prefix], room_factory=FakeRoom), 4)
 
     def test_invalid_steps(self):
         with self.assertRaises(SystemExit):

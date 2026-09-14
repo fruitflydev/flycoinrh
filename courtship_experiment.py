@@ -76,7 +76,7 @@ LIMITATIONS = [
     "Male eye and soma-side availability are recorded per trial; gains remain uncalibrated.",
     "Distance changes include both bodies; approach is not an isolated female command.",
     "Shuffling matches the input rate multiset, not the downstream neural response."]
-PUBLISHED = Path("build/courtship_published")
+PUBLISHED = Path("build/courtship")
 
 
 class LuminanceEye:
@@ -382,7 +382,7 @@ def main(argv=None, room_factory=None):
     ap.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     ap.add_argument("--quick", type=int, choices=(0, 1), default=0)
     ap.add_argument("--brain", default="flysim.FlyBrain")
-    ap.add_argument("--out", default="build/courtship_v3")
+    ap.add_argument("--out", default="build/courtship_local")
     ap.add_argument("--budget-min", type=float, default=150)
     ap.add_argument("--log")
     ap.add_argument("--reanalyse")

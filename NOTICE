@@ -9,6 +9,11 @@ The connectome is not ours to license. The male Drosophila CNS dataset is
 released under CC-BY 4.0, and it stays under CC-BY wherever it goes. If you
 fork this, keep that attribution: it is the whole reason any of this is real.
 
+The female connectome dataset is FlyWire FAFB v783, © the FlyWire Consortium
+(Princeton, Cambridge and partners), released CC-BY 4.0. Dorkenwald et al.,
+*Nature* 2024; Schlegel et al., *Nature* 2024. The exports are not redistributed
+here. The data stays CC-BY wherever it goes; keep that attribution with it.
+
 The backrooms lines (backrooms_talk/) are written by LFM2.5-1.2B-Instruct, a
 language model by Liquid AI, used under the LFM Open License v1.0. The model
 weights are not included in this repository and are not redistributed here;
