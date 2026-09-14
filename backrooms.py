@@ -501,8 +501,18 @@ class Captioner:
             song_key = SONG_FALLBACK_KEY
         self.song_key = song_key
         self.flies = tuple(flies)
-        if len(self.flies) != 2:
-            raise ValueError("the room holds exactly two flies")
+        # two flies (this server's room) or more (backrooms_talk's four). With
+        # two, every detector, line and order below is what it always was.
+        # With more, facing is per ordered pair, approach / leave per
+        # unordered pair, and a sensory line names a source fly only when the
+        # step's record says exactly one fly delivered that drive (the
+        # optional per-fly "drive_from": {group: name}); otherwise the plain
+        # "fires" template is written, so a line never names one fly for a
+        # drive several delivered.
+        if len(self.flies) < 2 or len(set(self.flies)) != len(self.flies):
+            raise ValueError("the room holds two or more flies with distinct names")
+        self.others = {f: tuple(o for o in self.flies if o != f) for f in self.flies}
+        self.pairs = tuple((a, b) for i, a in enumerate(self.flies) for b in self.flies[i + 1:])
         self.dt = float(dt)
         self.seq = int(seq0)
         self.confirm = int(confirm)
@@ -512,13 +522,13 @@ class Captioner:
                          for k in self.keys} for f in self.flies}
         self.song = {f: LevelDetector(SONG_ON_SPIKES * SPIKE_HZ, SONG_OFF_SPIKES * SPIKE_HZ, confirm)
                      for f in self.flies}
-        self.facing = {f: Facing() for f in self.flies}
+        self.facing = {f: {o: Facing() for o in self.others[f]} for f in self.flies}
         self.back = {f: Crossing(lambda v: v < -BACK_MM_S, lambda v: v >= -BACK_REARM_MM_S)
                      for f in self.flies}
         self.stop = {f: Crossing(lambda v: v < STOP_MM_S, lambda v: v >= STOP_REARM_MM_S)
                      for f in self.flies}
-        self.near = Crossing(lambda d: d < NEAR_MM, lambda d: d >= NEAR_REARM_MM)
-        self.far = Crossing(lambda d: d > FAR_MM, lambda d: d <= FAR_REARM_MM)
+        self.near = {p: Crossing(lambda d: d < NEAR_MM, lambda d: d >= NEAR_REARM_MM) for p in self.pairs}
+        self.far = {p: Crossing(lambda d: d > FAR_MM, lambda d: d <= FAR_REARM_MM) for p in self.pairs}
         self.prev = {f: None for f in self.flies}     # (x, y, heading) of the last step
 
     # -- rendering -------------------------------------------------------------
@@ -559,12 +569,12 @@ class Captioner:
         {key: hz}, "song": hz}, "B": {...}}. Returns the new lines, in a fixed
         order, possibly none.
         """
-        a, b = self.flies
-        other = {a: b, b: a}
-        geo, vel = {}, {}
+        geo, vel = {}, {}                  # geo[(fly, other)] = (distance, bearing)
         for f in self.flies:
-            s, o = flies[f], flies[other[f]]
-            geo[f] = geometry(s["x"], s["y"], s["heading"], o["x"], o["y"])
+            s = flies[f]
+            for o_name in self.others[f]:
+                o = flies[o_name]
+                geo[(f, o_name)] = geometry(s["x"], s["y"], s["heading"], o["x"], o["y"])
             p = self.prev[f]
             if p is None:
                 vel[f] = None
@@ -572,12 +582,15 @@ class Captioner:
                 vx, vy = (float(s["x"]) - p[0]) / self.dt, (float(s["y"]) - p[1]) / self.dt
                 h = math.radians(float(s["heading"]))
                 along = vx * math.cos(h) + vy * math.sin(h)
-                dist = geo[f][0]
-                if dist > 0.0:
-                    ux, uy = (float(o["x"]) - float(s["x"])) / dist, (float(o["y"]) - float(s["y"])) / dist
-                    closing = vx * ux + vy * uy
-                else:
-                    closing = 0.0
+                closing = {}
+                for o_name in self.others[f]:
+                    o = flies[o_name]
+                    dist = geo[(f, o_name)][0]
+                    if dist > 0.0:
+                        ux, uy = (float(o["x"]) - float(s["x"])) / dist, (float(o["y"]) - float(s["y"])) / dist
+                        closing[o_name] = vx * ux + vy * uy
+                    else:
+                        closing[o_name] = 0.0
                 vel[f] = {"speed": math.hypot(vx, vy), "along": along, "closing": closing,
                           "dheading": wrap_deg(float(s["heading"]) - p[2])}
 
@@ -586,6 +599,7 @@ class Captioner:
         for f in self.flies:
             rates = flies[f].get("rates", {})
             drive = flies[f].get("drive", {})
+            sources = flies[f].get("drive_from", {}) or {}
             for k in self.keys:
                 if k not in rates:
                     continue
@@ -596,9 +610,13 @@ class Captioner:
                 if ev == "onset":
                     tpl = "onset"
                     d = float(drive.get(k, 0.0))
-                    if k in SENSORY_TEMPLATES and d > 0.0:
+                    if len(self.flies) == 2:
+                        src = self.others[f][0]
+                    else:
+                        src = sources.get(k)
+                    if k in SENSORY_TEMPLATES and d > 0.0 and src in self.others[f]:
                         tpl = SENSORY_TEMPLATES[k]
-                        fields.update(drive=d, other=other[f])
+                        fields.update(drive=d, other=src)
                     out.append(self._line(t, f, "onset", k, rates[k], tpl, **fields))
                 else:
                     out.append(self._line(t, f, "offset", k, rates[k], "offset", **fields))
@@ -613,32 +631,34 @@ class Captioner:
                     fields = self._fields(self.song_key)
                     out.append(self._line(t, f, "song_end", self.song_key, song, "song_end",
                                           n=self.sizes[self.song_key], name=fields["name"]))
-        # 2. facing, per fly
+        # 2. facing, per fly (and, with more than two flies, per other fly)
         for f in self.flies:
-            dist, bearing = geo[f]
-            ev = self.facing[f].update(bearing)
-            if ev is None:
-                continue
-            v = vel[f]
-            dh = v["dheading"] if v else 0.0
-            # the fly's own turn moved the bearing toward zero iff dh has the
-            # sign of the bearing it had before the turn (bearing + dh)
-            prev_bearing = wrap_deg(bearing + dh)
-            own = dh * prev_bearing
-            if ev == "in":
-                tpl = "toward" if own > 0.0 else "faces"
-                out.append(self._line(t, f, "toward", "", bearing, tpl, other=other[f], dist=dist))
-            else:
-                tpl = "away" if own < 0.0 else "unfaces"
-                out.append(self._line(t, f, "away", "", bearing, tpl, other=other[f], dist=dist))
+            for o_name in self.others[f]:
+                dist, bearing = geo[(f, o_name)]
+                ev = self.facing[f][o_name].update(bearing)
+                if ev is None:
+                    continue
+                v = vel[f]
+                dh = v["dheading"] if v else 0.0
+                # the fly's own turn moved the bearing toward zero iff dh has the
+                # sign of the bearing it had before the turn (bearing + dh)
+                prev_bearing = wrap_deg(bearing + dh)
+                own = dh * prev_bearing
+                if ev == "in":
+                    tpl = "toward" if own > 0.0 else "faces"
+                    out.append(self._line(t, f, "toward", "", bearing, tpl, other=o_name, dist=dist))
+                else:
+                    tpl = "away" if own < 0.0 else "unfaces"
+                    out.append(self._line(t, f, "away", "", bearing, tpl, other=o_name, dist=dist))
         # 3. distance, pair events attributed to the fly that moved it more
-        dist = geo[a][0]
-        if self.near.update(dist):
-            f = self._mover(vel, key="closing", sign=1.0)
-            out.append(self._line(t, f, "approach", "", dist, "approach", other=other[f]))
-        if self.far.update(dist):
-            f = self._mover(vel, key="closing", sign=-1.0)
-            out.append(self._line(t, f, "leave", "", dist, "leave", other=other[f]))
+        for pair in self.pairs:
+            dist = geo[pair][0]
+            if self.near[pair].update(dist):
+                f, o_name = self._mover(vel, pair, sign=1.0)
+                out.append(self._line(t, f, "approach", "", dist, "approach", other=o_name))
+            if self.far[pair].update(dist):
+                f, o_name = self._mover(vel, pair, sign=-1.0)
+                out.append(self._line(t, f, "leave", "", dist, "leave", other=o_name))
         # 4. backing and stopping, per fly, from the room's kinematics
         for f in self.flies:
             v = vel[f]
@@ -658,13 +678,16 @@ class Captioner:
             self.prev[f] = (float(s["x"]), float(s["y"]), float(s["heading"]))
         return out
 
-    def _mover(self, vel, key, sign):
-        """The fly whose `key` velocity component times `sign` is larger; A on ties or no velocity."""
-        a, b = self.flies
+    def _mover(self, vel, pair, sign):
+        """
+        (mover, other) for a pair: the fly whose velocity toward the other,
+        times `sign`, is larger; the pair's first fly on ties or no velocity.
+        """
+        a, b = pair
         va, vb = vel[a], vel[b]
         if va is None or vb is None:
-            return a
-        return b if sign * vb[key] > sign * va[key] else a
+            return a, b
+        return (b, a) if sign * vb["closing"][a] > sign * va["closing"][b] else (a, b)
 
 
 def allowed_pattern(dictionary=None):

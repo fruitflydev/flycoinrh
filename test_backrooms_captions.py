@@ -351,6 +351,77 @@ class Song(unittest.TestCase):
         self.assertTrue(lines[0]["text"].startswith("B  song starts: wing motor neurons 300 Hz summed over 66 cells ("))
 
 
+class MoreThanTwoFlies(unittest.TestCase):
+    """
+    backrooms_talk's four flies through the same Captioner: the wording is the
+    templates', facing is per ordered pair, approach / leave per pair, and a
+    sensory line names a source only when the record names exactly one.
+    """
+
+    NAMES = ("A", "B", "C", "D")
+
+    def still(self, **edits):
+        pos = {"A": (5.0, 10.0, 0.0), "B": (12.0, 10.0, 180.0), "C": (5.0, 18.0, 0.0), "D": (15.0, 18.0, 180.0)}
+        flies = {}
+        for n, (x, y, h) in pos.items():
+            flies[n] = {"x": x, "y": y, "heading": h, "rates": {k: 0.0 for k in SIZES},
+                        "drive": {k: 0.0 for k in ("ORN_DA1", "JO_A", "JO_B")}, "song": 0.0}
+        for n, fn in edits.items():
+            fn(flies[n])
+        return flies
+
+    def test_refuses_fewer_than_two_or_repeated_names(self):
+        for bad in (("A",), ("A", "A")):
+            with self.assertRaises(ValueError):
+                br.Captioner(SIZES, flies=bad)
+
+    def test_a_sensory_line_names_the_single_source_or_none(self):
+        for source, expect in (("C", "A  ORN_DA1 fires 120 Hz under 100 Hz of cVA drive from C (cVA "
+                                     "pheromone receptor neurons (Or67d, glomerulus DA1), Kurtovic 2007)"),
+                               (None, "A  ORN_DA1 fires 120 Hz (cVA pheromone receptor neurons (Or67d, "
+                                      "glomerulus DA1), Kurtovic 2007)")):
+            cap = br.Captioner(SIZES, flies=self.NAMES)
+            lines = []
+            for i in range(30):
+                def smell(f, on=(i >= 10)):
+                    f["rates"]["ORN_DA1"] = 120.0 if on else 0.0
+                    f["drive"]["ORN_DA1"] = 100.0 if on else 0.0
+                    if source:
+                        f["drive_from"] = {"ORN_DA1": source}
+                lines += cap.update(i * DT, self.still(A=smell))
+            self.assertEqual([ln["text"] for ln in lines], [expect])
+            for ln in lines:
+                self.assertTrue(any(p.match(ln["text"]) for p in br.template_patterns(flies=self.NAMES)))
+
+    def test_facing_and_approach_are_per_pair(self):
+        cap = br.Captioner(SIZES, flies=self.NAMES)
+        lines = []
+        xs = [15.0, 15.0, 11.0, 7.0]                       # D walks along y = 18 toward C at x = 5
+        for i, x in enumerate(xs):
+            def walk(f, x=x):
+                f["x"] = x
+            lines += cap.update(i * DT, self.still(D=walk))
+        got = [(ln["kind"], ln["fly"], ln["text"]) for ln in lines]
+        self.assertEqual(got, [("approach", "D", "D  approaches C: 2.0 mm")])
+        self.assertEqual(len(cap.pairs), 6)
+        self.assertEqual(sorted(cap.facing["A"]), ["B", "C", "D"])
+
+    def test_two_flies_ignore_drive_from(self):
+        r = flat_record(200)
+        r["A"]["rates"]["ORN_DA1"][100:120] = 120.0
+        r["A"]["drive"]["ORN_DA1"][100:120] = 100.0
+        cap = br.Captioner(SIZES)
+        lines = []
+        for i in range(200):
+            flies = {f: {"x": float(r[f]["x"][i]), "y": float(r[f]["y"][i]), "heading": float(r[f]["heading"][i]),
+                         "rates": {k: float(v[i]) for k, v in r[f]["rates"].items()},
+                         "drive": {k: float(v[i]) for k, v in r[f]["drive"].items()},
+                         "song": 0.0, "drive_from": {"ORN_DA1": "Z"}} for f in ("A", "B")}
+            lines += cap.update(r["t"][i], flies)
+        self.assertEqual(lines[0]["text"], br.caption_record(r, SIZES)[0]["text"])
+        self.assertIn("from B (", lines[0]["text"])
+
+
 class Geometry(unittest.TestCase):
     def test_bearing_and_distance(self):
         d, b = br.geometry(0, 0, 0, 3, 4)
