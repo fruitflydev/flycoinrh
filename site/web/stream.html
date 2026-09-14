@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FLYBRAIN — stream deck</title>
+<meta name="description" content="A 16:9 / 9:16 overlay for putting the fly on socials. Inner screen, hex retina, mushroom-body carving, descending-neuron compass.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#06070a; --plate:#0b0d12; --line:#1a1f28; --inset:#04050a;
+  --ink:#e2eaf1; --ink-dim:#9dabb7; --ink-faint:#75828d;
+  --cyan:#7deaff; --amber:#f0bc5f; --live:#6fdca6; --red:#ff8b7a;
+  --serif:"Instrument Serif",Georgia,serif;
+  --sans:"Archivo",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--ground)}
+body{
+  color:var(--ink); font-family:var(--sans); overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+html.overlay, html.overlay body{background:transparent}
+html.retina body{background:#020306}
+
+.deck{
+  position:relative; width:1920px; height:1080px;
+  transform-origin:top left;
+}
+html.vertical .deck{width:1080px; height:1920px}
+
+/* breath — membrane mapped to a living vignette */
+.breath{
+  pointer-events:none; position:absolute; inset:0; z-index:1;
+  background:radial-gradient(ellipse at 50% 48%, transparent 42%, rgba(0,0,0,.55) 100%);
+  opacity:.72; transition:opacity .8s ease;
+}
+
+.chrome{position:absolute; inset:0; z-index:2; display:grid;
+  grid-template-rows:72px 1fr 118px; padding:22px 26px 18px; gap:14px}
+html.vertical .chrome{grid-template-rows:90px 1fr auto 160px; gap:16px}
+html.retina .chrome{grid-template-rows:72px 1fr 80px}
+
+.top{display:flex; align-items:flex-end; justify-content:space-between; gap:24px}
+.brand h1{font-family:var(--serif); font-weight:400; font-size:42px; line-height:.9; margin:0; letter-spacing:.01em}
+.brand .latin{font-family:var(--serif); font-style:italic; color:var(--ink-dim); font-size:14px; margin-top:6px}
+.meta{text-align:right; font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-faint); line-height:1.7}
+.meta b{color:var(--ink); font-weight:500}
+.pip{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--ink-faint); margin-right:8px}
+.pip.on{background:var(--live); box-shadow:0 0 10px var(--live)}
+.pip.demo{background:var(--amber)}
+.pip.share{background:var(--cyan)}
+
+.mid{display:grid; grid-template-columns:320px 1fr 336px; gap:16px; min-height:0}
+html.vertical .mid{grid-template-columns:1fr; grid-template-rows:280px 1fr}
+html.overlay .rail{opacity:.96}
+html.retina .mid{grid-template-columns:1fr; }
+html.retina .stage, html.retina .rail-right, html.retina .foot{display:none}
+
+.rail, .stage, .well, .foot, .dock{
+  background:rgba(11,13,18,.78);
+  border:1px solid var(--line);
+  backdrop-filter:blur(8px);
+}
+html.overlay .rail, html.overlay .well, html.overlay .foot{
+  background:rgba(6,7,10,.55);
+}
+
+.k{font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint); font-weight:500}
+.n{font-family:var(--serif); font-variant-numeric:tabular-nums; line-height:1}
+.mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+
+.rail{display:grid; grid-template-rows:1fr auto auto; min-height:0; overflow:hidden}
+.rail-right{display:grid; grid-template-rows:auto auto 1fr; min-height:0; overflow:hidden}
+.blk{padding:12px 14px; border-bottom:1px solid var(--line); min-height:0}
+.blk:last-child{border-bottom:0}
+
+#eye{
+  width:100%; height:100%; display:block; background:#020306;
+}
+.eye-meta{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:10px 14px}
+.ql{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint)}
+.qv{font-family:var(--mono); font-size:13px; color:var(--cyan); margin-top:2px; font-variant-numeric:tabular-nums}
+
+.stage{position:relative; min-height:0; background:#000; overflow:hidden}
+.bezel{
+  position:absolute; inset:14px;
+  border:1px solid #243040;
+  box-shadow:inset 0 0 80px rgba(0,0,0,.55), 0 0 0 1px rgba(125,234,255,.06);
+}
+.tick{position:absolute; width:14px; height:14px; border-color:var(--cyan); border-style:solid; opacity:.55}
+.tick.tl{top:-1px; left:-1px; border-width:2px 0 0 2px}
+.tick.tr{top:-1px; right:-1px; border-width:2px 2px 0 0}
+.tick.bl{bottom:-1px; left:-1px; border-width:0 0 2px 2px}
+.tick.br{bottom:-1px; right:-1px; border-width:0 2px 2px 0}
+.stage-label{
+  position:absolute; top:20px; left:26px; z-index:5;
+  font-family:var(--mono); font-size:10px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+#page{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; background:#000}
+#share{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:none}
+#cur, #fx{position:absolute; inset:0; width:100%; height:100%; pointer-events:none}
+.off{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:8px; background:#000; color:var(--ink-faint); font-family:var(--mono); font-size:12px;
+  letter-spacing:.16em; text-transform:uppercase; text-align:center;
+}
+.off[hidden]{display:none}
+.off .big{font-family:var(--serif); font-size:28px; letter-spacing:0; text-transform:none; color:var(--ink-dim); font-style:italic}
+
+/* inner-inner: attention well — a crop around the cursor. Not a fly fovea. */
+.well{
+  position:absolute; right:22px; bottom:44px; width:248px; height:186px; z-index:8;
+  overflow:hidden; border:1px solid #3a5060;
+  box-shadow:0 0 0 1px #000, 0 10px 28px rgba(0,0,0,.55); background:#000;
+}
+html.vertical .well{right:16px; bottom:16px; width:220px; height:166px}
+#fovea{width:100%; height:100%; display:block; background:#000}
+.well .cap{
+  position:absolute; left:8px; top:6px;
+  font-family:var(--mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--amber);
+}
+.urlbar{
+  position:absolute; left:0; right:0; bottom:0; z-index:5;
+  display:flex; gap:12px; padding:6px 14px;
+  background:rgba(4,5,10,.88); border-top:1px solid var(--line);
+  font-family:var(--mono); font-size:11px; color:var(--ink-dim);
+}
+#r-url{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#r-fps{color:var(--ink-faint)}
+
+.carve-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px}
+.carve-n{font-size:40px; color:#eaf4fa}
+.carve-sub{font-family:var(--mono); font-size:10px; color:var(--ink-faint); letter-spacing:.08em; margin-top:4px; text-transform:none}
+#carve{width:100%; height:86px; display:block; background:#020306; border:1px solid var(--line); margin-top:10px}
+.quad{display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-top:10px}
+
+.compass-wrap{display:grid; grid-template-columns:150px 1fr; gap:10px; align-items:center}
+#compass{width:150px; height:150px; display:block}
+.bars{display:grid; gap:6px}
+.brow{display:grid; grid-template-columns:62px 1fr 40px; gap:8px; align-items:center; font-family:var(--mono); font-size:11px}
+.brow .bn{color:var(--cyan)}
+.brow .bt{height:6px; background:#101821; border-radius:2px; overflow:hidden}
+.brow .bf{height:100%; width:0; background:var(--cyan); transition:width .18s linear}
+.brow .bf.hi{background:var(--live)}
+.brow .bf.rev{background:var(--amber)}
+.brow .bf.clk{background:var(--red)}
+.brow .bv{text-align:right; color:var(--ink-dim); font-variant-numeric:tabular-nums}
+
+#nose{width:100%; height:118px; display:block; background:#020306; border:1px solid var(--line); margin-top:8px}
+
+.foot{display:grid; grid-template-columns:1.15fr 1fr 1.05fr; min-height:0; height:118px}
+html.vertical .foot{grid-template-columns:1fr; height:auto}
+#soma, #spark{width:100%; height:100%; display:block; background:#020306}
+.events{padding:10px 12px; overflow:hidden; display:flex; flex-direction:column}
+#log{margin-top:6px; flex:1; overflow:hidden; font-family:var(--mono); font-size:11px; color:var(--ink-dim); line-height:1.55}
+#log div{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#log .veto{color:var(--amber)}
+#log .blk{color:var(--red)}
+#log b{color:var(--ink-faint); font-weight:400; margin-right:8px}
+
+.strip{display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--line); border:1px solid var(--line)}
+html.vertical .strip{grid-template-columns:repeat(3,1fr)}
+.strip>div{background:rgba(11,13,18,.86); padding:8px 12px}
+.strip .n{font-size:26px; color:#eaf4fa}
+
+.dock{display:flex; gap:8px; padding:0; align-items:center; flex-wrap:wrap; max-width:640px}
+html.nodock .dock{display:none}
+.dock button{
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  min-height:34px; padding:0 12px; border-radius:4px; cursor:pointer;
+  background:#12222a; color:var(--cyan); border:1px solid #24505e;
+}
+.dock button:hover{border-color:var(--cyan)}
+.dock button.on{color:var(--live); border-color:#2f6650; background:#102019}
+.dock .hint{font-family:var(--mono); font-size:10px; color:var(--ink-faint); letter-spacing:.08em; padding:0 6px}
+
+html.overlay .stage{background:transparent; border-color:transparent}
+html.overlay .bezel{box-shadow:none}
+html.overlay #page, html.overlay #share{opacity:0}
+html.overlay .off{display:none}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important; transition:none!important}
+}
+</style>
+</head>
+<body>
+<div class="breath" id="breath"></div>
+<div class="deck" id="deck">
+  <div class="chrome">
+    <header class="top">
+      <div class="brand">
+        <h1>FLYBRAIN</h1>
+        <div class="latin">Drosophila melanogaster · male CNS v1.0</div>
+      </div>
+      <div class="dock" id="dock">
+        <button type="button" id="btn-live">Live</button>
+        <button type="button" id="btn-share">Share a screen</button>
+        <button type="button" id="btn-demo">Demo</button>
+        <button type="button" id="btn-overlay">Overlay</button>
+        <button type="button" id="btn-vert">9:16</button>
+        <span class="hint">OBS · 1920×1080 · ?mode=overlay for a transparent HUD</span>
+      </div>
+      <div class="meta">
+        <div><span class="pip" id="pip"></span><span id="pip-t">looking for the fly</span></div>
+        <div>this life <b id="life">—</b></div>
+        <div>165,122 neurons · 10,228,000 synapses</div>
+      </div>
+    </header>
+
+    <div class="mid">
+      <aside class="rail">
+        <div class="blk" style="display:flex;flex-direction:column;min-height:0">
+          <div class="k">Retina · 892 hex columns · what the fly sees</div>
+          <canvas id="eye" aria-label="Compound-eye luminance map"></canvas>
+        </div>
+        <div class="eye-meta">
+          <div><div class="ql">L1 on</div><div class="qv" id="n-on">—</div></div>
+          <div><div class="ql">L2 off</div><div class="qv" id="n-off">—</div></div>
+          <div><div class="ql">columns</div><div class="qv" id="n-cols">892</div></div>
+        </div>
+        <div class="blk">
+          <div class="k">Membrane · the breath</div>
+          <canvas id="spark" height="64" style="height:64px;margin-top:8px;border:1px solid var(--line)"></canvas>
+          <div class="quad">
+            <div><div class="ql">firing</div><div class="qv" id="n-firing">—</div></div>
+            <div><div class="ql">spikes/sec</div><div class="qv" id="n-spikes">—</div></div>
+            <div><div class="ql">membrane</div><div class="qv" id="n-mv">—</div></div>
+            <div><div class="ql">visual / motor</div><div class="qv" id="n-vm">—</div></div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="stage" id="stage">
+        <div class="stage-label" id="stage-label">Inner screen · the page</div>
+        <img id="page" alt="the page the fly is looking at">
+        <video id="share" playsinline muted></video>
+        <canvas id="cur"></canvas>
+        <canvas id="fx"></canvas>
+        <div class="bezel">
+          <i class="tick tl"></i><i class="tick tr"></i>
+          <i class="tick bl"></i><i class="tick br"></i>
+        </div>
+        <div class="off" id="off">
+          <div class="big">The fly is between runs</div>
+          <div>share a screen, or wait for the socket</div>
+        </div>
+        <div class="well" id="well">
+          <canvas id="fovea"></canvas>
+          <div class="cap">Attention well · cursor crop · not a fly fovea</div>
+        </div>
+        <div class="urlbar"><span id="r-url">—</span><span id="r-fps">—</span></div>
+      </section>
+
+      <aside class="rail rail-right">
+        <div class="blk">
+          <div class="carve-head">
+            <div class="k">Experience · mushroom body</div>
+            <div class="k" style="color:var(--amber)">carving</div>
+          </div>
+          <div class="n carve-n" id="xp">0</div>
+          <div class="carve-sub">novelty encounters · sugar is invented here</div>
+          <canvas id="carve" aria-label="KC to MBON synapses being carved"></canvas>
+          <div class="quad">
+            <div><div class="ql">depressed</div><div class="qv" id="l-dep">—</div></div>
+            <div><div class="ql">mean gain</div><div class="qv" id="l-gain">—</div></div>
+            <div><div class="ql">rewards</div><div class="qv" id="l-rew">—</div></div>
+            <div><div class="ql">punishments</div><div class="qv" id="l-pun">—</div></div>
+          </div>
+        </div>
+        <div class="blk">
+          <div class="k">Walk · descending neurons</div>
+          <div class="compass-wrap" style="margin-top:8px">
+            <canvas id="compass" width="150" height="150"></canvas>
+            <div class="bars" id="dns"></div>
+          </div>
+        </div>
+        <div class="blk">
+          <div class="k">Nose · 53 receptor types · not yet wired</div>
+          <canvas id="nose" aria-label="Olfactory glomeruli waiting"></canvas>
+          <div class="carve-sub" style="margin-top:6px">2,635 ORNs sitting unused. Step 07. The ring is anatomy, the flicker is spontaneous.</div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      <div class="strip" id="strip">
+        <div><div class="k">pages</div><div class="n" id="s-hops">—</div></div>
+        <div><div class="k">clicks</div><div class="n" id="s-clicks">—</div></div>
+        <div><div class="k">scrolls</div><div class="n" id="s-scrolled">—</div></div>
+        <div><div class="k">brain steps</div><div class="n" id="s-steps">—</div></div>
+        <div><div class="k">vetoed</div><div class="n" id="s-vetoes">—</div></div>
+        <div><div class="k">blocked</div><div class="n" id="s-blocked">—</div></div>
+      </div>
+      <div class="foot" style="margin-top:10px">
+        <div>
+          <div class="k" style="padding:8px 12px 0">Firing neurons · measured soma positions</div>
+          <canvas id="soma"></canvas>
+        </div>
+        <div class="events">
+          <div class="k">Event river</div>
+          <div id="log"></div>
+        </div>
+        <div class="events">
+          <div class="k">Where it has been</div>
+          <div id="trail" class="mono" style="margin-top:6px;font-size:11px;color:var(--ink-dim);line-height:1.55"></div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+</div>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Stream deck.
+
+   Same socket the public page uses. Same numbers. The job here is to put
+   those numbers on a 16:9 (or 9:16) surface that can sit on a socials
+   stream: the computer in an inner screen, the fly's 892-column eye beside
+   it, experience as mushroom-body carving, and the walk as a compass.
+
+   Nothing on this page is a trade signal. Experience is novelty standing
+   in for sugar — the circuit is real, the reward is not, and the caption
+   says so.
+--------------------------------------------------------------------------- */
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const MODE = (Q.get('mode') || 'deck').toLowerCase();
+const STABLE = 'https://flybrain-production-2b26.up.railway.app';
+const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+if (MODE === 'overlay') document.documentElement.classList.add('overlay');
+if (MODE === 'vertical') document.documentElement.classList.add('vertical');
+if (MODE === 'retina') document.documentElement.classList.add('retina');
+if (Q.get('dock') === '0') document.documentElement.classList.add('nodock');
+
+function fitDeck(){
+  const deck = $('deck');
+  const W = document.documentElement.classList.contains('vertical') ? 1080 : 1920;
+  const H = document.documentElement.classList.contains('vertical') ? 1920 : 1080;
+  const s = Math.min(innerWidth / W, innerHeight / H);
+  const x = (innerWidth - W * s) / 2;
+  const y = (innerHeight - H * s) / 2;
+  deck.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+  deck.style.width = W + 'px';
+  deck.style.height = H + 'px';
+}
+addEventListener('resize', fitDeck); fitDeck();
+
+const DN = [
+  ['steer_L','DNa02 L','steer'],
+  ['steer_R','DNa02 R','steer'],
+  ['fwd_L','DNa01 L','fwd'],
+  ['fwd_R','DNa01 R','fwd'],
+  ['back','MDN','rev'],
+  ['stop','DNp09','clk'],
+];
+const dnEl = {};
+DN.forEach(([k, name, kind]) => {
+  const d = document.createElement('div');
+  d.className = 'brow';
+  d.innerHTML = '<span class="bn"></span><span class="bt"><span class="bf ' + kind + '"></span></span><span class="bv">0</span>';
+  d.querySelector('.bn').textContent = name;
+  $('dns').appendChild(d);
+  dnEl[k] = {f: d.querySelector('.bf'), v: d.querySelector('.bv')};
+});
+
+/* ---------- hex eye ------------------------------------------------------- */
+function hexSpiral(n){
+  /* Closed outline: grow extra rings, keep the n cells nearest the origin
+     so 892 columns read as an oval eye rather than a bitten hexagon. */
+  const D = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  const cells = [{q:0, r:0, d:0}];
+  for (let ring = 1; cells.length < n + 90; ring++){
+    let q = -ring, r = ring;
+    for (let d = 0; d < 6; d++){
+      for (let i = 0; i < ring; i++){
+        cells.push({q, r, d: q*q + r*r + q*r});
+        q += D[d][0]; r += D[d][1];
+      }
+    }
+  }
+  cells.sort((a,b) => a.d - b.d);
+  return cells.slice(0, n);
+}
+const HEX = hexSpiral(892);
+HEX.forEach(c => {
+  c.x = Math.sqrt(3) * (c.q + c.r / 2);
+  c.y = 1.5 * c.r * 0.78;
+  c.heat = 0;
+});
+let hx0 = Infinity, hx1 = -Infinity, hy0 = Infinity, hy1 = -Infinity;
+HEX.forEach(c => {
+  hx0 = Math.min(hx0, c.x); hx1 = Math.max(hx1, c.x);
+  hy0 = Math.min(hy0, c.y); hy1 = Math.max(hy1, c.y);
+});
+
+function fit(c){
+  const r = c.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.max(2, Math.floor(r.width * d)), h = Math.max(2, Math.floor(r.height * d));
+  if (c.width !== w || c.height !== h){ c.width = w; c.height = h; }
+  return d;
+}
+function hexPath(g, x, y, s){
+  g.beginPath();
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 3 * i - Math.PI / 6;
+    const px = x + s * Math.cos(a), py = y + s * Math.sin(a);
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  }
+  g.closePath();
+}
+
+/* ---------- fly idle cloud (same generator as the public page) ----------- */
+const FLY_N = 4200;
+function buildFly(n){
+  const P = new Float32Array(n * 3), R = Math.random;
+  const gauss = () => { let u=0,v=0; while(!u)u=R(); while(!v)v=R();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  let i = 0;
+  const put = (x,y,z) => { if (i >= n) return; P[i*3]=x; P[i*3+1]=y; P[i*3+2]=z; i++; };
+  const ell = (cx,cy,cz,rx,ry,rz,k,shell) => { for (let j=0;j<k;j++){
+    let x=gauss(), y=gauss(), z=gauss();
+    const d = Math.hypot(x,y,z) || 1; x/=d; y/=d; z/=d;
+    const r = shell ? 0.86+0.14*R() : Math.cbrt(R());
+    put(cx+x*rx*r, cy+y*ry*r, cz+z*rz*r); } };
+  ell( 0.42,0,0, 0.20,0.19,0.19, Math.floor(n*0.10), true);
+  ell( 0.12,0,0, 0.26,0.22,0.22, Math.floor(n*0.16), true);
+  ell(-0.38,0.02,0, 0.42,0.24,0.23, Math.floor(n*0.24), true);
+  ell( 0.50,0.05, 0.15, 0.10,0.12,0.07, Math.floor(n*0.05), false);
+  ell( 0.50,0.05,-0.15, 0.10,0.12,0.07, Math.floor(n*0.05), false);
+  for (const sgn of [1,-1]) {
+    const k = Math.floor(n*0.13);
+    for (let j=0;j<k;j++){
+      const t=R(), a=(R()-0.5);
+      const len=0.95*t, wid=0.16*Math.sin(Math.PI*t)*(1+0.3*a);
+      put(0.05-len*0.92, 0.20+len*0.34+wid*a*0.7, sgn*(0.10+len*0.20+wid*a));
+    }
+  }
+  for (let L=0; L<6; L++) {
+    const sgn=L<3?1:-1, seg=L%3, bx=0.24-seg*0.16, k=Math.floor(n*0.022);
+    for (let j=0;j<k;j++){
+      const t=R();
+      put(bx-t*0.34, -0.18-t*0.42, sgn*(0.16+t*0.20+0.03*gauss()));
+    }
+  }
+  while (i<n) put(gauss()*0.5, gauss()*0.28, gauss()*0.28);
+  return P;
+}
+const FLY = buildFly(FLY_N);
+
+/* ---------- state -------------------------------------------------------- */
+const S = {
+  source: 'live',
+  live: false,
+  firing: 0, spikes: 0, mv: -52, visual: 0, motor: 0,
+  dn: {}, out: {},
+  scatter: [], hist: [],
+  learning: {synapses:44042, depressed:0, mean_gain:1, rewards:0, punishments:0, reward_side:27939, punish_side:14349},
+  vision: null,
+  stats: {hops:0, clicks:0, steps:0, vetoes:0, scrolled:0, blocked:0},
+  url: '',
+  cx: 640, cy: 400,
+  started: 0,
+  lives: 1,
+  lastRew: 0,
+  pulse: 0,
+  clickFlash: 0,
+};
+let cur = {x:0.5, y:0.5}, tar = {x:0.5, y:0.5}, wing = 0, theta = 0.4;
+const frames = [];
+const offscreen = document.createElement('canvas');
+offscreen.width = 96; offscreen.height = 60;
+const og = offscreen.getContext('2d', {willReadFrequently:true});
+
+function nf(v){ return v == null ? '—' : Number(v).toLocaleString(); }
+
+function setPip(kind, text){
+  const p = $('pip');
+  p.className = 'pip' + (kind ? ' ' + kind : '');
+  if (kind === 'on' || kind === 'demo' || kind === 'share') p.classList.add(kind === 'on' ? 'on' : kind);
+  $('pip-t').textContent = text;
+}
+
+function applyNeural(n){
+  if (!n) return;
+  S.firing = n.firing; S.spikes = n.spikes_per_sec; S.mv = n.mean_mv;
+  S.visual = n.visual; S.motor = n.motor;
+  S.dn = n.dn || {}; S.out = n.out || {};
+  if (n.scatter) S.scatter = n.scatter;
+  if (n.history) S.hist = n.history;
+  if (n.learning) {
+    if (n.learning.rewards > S.lastRew) S.pulse = 1;
+    S.lastRew = n.learning.rewards;
+    S.learning = n.learning;
+  }
+  if (n.vision) S.vision = n.vision;
+  $('n-firing').textContent = nf(n.firing);
+  $('n-spikes').textContent = nf(n.spikes_per_sec);
+  $('n-mv').textContent = (n.mean_mv == null ? '—' : n.mean_mv + ' mV');
+  $('n-vm').textContent = nf(n.visual) + ' / ' + nf(n.motor);
+  if (n.vision){
+    $('n-on').textContent = (n.vision.on_hz == null ? '—' : n.vision.on_hz + ' Hz');
+    $('n-off').textContent = (n.vision.off_hz == null ? '—' : n.vision.off_hz + ' Hz');
+    $('n-cols').textContent = nf(n.vision.columns || 892);
+  }
+  for (const [k] of DN){
+    const v = S.dn[k] || 0;
+    dnEl[k].v.textContent = Math.round(v);
+    dnEl[k].f.style.width = Math.min(100, v / 450) + '%';
+    dnEl[k].f.classList.toggle('hi', v >= 330);
+  }
+  const L = S.learning;
+  $('xp').textContent = nf(L.rewards || 0);
+  $('l-dep').textContent = nf(L.depressed) + ' / ' + nf(L.synapses);
+  $('l-gain').textContent = L.mean_gain;
+  $('l-rew').textContent = nf(L.rewards);
+  $('l-pun').textContent = nf(L.punishments);
+}
+
+function applyStats(st){
+  if (!st) return;
+  Object.assign(S.stats, st);
+  for (const k of ['hops','clicks','steps','vetoes','scrolled','blocked']){
+    const el = $('s-' + k); if (el) el.textContent = nf(S.stats[k]);
+  }
+}
+
+function showPage(b64){
+  $('off').hidden = true;
+  $('page').style.display = 'block';
+  $('page').src = 'data:image/jpeg;base64,' + b64;
+}
+
+function logEvent(t, m){
+  const row = document.createElement('div');
+  if (/did not click|veto/i.test(m)) row.className = 'veto';
+  else if (/blocked/i.test(m)) row.className = 'blk';
+  const b = document.createElement('b'); b.textContent = t || '';
+  row.appendChild(b);
+  row.appendChild(document.createTextNode(m));
+  $('log').prepend(row);
+  while ($('log').children.length > 8) $('log').lastChild.remove();
+}
+
+function setTrail(visited){
+  if (!visited) return;
+  $('trail').textContent = visited.slice().reverse().map(v => v.title || v.url).join('\n');
+}
+
+function paintEvents(events){
+  if (!events) return;
+  $('log').innerHTML = '';
+  events.slice().reverse().forEach(e => logEvent(e.t, e.m));
+}
+
+/* sample the inner screen into the hex eye when we do not have live cols */
+function sampleLocal(){
+  const src = $('share').style.display === 'block' ? $('share') : $('page');
+  if (!src || (src.tagName === 'IMG' && !src.naturalWidth) ||
+      (src.tagName === 'VIDEO' && src.readyState < 2)) return;
+  og.fillStyle = '#000'; og.fillRect(0,0,96,60);
+  try { og.drawImage(src, 0, 0, 96, 60); } catch (e) { return; }
+  const pix = og.getImageData(0, 0, 96, 60).data;
+  HEX.forEach(c => {
+    const u = (c.x - hx0) / (hx1 - hx0 || 1);
+    const v = (c.y - hy0) / (hy1 - hy0 || 1);
+    const x = Math.max(0, Math.min(95, (u * 95) | 0));
+    const y = Math.max(0, Math.min(59, (v * 59) | 0));
+    const i = (y * 96 + x) * 4;
+    const lum = (pix[i] * 0.3 + pix[i+1] * 0.59 + pix[i+2] * 0.11) / 255;
+    c.heat = Math.max(c.heat * 0.82, lum);
+  });
+}
+
+function applyVisionCols(cols){
+  if (!cols || !cols.length) return;
+  HEX.forEach(c => { c.heat *= 0.88; });
+  cols.forEach(([u, v, hz]) => {
+    const x = hx0 + u * (hx1 - hx0);
+    const y = hy0 + v * (hy1 - hy0);
+    let best = 0, bd = 1e9;
+    for (let i = 0; i < HEX.length; i++){
+      const d = (HEX[i].x - x) ** 2 + (HEX[i].y - y) ** 2;
+      if (d < bd){ bd = d; best = i; }
+    }
+    HEX[best].heat = Math.max(HEX[best].heat, hz);
+  });
+}
+
+/* ---------- drawing ------------------------------------------------------ */
+function drawEye(){
+  const c = $('eye'), g = c.getContext('2d'), d = fit(c);
+  g.fillStyle = '#020306'; g.fillRect(0,0,c.width,c.height);
+  const pad = 10 * d;
+  const sx = (c.width - pad * 2) / (hx1 - hx0 || 1);
+  const sy = (c.height - pad * 2) / (hy1 - hy0 || 1);
+  const sc = Math.min(sx, sy);
+  const s = sc * 0.56;
+  const ox = (c.width - (hx1 - hx0) * sc) / 2;
+  const oy = (c.height - (hy1 - hy0) * sc) / 2;
+  HEX.forEach(cell => {
+    const x = ox + (cell.x - hx0) * sc;
+    const y = oy + (cell.y - hy0) * sc;
+    const h = cell.heat;
+    hexPath(g, x, y, s);
+    if (h > 0.04){
+      const a = Math.min(1, 0.22 + h * 0.9);
+      g.fillStyle = h > 0.72 ? 'rgba(234,244,250,' + a + ')' : 'rgba(125,234,255,' + a + ')';
+    } else {
+      g.fillStyle = 'rgba(70,96,118,0.42)';
+    }
+    g.fill();
+    g.strokeStyle = 'rgba(8,10,14,0.55)';
+    g.lineWidth = 0.6 * d;
+    g.stroke();
+  });
+}
+
+function drawCarve(){
+  const c = $('carve'), g = c.getContext('2d'), d = fit(c);
+  g.fillStyle = '#020306'; g.fillRect(0,0,c.width,c.height);
+  const L = S.learning;
+  const cols = 36, rows = 12;
+  const gw = c.width / cols, gh = c.height / rows;
+  const frac = (L.depressed || 0) / (L.synapses || 44042);
+  const n = cols * rows;
+  const carved = Math.round(frac * n);
+  for (let i = 0; i < n; i++){
+    const x = (i % cols) * gw, y = ((i / cols) | 0) * gh;
+    const rewardish = (i % 5) !== 0;
+    if (i < carved){
+      g.fillStyle = rewardish ? 'rgba(240,188,95,0.72)' : 'rgba(125,234,255,0.35)';
+    } else {
+      g.fillStyle = 'rgba(36,48,64,0.7)';
+    }
+    g.fillRect(x + 1*d, y + 1*d, gw - 2*d, gh - 2*d);
+  }
+  if (S.pulse > 0){
+    g.strokeStyle = 'rgba(240,188,95,' + S.pulse + ')';
+    g.lineWidth = 2 * d;
+    g.strokeRect(2, 2, c.width - 4, c.height - 4);
+  }
+}
+
+function drawCompass(){
+  const c = $('compass'), g = c.getContext('2d'), d = fit(c);
+  const W = c.width, H = c.height, cx = W/2, cy = H/2, r = Math.min(W,H)*0.42;
+  g.clearRect(0,0,W,H);
+  g.strokeStyle = '#243040'; g.lineWidth = 1.2*d;
+  g.beginPath(); g.arc(cx,cy,r,0,7); g.stroke();
+  g.beginPath(); g.arc(cx,cy,r*0.62,0,7); g.stroke();
+  const L = S.dn.steer_L || 0, R = S.dn.steer_R || 0;
+  const fwd = ((S.dn.fwd_L || 0) + (S.dn.fwd_R || 0)) / 2;
+  const back = S.dn.back || 0;
+  const stop = S.dn.stop || 0;
+  const ang = Math.atan2(0, 1) + (R - L) / 220;
+  g.save(); g.translate(cx,cy); g.rotate(ang);
+  g.strokeStyle = '#7deaff'; g.lineWidth = 2*d;
+  g.beginPath(); g.moveTo(0, r*0.18); g.lineTo(0, -r*0.78); g.stroke();
+  g.beginPath(); g.moveTo(-r*0.12, -r*0.52); g.lineTo(0, -r*0.78); g.lineTo(r*0.12, -r*0.52); g.stroke();
+  g.restore();
+  if (back > fwd){
+    g.fillStyle = 'rgba(240,188,95,' + Math.min(0.35, back/900) + ')';
+    g.beginPath(); g.arc(cx,cy,r*0.95,0,7); g.fill();
+  }
+  if (S.clickFlash > 0.05 || stop > 200){
+    g.strokeStyle = 'rgba(255,139,122,' + Math.max(S.clickFlash, Math.min(0.8, stop/400)) + ')';
+    g.lineWidth = 3*d;
+    g.beginPath(); g.arc(cx,cy, r*(0.7 + (1-S.clickFlash)*0.4), 0, 7); g.stroke();
+  }
+  g.fillStyle = '#e2eaf1';
+  g.beginPath(); g.arc(cx,cy, 2.4*d, 0, 7); g.fill();
+}
+
+function drawNose(){
+  const c = $('nose'), g = c.getContext('2d'), d = fit(c);
+  g.fillStyle = '#020306'; g.fillRect(0,0,c.width,c.height);
+  const n = 53, cx = c.width/2, cy = c.height*0.56, r = Math.min(c.width, c.height)*0.40;
+  for (let i = 0; i < n; i++){
+    const a = -Math.PI/2 + i/n * Math.PI * 2;
+    const flicker = 0.08 + 0.07 * Math.sin(theta * 3 + i * 1.7);
+    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.72;
+    g.fillStyle = 'rgba(125,234,255,' + flicker + ')';
+    g.beginPath(); g.arc(x, y, 2.3*d, 0, 7); g.fill();
+  }
+  g.strokeStyle = 'rgba(125,234,255,0.18)'; g.lineWidth = 1*d;
+  g.beginPath(); g.ellipse(cx, cy, r*0.72, r*0.52, 0, 0, 7); g.stroke();
+}
+
+function drawSoma(){
+  const c = $('soma'), g = c.getContext('2d'), d = fit(c);
+  g.fillStyle = '#020306'; g.fillRect(0,0,c.width,c.height);
+  if (S.live && S.scatter.length){
+    S.scatter.forEach(([x,y]) => {
+      g.fillStyle = 'rgba(125,234,255,' + (0.25 + Math.random()*0.55).toFixed(2) + ')';
+      g.fillRect(4 + x*(c.width-8), 4 + (1-y)*(c.height-8), 1.6*d, 1.6*d);
+    });
+    return;
+  }
+  const ct = Math.cos(theta), st = Math.sin(theta), sc = Math.min(c.width,c.height)*0.46;
+  for (let i = 0; i < FLY_N; i++){
+    const ax = FLY[i*3], ay = FLY[i*3+2], az = -FLY[i*3+1];
+    const X = c.width/2 + (ax*ct - ay*st)*sc*1.15;
+    const Y = c.height/2 + az*sc;
+    g.fillStyle = (i % 17 === 0) ? 'rgba(125,234,255,0.55)' : 'rgba(58,67,86,0.45)';
+    g.fillRect(X, Y, 1.1*d, 1.1*d);
+  }
+}
+
+function drawSpark(){
+  const c = $('spark'), g = c.getContext('2d'), d = fit(c);
+  g.fillStyle = '#020306'; g.fillRect(0,0,c.width,c.height);
+  const h = S.hist;
+  if (h.length > 1){
+    const mx = Math.max.apply(null, h), mn = Math.min.apply(null, h);
+    const rng = Math.max(1, mx - mn);
+    g.strokeStyle = '#7deaff'; g.lineWidth = 1.3*d; g.beginPath();
+    h.forEach((v,i) => {
+      const x = (i/(h.length-1))*c.width;
+      const y = c.height - 3 - ((v-mn)/rng)*(c.height-6);
+      i ? g.lineTo(x,y) : g.moveTo(x,y);
+    });
+    g.stroke();
+  }
+  /* membrane as a slow second trace */
+  g.strokeStyle = 'rgba(240,188,95,0.55)'; g.lineWidth = 1*d; g.beginPath();
+  const mv = (S.mv + 90) / 50;
+  for (let i = 0; i < 48; i++){
+    const x = i/47*c.width;
+    const y = c.height*0.55 + Math.sin(theta*2 + i*0.18)*c.height*0.18*(0.4+Math.max(0,Math.min(1,mv)));
+    i ? g.lineTo(x,y) : g.moveTo(x,y);
+  }
+  g.stroke();
+}
+
+function drawCursor(){
+  const c = $('cur'), g = c.getContext('2d'), d = fit(c);
+  g.clearRect(0,0,c.width,c.height);
+  cur.x += (tar.x - cur.x) * 0.2;
+  cur.y += (tar.y - cur.y) * 0.2;
+  const x = cur.x * c.width, y = cur.y * c.height, s = Math.min(c.width,c.height)*0.022;
+  wing += 0.5;
+  g.save(); g.translate(x,y);
+  g.fillStyle = 'rgba(0,0,0,0.55)';
+  g.beginPath(); g.ellipse(0, 2*d, s*1.15, s*0.95, 0, 0, 7); g.fill();
+  g.fillStyle = 'rgba(125,234,255,0.94)';
+  g.beginPath(); g.ellipse(0,0,s*0.62,s*0.42,0,0,7); g.fill();
+  g.beginPath(); g.ellipse(s*0.62,-s*0.06,s*0.30,s*0.28,0,0,7); g.fill();
+  g.fillStyle = 'rgba(125,234,255,0.34)';
+  for (const sg of [1,-1]){
+    g.beginPath();
+    g.ellipse(-s*0.22, sg*(s*0.42 + Math.abs(Math.sin(wing))*s*0.16), s*0.72, s*0.20, sg*0.5, 0, 7);
+    g.fill();
+  }
+  g.restore();
+}
+
+function drawFx(){
+  const c = $('fx'), g = c.getContext('2d'), d = fit(c);
+  g.clearRect(0,0,c.width,c.height);
+  if (S.clickFlash > 0.02){
+    const x = cur.x * c.width, y = cur.y * c.height;
+    g.strokeStyle = 'rgba(111,220,166,' + S.clickFlash + ')';
+    g.lineWidth = 2*d;
+    g.beginPath(); g.arc(x, y, 18*d + (1-S.clickFlash)*70*d, 0, 7); g.stroke();
+  }
+}
+
+function drawFovea(){
+  const c = $('fovea'), g = c.getContext('2d');
+  fit(c);
+  const src = $('share').style.display === 'block' ? $('share') : $('page');
+  g.fillStyle = '#000'; g.fillRect(0,0,c.width,c.height);
+  const sw = src.tagName === 'VIDEO' ? src.videoWidth : src.naturalWidth;
+  const sh = src.tagName === 'VIDEO' ? src.videoHeight : src.naturalHeight;
+  if (!sw) return;
+  const cw = 220, ch = 160;
+  const sx = Math.max(0, Math.min(sw - cw, tar.x * sw - cw/2));
+  const sy = Math.max(0, Math.min(sh - ch, tar.y * sh - ch/2));
+  try { g.drawImage(src, sx, sy, cw, ch, 0, 0, c.width, c.height); } catch (e) {}
+}
+
+function tickLife(){
+  if (!S.started){ $('life').textContent = '—'; return; }
+  const s = Math.max(0, Math.floor((Date.now()/1000) - S.started));
+  const m = Math.floor(s/60), h = Math.floor(m/60);
+  $('life').textContent = (h ? (h + 'h ' + (m%60) + 'm') : (m + 'm ' + (s%60) + 's')) + ' · life ' + S.lives;
+}
+
+function frame(){
+  if (S.vision && S.vision.cols && S.source === 'live') applyVisionCols(S.vision.cols);
+  else sampleLocal();
+  if (!REDUCE){
+    theta += 0.0045;
+    S.pulse *= 0.94;
+    S.clickFlash *= 0.92;
+    const mv = Math.max(0, Math.min(1, (S.mv + 90) / 50));
+    $('breath').style.opacity = (0.55 + mv * 0.28).toFixed(3);
+  }
+  drawEye(); drawCarve(); drawCompass(); drawNose();
+  drawSoma(); drawSpark(); drawCursor(); drawFx(); drawFovea();
+  tickLife();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- live socket (same discovery as flybrain.online) -------------- */
+let sock = null, sockUrl = null;
+
+function openSocket(url){
+  if (!url || url === sockUrl) return;
+  sockUrl = url;
+  try { if (sock) sock.close(); } catch (e) {}
+  sock = new WebSocket(url.replace(/^http/, 'ws') + '/ws');
+  sock.onopen = () => { S.live = true; setPip('on', 'roaming · socket'); $('off').hidden = true; };
+  sock.onmessage = ev => {
+    if (S.source === 'demo') return;
+    const m = JSON.parse(ev.data);
+    if (m.type === 'view'){
+      if (S.source === 'share') return;
+      showPage(m.jpg);
+      tar = {x: m.cx/1280, y: m.cy/800};
+      S.cx = m.cx; S.cy = m.cy;
+      frames.push(Date.now());
+      while (frames.length && frames[0] < Date.now()-1000) frames.shift();
+      $('r-fps').textContent = frames.length + ' fps · socket';
+    } else if (m.type === 'cursor'){
+      tar = {x: m.cx/1280, y: m.cy/800};
+    } else if (m.type === 'frame'){
+      applyNeural(m.neural);
+      applyStats(m.stats);
+      if (m.url){ S.url = m.url; $('r-url').textContent = m.url; }
+      if (m.cx != null) tar = {x: m.cx/1280, y: m.cy/800};
+      if (m.events) paintEvents(m.events);
+      if (m.visited) setTrail(m.visited);
+      if (m.neural && m.neural.out && m.neural.out.click > 0.5) S.clickFlash = 1;
+    } else if (m.type === 'place'){
+      logEvent('', (m.title || m.url || '').slice(0, 72));
+    } else if (m.type === 'log'){
+      logEvent('', String(m.msg));
+    } else if (m.type === 'done'){
+      S.live = false; S.lives += 1;
+      setPip('', 'between lives');
+    }
+  };
+  sock.onclose = () => { sock = null; sockUrl = null; S.live = false; };
+  sock.onerror = () => { try { sock.close(); } catch (e) {} };
+}
+
+async function findStream(){
+  const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (local && location.port){
+    try {
+      const r = await fetch('/status', {cache:'no-store'});
+      if (r.ok){ const d = await r.json(); if (d && (d.running || d.brain)) return location.origin; }
+    } catch (e) {}
+  }
+  try {
+    const r = await fetch(STABLE + '/status', {cache:'no-store'});
+    if (r.ok){ const d = await r.json(); if (d && d.running) return STABLE; }
+  } catch (e) {}
+  try {
+    const src = 'https://raw.githubusercontent.com/fruitflydev/flycoinrh/main/site/web/live.json';
+    const r = await fetch(src + '?t=' + Math.floor(Date.now()/60000));
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.stream) return null;
+    if (d.at && (Date.now()/1000 - d.at) > 21600) return null;
+    return d.stream;
+  } catch (e) { return null; }
+}
+
+async function pullState(url){
+  try {
+    const d = await (await fetch(url + '/state', {cache:'no-store'})).json();
+    if (d && d.neural) applyNeural(d.neural);
+    applyStats(d);
+    if (d.url){ S.url = d.url; $('r-url').textContent = d.url; }
+    if (d.events) paintEvents(d.events);
+    if (d.visited) setTrail(d.visited);
+    if (d.uptime_s) S.started = Date.now()/1000 - d.uptime_s;
+    if (d.updated && Date.now()/1000 - d.updated < 30){
+      S.live = true; $('off').hidden = true;
+    }
+  } catch (e) {}
+}
+
+async function connectLive(){
+  S.source = 'live';
+  $('btn-live').classList.add('on');
+  $('btn-demo').classList.remove('on');
+  $('btn-share').classList.remove('on');
+  $('share').style.display = 'none';
+  $('stage-label').textContent = 'Inner screen · the page';
+  const url = await findStream();
+  if (url){ openSocket(url); pullState(url); }
+  else { setPip('', 'no stream — demo is honest about that'); }
+}
+
+/* ---------- screen share: the computer, piped into the inner screen ----- */
+$('btn-share').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {frameRate: 30}, audio: false
+    });
+    $('share').srcObject = stream;
+    await $('share').play();
+    $('share').style.display = 'block';
+    $('page').style.display = 'none';
+    $('off').hidden = true;
+    S.source = 'share';
+    $('btn-share').classList.add('on');
+    $('btn-live').classList.remove('on');
+    $('btn-demo').classList.remove('on');
+    setPip('share', 'shared screen · hex eye is sampling it');
+    $('stage-label').textContent = 'Inner screen · shared computer';
+    $('r-fps').textContent = 'capture';
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+      $('share').style.display = 'none';
+      $('page').style.display = 'block';
+      S.source = 'live';
+      connectLive();
+    });
+  } catch (e) {
+    logEvent('', 'screen share cancelled');
+  }
+};
+
+/* ---------- demo: labelled, so a dead stream still has a look ---------- */
+let demoT = 0;
+function demoTick(){
+  if (S.source !== 'demo') return;
+  demoT += 1;
+  const gazeX = 0.5 + 0.32 * Math.sin(demoT * 0.017);
+  const gazeY = 0.5 + 0.22 * Math.cos(demoT * 0.013);
+  HEX.forEach(c => {
+    const u = (c.x - hx0) / (hx1 - hx0 || 1);
+    const v = (c.y - hy0) / (hy1 - hy0 || 1);
+    const d2 = (u - gazeX) ** 2 + (v - gazeY) ** 2;
+    c.heat = Math.max(c.heat * 0.9, Math.exp(-d2 * 14) * (0.55 + 0.45 * Math.sin(demoT*0.05 + c.q)));
+  });
+  const firing = 24000 + Math.round(8000 * Math.sin(demoT * 0.04));
+  applyNeural({
+    firing, spikes_per_sec: 6e6 + firing * 80, mean_mv: -70 + 8*Math.sin(demoT*0.03),
+    visual: 1200, motor: 12,
+    dn: {
+      steer_L: 80 + 90*Math.max(0, Math.sin(demoT*0.02)),
+      steer_R: 80 + 90*Math.max(0, -Math.sin(demoT*0.02)),
+      fwd_L: 60 + 40*Math.sin(demoT*0.015), fwd_R: 60 + 40*Math.sin(demoT*0.015),
+      back: 20 + 30*Math.max(0, Math.sin(demoT*0.01)),
+      stop: demoT % 180 === 0 ? 400 : 20
+    },
+    out: {click: demoT % 180 === 0 ? 1 : 0},
+    history: S.hist.concat([firing]).slice(-72),
+    learning: {
+      synapses:44042, depressed: 30000 + (demoT % 8000), mean_gain: 0.86,
+      rewards: 40 + ((demoT/80)|0), punishments: 12, reward_side:27939, punish_side:14349
+    }
+  });
+  if (demoT % 180 === 0) S.clickFlash = 1;
+  tar = {x: gazeX, y: gazeY};
+  applyStats({hops: 12 + ((demoT/90)|0), clicks: 20 + ((demoT/70)|0), steps: demoT,
+              vetoes: 3, scrolled: 8, blocked: 1});
+  $('r-url').textContent = 'demo · labelled · not a live run';
+  $('r-fps').textContent = 'demo';
+}
+
+$('btn-demo').onclick = () => {
+  S.source = 'demo'; S.started = Date.now()/1000; S.lives = 1;
+  $('off').hidden = true;
+  $('share').style.display = 'none';
+  $('page').style.display = 'none';
+  $('btn-demo').classList.add('on');
+  $('btn-live').classList.remove('on');
+  $('btn-share').classList.remove('on');
+  setPip('demo', 'demo · spontaneous look, not the fly');
+  $('stage-label').textContent = 'Inner screen · demo';
+  logEvent('', 'demo started — numbers here are invented so the deck still has a pulse');
+};
+setInterval(demoTick, 80);
+
+$('btn-live').onclick = () => { connectLive(); };
+$('btn-overlay').onclick = () => {
+  document.documentElement.classList.toggle('overlay');
+  $('btn-overlay').classList.toggle('on');
+  fitDeck();
+};
+$('btn-vert').onclick = () => {
+  document.documentElement.classList.toggle('vertical');
+  $('btn-vert').classList.toggle('on');
+  fitDeck();
+};
+
+if (Q.get('source') === 'demo') $('btn-demo').click();
+else if (Q.get('source') === 'share') { /* wait for a gesture */ setPip('', 'press Share a screen'); }
+else connectLive();
+setInterval(() => { if (S.source === 'live' && (!sock || sock.readyState !== 1)) connectLive(); }, 15000);
+</script>
+</body>
+</html>
