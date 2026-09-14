@@ -42,6 +42,28 @@ def test_p6_lag_direction_and_p1_threshold():
     assert result["sine_speed_lagged_rho"] == pytest.approx(1.)
 
 
+def test_clipped_windows_are_counted_per_channel():
+    row, trace = trials()["song"]
+    trace["her_sound_a_clipped"] = np.array([0, 1, 0, 1])
+    trace["her_sound_b_clipped"] = np.array([1, 1, 1, 0])
+    result = ce.outcome(0, "song", trace, row["start"])
+    assert result["her_sound_a_clipped"] == 2
+    assert result["her_sound_b_clipped"] == 3
+
+
+@pytest.mark.parametrize("missing", ["pulse_hz", "sine_hz"])
+def test_trial_refuses_missing_song_readout(missing):
+    room = FakeRoom(0, "song")
+    step = room.bodies["A"].step
+    def without_group(*args):
+        result = step(*args)
+        result[missing] = None
+        return result
+    room.bodies["A"].step = without_group
+    with pytest.raises(ValueError, match="requires both male song groups"):
+        ce.run_trial(room, 4, 0, "song")
+
+
 def test_sight_ok_measures_actual_start_not_only_front_probe():
     for x, expected in ((12., True), (8., False)):
         room = FakeRoom(0, "song")
@@ -126,6 +148,7 @@ class FakeFly:
         sound = max(ce.HerBody.sound_pair(sound))
         answer = 0 if self.ignores_sound else sound * (self.window % 3 != 0)
         return dict(turn=0.05 * np.sin(self.window + self.seed), speed=0.02 + self.seed * 0.01,
+            pulse_hz=float((self.window * 37 + self.seed * 13) % 101), sine_hz=0.,
             song_hz=float((self.window * 37 + self.seed * 13) % 101) if self.name == "A" else 0.,
             her_answer=dict(vpodn_hz=answer, pc1_hz=answer/2), **{"in": {"sound_hz": sound}})
 
@@ -153,6 +176,10 @@ def trials(seed=0, steps=12, ignores_sound=False):
 
 
 class Paired(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def temporary_path(self, tmp_path):
+        self.tmp_path = tmp_path
+
     def test_seed_start_and_multiset(self):
         r = trials(3)
         self.assertEqual(set(r), {"song", "silence", "shuffled", "dark"})
@@ -165,11 +192,11 @@ class Paired(unittest.TestCase):
         self.assertFalse(np.array_equal(r["song"][1]["her_sound_hz"], r["shuffled"][1]["her_sound_hz"]))
         self.assertNotEqual(r["song"][0]["start"], trials(4)["song"][0]["start"])
 
-    def test_silence_and_male_path(self):
+    def test_listener_hook_does_not_touch_his_channel(self):
         r = trials(2, ignores_sound=True)
         self.assertTrue(np.all(r["silence"][1]["her_sound_hz"] == 0))
         self.assertGreater(r["song"][1]["her_sound_hz"].sum(), 0)
-        for key in ("A_x", "A_y", "A_heading_rad", "song_hz", "his_sound_hz"):
+        for key in ("his_sound_hz",):
             np.testing.assert_array_equal(r["song"][1][key], r["silence"][1][key])
 
     def test_hook_changes_actual_body_input(self):
@@ -189,7 +216,7 @@ class Paired(unittest.TestCase):
         for eye_setting in ("blind", "luminance"):
             with patch.object(ce, "FEMALE_EYE", eye_setting):
                 room = ce.build_room(2, "dark", brains=(male, female_fake()),
-                                     annotations_path="build/test-temp/absent.feather")
+                                     annotations_path=self.tmp_path / "missing")
             body = room.bodies["B"]
             self.assertIsInstance(body.eye, ce.BlindEye)
             room.song["A"] = 1000

@@ -69,6 +69,47 @@ def test_pair_routes_separate_jo_populations():
     assert result["sound_hz"] == 80.
 
 
+@pytest.mark.parametrize("missing", ["song_pulse_mn", "song_sine_hg1"])
+def test_missing_song_group_is_unavailable_and_protocol_refuses(missing):
+    fb, eye, groups, motor = make_parts()
+    del groups[missing]
+    body = bw.FlyBody("A", fb, eye, groups, motor)
+    result = body.step(np.zeros((800, 1280)), 0, 0)
+    assert result["pulse_hz" if missing == "song_pulse_mn" else "sine_hz"] is None
+    with pytest.raises(ValueError, match="requires both male song groups"):
+        bw.Room(fb, eye, groups, motor, body_b=her())
+
+
+def test_pair_clipping_measured_before_override():
+    fb, eye, groups, motor = make_parts()
+    room = bw.Room(fb, eye, groups, motor, body_b=her())
+    room.listener_sound = lambda sound: (0., 0.)
+    for factors, expected in [((1., 1.), (False, False)),
+                              ((1.01, .5), (True, False)),
+                              ((.5, 1.01), (False, True))]:
+        room.song_pair = tuple(f * ref for f, ref in zip(factors, room.song_pair_full_hz))
+        result = room.step()
+        assert result["sound_clipped"] == expected
+        assert result["B"]["in"]["sound_hz"] == (0., 0.)
+
+
+def test_dictionary_drive_uses_cached_scales_and_overlap(monkeypatch):
+    fb, eye, groups, motor = make_parts()
+    groups["partial_eye"] = eye.on_idx[:1]
+    groups["partial_sound"] = groups["JO_A"][:1]
+    body = bw.FlyBody("A", fb, eye, groups, motor)
+    def unexpected(*args, **kwargs):
+        raise AssertionError("per-step group computation")
+    monkeypatch.setattr(bw, "per_side_scales", unexpected)
+    monkeypatch.setattr(np, "intersect1d", unexpected)
+    frame = np.zeros((800, 1280))
+    actual = body.drive(frame, {bw.SMELL_KEY: 123.}, 45.)
+    np.testing.assert_array_equal(actual[tuple(body.smell_idx)], body.smell_scale * 123.)
+    for group in ("partial_eye", "partial_sound"):
+        with pytest.raises(ValueError, match="overlaps"):
+            body.drive(frame, {group: 123.}, 45.)
+
+
 @pytest.mark.parametrize("distance", [1.9, 2.0, 2.1, 10.0])
 def test_female_scent_contact_boundary_and_zero_cva(distance):
     fb, eye, groups, motor = make_parts()
@@ -85,8 +126,14 @@ def test_female_scent_contact_boundary_and_zero_cva(distance):
 
 def test_room_pair_uses_previous_window_and_own_full_rates():
     fb, eye, groups, motor = make_parts()
+    from types import SimpleNamespace
+    fb.p = SimpleNamespace(refractory=3.0)
     room = bw.Room(fb, eye, groups, motor, body_b=her())
-    room.song_pair = (bw.song_full_hz(8) * .25, bw.song_full_hz(2) * .75)
+    references = tuple(bw.song_full_hz(groups[k].size, fb.p.refractory)
+                       for k in ("song_pulse_mn", "song_sine_hg1"))
+    assert tuple(groups[k].size for k in ("song_pulse_mn", "song_sine_hg1")) != (8, 2)
+    assert room.song_pair_full_hz == references
+    room.song_pair = (references[0] * .25, references[1] * .75)
     expected = room.channels.sound_max * room.channels.falloff(room.arena.distance())
     result = room.step()
     assert result["B"]["in"]["sound_hz"] == pytest.approx((expected * .25, expected * .75))
@@ -162,12 +209,12 @@ def test_blind_body_only_sound():
     assert result['sound_hz'] == 80.
 
 
-def test_dark_is_blind_and_silent():
+def test_dark_is_blind_and_silent(tmp_path):
     import courtship_experiment as ce
     male, _, _, _ = make_parts()
     with unittest.mock.patch.object(ce, "FEMALE_EYE", "luminance"):
         room = ce.build_room(3, "dark", brains=(male, female_fake()),
-                             annotations_path="build/test-temp/absent.feather")
+                             annotations_path=tmp_path / "missing")
     body = room.bodies['B']
     assert isinstance(body.eye, BlindEye)
     room.song['A'] = 1000.
@@ -239,7 +286,7 @@ def test_room_twenty_steps_and_previous_song():
         r = room.step()
         assert r["A"]["song_hz"] == 100.0 * len(groups[bw.SONG_KEY])
         assert r["B"]["song_hz"] == 0.0
-        expected = room.channels.sound_hz(previous * room.channels.song_full / bw.song_full_hz(8), d)
+        expected = room.channels.sound_hz(previous * room.channels.song_full / room.song_pair_full_hz[0], d)
         assert r["sound_hz"]["B"] == (expected, 0.)
         assert r["sound_hz"]["A"] == 0.0
         assert r["B"]["out"]["JO_A"] == pytest.approx(expected)
@@ -290,3 +337,13 @@ class RealBrain(unittest.TestCase):
                 moving[k] += int(r["after"]["moved_mm"][k] != 0)
         print(f"setup={setup:.3f}s; 20 steps={time.perf_counter() - start - setup:.3f}s; "
               f"total={time.perf_counter() - start:.3f}s; moving windows={moving}; answer={body.answer}")
+
+
+def test_default_room_without_contribution_module(monkeypatch):
+    """The core must build and step its default room with this module absent."""
+    import sys
+    monkeypatch.setitem(sys.modules, "courtship", None)
+    fb, eye, groups, motor = make_parts()
+    room = bw.Room(fb, eye, groups, motor)
+    result = room.step()
+    assert result["A"]["window"] == result["B"]["window"] == 1

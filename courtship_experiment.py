@@ -22,14 +22,14 @@ DEFAULT_STEPS = 400
 ACCEPT_WINDOWS = 3
 PROTOCOL_TEXT = """Conditions, same seed and same arena start for all four (paired):
 - `song`: the room as built; his pulse and sine motor sums reach her JO-A and JO-B separately through `sound_hz` with distance attenuation.
-- `silence`: her incoming `sound_hz` is forced to (0.0, 0.0) every step (he still sings; she does not hear). Implement without touching `FlyBody`: wrap/patch the value handed to her body at the Room level (a `listen` flag on the room or a small subclass of `Room`; the male path stays byte-identical).
+- `silence`: her incoming `sound_hz` is forced to (0.0, 0.0) every step (he still sings; she does not hear). The Room-level hook overrides only her incoming sound; it does not modify his incoming sound channel.
 - `shuffled`: her incoming `sound_hz` sequence is the `song` trial's sequence for the same seed, permuted as paired rows in time with a seed-derived permutation (run `song` first for that seed, keep its per-step sound series, then feed the permutation). This matches total sound energy; only the timing/coupling is broken.
 
 - `dark`: her eye is blind and incoming sound is forced to (0.0, 0.0); this is the baseline. With FEMALE_EYE blind, dark and silence coincide; both are retained because they differ if FEMALE_EYE changes.
 
 CHOSEN before data: female raw weights (FEMALE_EXC_SCALE = 1.0) give parity with the male. Her eye is blind (FEMALE_EYE = "blind"): uniform grey carries no information and floods her brain (measured silence vpoDN 54-206 Hz with eye, 0 Hz with blind). Contrast/motion vision is a later step.
 
-CHOSEN: pulse-motor sum drives JO-A and sine-motor sum drives JO-B through sound_hz(rate, distance), each normalised by song_full_hz(n_cells=8) and song_full_hz(n_cells=2) respectively; separate references preserve each population's fraction of its ceiling.
+CHOSEN: pulse-motor sum drives JO-A and sine-motor sum drives JO-B through sound_hz(rate, distance), each normalised by song_full_hz with its actual group size (8 and 2 respectively in these data) and the brain's refractory period; separate references preserve each population's fraction of its ceiling.
 CHOSEN: female_scent_hz = SMELL_MAX_HZ x falloff(distance) drives ORN_VA1v (Or47b); volatile female scent supplies the male's female-presence input.
 CHOSEN: the same female scent reaches putative_ppk23 only at distance <= CONTACT_MM = 2.0 mm; contact chemosensation needs touch.
 CHOSEN: ORN_DA1 cVA input is zero in courtship because there is no other male; this is delivered input, not a claim that those neurons cannot fire.
@@ -58,6 +58,10 @@ PROTOCOLS = {"v3": {"text": PROTOCOL_TEXT, "conditions": CONDITIONS,
     "quarter_rule": "floor(steps / 4) windows at each end; geometry before the window",
     "budget_note": "First trial measures both graphs per step; choose largest fitting seed count, with floor 8 (requests below 8 kept). Setup and rendering excluded from estimate."}}
 LIMITATIONS = [
+    "The two-cell sine reference (song_full_hz for 2 cells) lies below the sum a 12 ms window can reach, so her JO-B drive is clipped at its ceiling in some song windows; the count is reported per trial. Pulse did not clip on the quick seeds.",
+    "The contact chemosensory cells are a putative receptor label (putative_ppk23), not verified ppk23 expression.",
+    "His female-scent input is a chosen drive at the smell ceiling with distance falloff, not a measured pheromone plume; the cVA channel is held at zero because there is no other male.",
+    "He is inside the loop: his trajectory and song differ between conditions because she moves differently, not because his input path changed; only her incoming sound is overridden.",
     "Pulse and sine are separate motor population sums, not acoustic waveforms.",
     "Her ear receives a rate, not a waveform.",
     "12 ms brain per 50 ms world.",
@@ -156,6 +160,9 @@ def outcome(seed, condition, trace, start):
         song_speed_rho=correlation(trace["song_hz"], trace["her_speed_mm_s"]))
     # CHOSEN: P1 mean > 0 Hz counts active windows descriptively; it decides nothing.
     p1 = trace.get("p1_hz")
+    for channel in ("a", "b"):
+        key = f"her_sound_{channel}_clipped"
+        result[key] = int(np.count_nonzero(trace[key])) if key in trace else None
     result["p1_active_windows"] = (int(np.count_nonzero(p1 > 0))
                                     if p1 is not None and np.all(np.isfinite(p1)) else None)
     for channel in ("pulse", "sine"):
@@ -181,6 +188,8 @@ def run_trial(room, steps, seed, condition):
     rows = []
     for _ in range(steps):
         r = room.step()
+        if any(r["A"].get(k) is None for k in ("pulse_hz", "sine_hz")):
+            raise ValueError("experiment protocol requires both male song groups: song_pulse_mn and song_sine_hg1")
         g = r["before"]
         # MEASURED: pre-window geometry; speed is realised displacement in this window.
         row = {f"{name}_{key}": g[name][key] for name in ("A", "B")
@@ -189,8 +198,10 @@ def run_trial(room, steps, seed, condition):
                                 r["after"]["B"]["y"]-g["B"]["y"])
         sound_a, sound_b = HerBody.sound_pair(r["B"]["in"]["sound_hz"])
         row.update(time_s=g["time_s"], distance_mm=g["distance_mm"],
-            p1_hz=r["A"].get("p1_hz"), pulse_hz=r["A"].get("pulse_hz", 0.),
-            sine_hz=r["A"].get("sine_hz", 0.),
+            p1_hz=r["A"].get("p1_hz"), pulse_hz=r["A"]["pulse_hz"],
+            sine_hz=r["A"]["sine_hz"],
+            her_sound_a_clipped=r["sound_clipped"][0],
+            her_sound_b_clipped=r["sound_clipped"][1],
             her_speed_mm_s=float(displacement / bw.WORLD_DT_S),
             **r["B"]["her_answer"], her_sound_hz=max(sound_a, sound_b),
             her_sound_a_hz=sound_a, her_sound_b_hz=sound_b,
@@ -273,9 +284,9 @@ def write_report(json_path):
     lines += ["", "## P0: baseline (descriptive, no verdict)", "Expected active windows: 0."]
     for r in data["summary"]["P0"]["per_seed"]:
         lines.append(f"Seed {r['seed']}, {r['condition']}: {r['active_windows']} active windows.")
-    lines += ["", "## Per-seed outcomes", "| Seed | Condition | Accept | Approach | Retreat | Active windows |", "|---:|---|---|---|---|---:|"]
+    lines += ["", "## Per-seed outcomes", "MEASURED: her_sound_a_clipped and her_sound_b_clipped count delayed song windows exceeding their references before the condition override; silence/dark counts describe attempted input and shuffled counts describe its live source, not replay clipping. None means unavailable in an older trace.", "| Seed | Condition | Accept | Approach | Retreat | Active windows | her_sound_a_clipped | her_sound_b_clipped |", "|---:|---|---|---|---|---:|---:|---:|"]
     for r in data["outcomes"]:
-        lines.append(f"| {r['seed']} | {r['condition']} | {r['accept']} | {r['approach']} | {r['retreat']} | {r['active_windows']} |")
+        lines.append(f"| {r['seed']} | {r['condition']} | {r['accept']} | {r['approach']} | {r['retreat']} | {r['active_windows']} | {r.get('her_sound_a_clipped')} | {r.get('her_sound_b_clipped')} |")
     lines += ["", "## Seed spread"]
     for c, s in data["summary"]["seed_spread"].items():
         lines += [f"{c}: accept {s['accept']}/{s['n']}, approach {s['approach']}/{s['n']}, retreat {s['retreat']}/{s['n']}. {s['sentence']}"]

@@ -62,6 +62,8 @@ class BlindEye:
 class HerBody(FlyBody):
     """Carry female state; accept and ignore smell, hear JO, read an answer."""
 
+    listens_in_pairs = True
+
     def __init__(self, name, fb, eye, groups, motor, gains=None, sim_steps=SIM_STEPS,
                  seed=0, gaze=(FRAME_W / 2.0, FRAME_H / 2.0), sides=None):
         # Reuse FlyBody's step/state protocol without its male-only selectors.
