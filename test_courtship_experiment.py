@@ -14,6 +14,85 @@ import backrooms_world as bw
 from test_courtship import make_parts
 
 
+def test_v6_requires_baseline():
+    with pytest.raises(ValueError, match="requires --baseline"):
+        ce.main(["--protocol", "v6", "--quick", "1", "--out", "build/courtship_v6_quick"], room_factory=FakeRoom)
+
+
+def test_v6_intervention_inputs():
+    from test_courtship import female_fake
+    for condition in ("song", "gated", "p1drive", "mated", "mute"):
+        male, female = make_parts()[0], female_fake()
+        for fb in (male, female):
+            fb.type_names, fb.type_code = np.unique(fb.types, return_inverse=True)
+        room = ce.build_room(3, condition, brains=(male, female), annotations_path="build/missing")
+        female_gains = room.bodies["B"].gains
+        if condition == "gated":
+            expected = np.where(np.isin(female.type_names, ["pC1a", "pC1b", "pC1c", "pC1d", "pC1e"]), 0., 1.)
+            np.testing.assert_array_equal(female_gains, expected)
+        else:
+            assert female_gains is None
+        body = room.bodies["A"]
+        for _ in range(2):
+            drive = body.drive(np.zeros((bw.FRAME_H, bw.FRAME_W)), 0., 0.)
+            key = tuple(body.groups["P1"])
+            assert (key in drive) == (condition == "p1drive")
+            if condition == "p1drive":
+                np.testing.assert_array_equal(drive[key], np.full(len(key), 100.))
+        assert room.arena.geometry() == FakeRoom(3, "song").arena.geometry()
+
+
+def test_v6_fake_quick_and_mismatches(tmp_path):
+    base = tmp_path / "baseline"
+    assert ce.main(["--quick", "1", "--out", str(base)], room_factory=FakeRoom) == 0
+    jp = ce.paths(base)[0]
+    baseline = json.loads(jp.read_text(encoding="utf-8"))
+    out = tmp_path / "addendum"
+    argv = ["--protocol", "v6", "--quick", "1", "--baseline", str(jp), "--out", str(out)]
+    assert ce.main(argv, room_factory=FakeRoom) == 0
+    data = json.loads(ce.paths(out)[0].read_text(encoding="utf-8"))
+    assert [(r["seed"], r["condition"]) for r in data["outcomes"]] == [(s, c) for s in (0, 1) for c in ("gated", "p1drive")]
+    import hashlib
+    assert data["baseline"]["sha256"] == hashlib.sha256(jp.read_bytes()).hexdigest()
+    assert data["baseline"]["date"] == baseline["date"]
+    assert ce.main(["--reanalyse", str(ce.paths(out)[0])]) == 0
+    report = ce.paths(out)[3].read_text(encoding="utf-8")
+    for text in ("P9'", "P10'", "P13", "P14", "P15", "no outgoing synapses", "vision also drives", "every seed gives the same outcome"):
+        assert text in report
+    for mutation, message in (("seeds", "seeds"), ("start", "start"), ("brain", "brain classes"), ("steps", "steps")):
+        changed = json.loads(json.dumps(baseline))
+        if mutation == "seeds":
+            changed["seeds"] = [0]
+        elif mutation == "start":
+            changed["outcomes"][0]["start"]["A"]["x"] += 1.
+        elif mutation == "brain":
+            changed["environment"]["brain_classes"] = {"male": "flysim.FlyBrain", "female": "other.Brain"}
+        else:
+            changed["steps"] += 1
+        jp.write_text(json.dumps(changed), encoding="utf-8")
+        with pytest.raises(ValueError, match=message):
+            ce.main(argv, room_factory=FakeRoom)
+
+
+def test_v6_seed_paired_predictions_and_joint_verdict():
+    baseline = [trials(s)["song"][0] for s in (0, 1)]
+    rows = []
+    for b in baseline:
+        b.update(vpodn_hz=10.+b["seed"], pip10_hz=20.+b["seed"], delivered_rms=.1)
+        rows += [dict(b, condition="gated", vpodn_hz=b["vpodn_hz"]-3),
+                 dict(b, condition="p1drive", vpodn_hz=b["vpodn_hz"]+4, pip10_hz=b["pip10_hz"]+5, delivered_rms=.2)]
+    summary = ce.summarise_v6(rows[::-1], baseline[::-1])
+    for label, expected in (("P9'", 3), ("P13_command", 5), ("P13_rms", .1), ("P14", 4)):
+        assert summary["predictions"][label]["paired_differences"] == pytest.approx([expected, expected])
+        assert summary["predictions"][label]["verdict"] == "supported"
+    assert summary["P13_verdict"] == "supported"
+    for r in rows:
+        if r["condition"] == "p1drive":
+            r["delivered_rms"] = 0.
+    assert ce.summarise_v6(rows, baseline)["P13_verdict"] == "not supported"
+    assert len(summary["P10'"]) == len(summary["P15"]) == 4
+
+
 @pytest.mark.parametrize("seed", [0, 1, 3])
 def test_jittered_waveform_energy_and_silent_controls(seed):
     from song import PIP10_FULL, rms

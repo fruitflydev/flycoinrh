@@ -12,6 +12,29 @@ from backrooms_world import (FlyBody, FRAME_W, FRAME_H, SIM_STEPS, LIF_DT_MS,
 
 BANDS = ((100, 500), (500, 2500))
 SPSN_HZ = 50.0  # CHOSEN tonic unmated-state encoding; SpsP identity is uncertain.
+P1_DRIVE_HZ = 100.0
+
+
+def pc1_lesion(fb):
+    """Close the receptivity gate by hand, on exactly the five pC1 types."""
+    gains = np.ones(len(fb.type_names), dtype=np.float32)
+    gains[np.isin(fb.type_names, ["pC1a", "pC1b", "pC1c", "pC1d", "pC1e"])] = 0.
+    return gains
+
+
+def install_p1_drive(body):
+    """Add the chosen command intervention on every window without changing RNGs."""
+    original = body.drive
+    idx = body.groups["P1"]
+
+    def drive(frame, smell_hz, sound_hz):
+        result = original(frame, smell_hz, sound_hz)
+        if any(np.intersect1d(k, idx).size for k in result):
+            raise ValueError("P1 drive overlaps another input")
+        result[tuple(idx)] = np.full(len(idx), P1_DRIVE_HZ, np.float32)
+        return result
+
+    body.drive = drive
 FILTERS = [butter(4, band, btype="bandpass", fs=SAMPLE_RATE, output="sos")
            for band in BANDS]
 # CHOSEN: one second (including filter edges) of the full pure pulse reference.

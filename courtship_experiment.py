@@ -1,5 +1,7 @@
 """Seed-paired courtship: a male sings and a female graph answers."""
 import argparse
+import hashlib
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,7 @@ from courtship import BlindEye, HerBody, female_groups, female_motor, load_femal
 from flysim import FlyBrain
 from song import Singer, BIOLOGY
 from courtship import WaveEar
+from courtship import pc1_lesion, install_p1_drive, P1_DRIVE_HZ
 
 # CHOSEN: raw female weights match the male loading convention.
 FEMALE_EXC_SCALE = 1.0
@@ -98,6 +101,109 @@ LIMITATIONS = [
     "Distance changes include both bodies; approach is not an isolated female command.",
     "Retired v3 limitations: rate-only ear, motor-sum song, 12 ms brain windows, separate motor-reference clipping and shuffled-rate multiset no longer describe this protocol."]
 PUBLISHED = Path("build/courtship")
+V6_CONDITIONS = {"gated": (True, False), "p1drive": (True, False)}
+V6_PROTOCOL_TEXT = """Protocol v6 ADDENDUM. Only gated and p1drive are run; controls are the v5 song records paired by seed. Seed RNGs, start geometry, steps, brains and all other v5 song settings are retained.
+CHOSEN gated: identical to v5 song (virgin), with outgoing gains 0.0 on exactly pC1a, pC1b, pC1c, pC1d, pC1e; other gains one. a mated female cannot be encoded through her own sex-peptide pathway in this map, because the SPSN and SAG axons carry no synapses here; the receptivity gate is closed by hand instead, as a lesion, the way the tests lesion.
+CHOSEN p1drive: identical to v5 song, plus P1_DRIVE_HZ = 100 Hz to his P1 cells every window. asks whether the courtship command group can drive the song and her answer from above; it is an intervention, not a claim that P1 fires like this on its own.
+Predictions, fixed before data:
+- P9' she can be made to say no: her vpoDN mean rate, v5 song > gated (paired by seed), > 2 SE.
+- P10' rejection (descriptive): oviDN mean and retreat fraction, gated vs v5 song.
+- P13 the command can sing: his pIP10 mean rate and the delivered song RMS, p1drive > v5 song, both > 2 SE (joint verdict as P5).
+- P14 the command reaches her: her vpoDN mean rate, p1drive > v5 song, > 2 SE.
+- P15 (descriptive): his P1 active windows and LC10a in p1drive vs v5 song.
+- Seed spread: per condition, seeds with accept / no-accept and approach / retreat; say plainly when every seed gives the same outcome.
+"""
+PROTOCOLS["v6"] = dict(PROTOCOLS["v5"], text=V6_PROTOCOL_TEXT,
+    conditions=V6_CONDITIONS, budget_note="Run exactly the requested paired baseline seeds; no seed-count adaptation.")
+V6_LIMITATIONS = [
+    "Measured on the real graphs in GPU 250-step probes: the female brain-only FlyWire FAFB v783 map has no outgoing synapses from any of seven SpsP cells or either of two AN_SMP_2 (SAG) cells. Driving SpsP at 25-400 Hz or SAG at 25-200 Hz left pC1, vpoDN and oviDN unchanged within noise. v5 mated drives a dead switch: P9 cannot be supported for this anatomical reason. Gated is a manual lesion, not a mating-state encoding.",
+    "Measured male probes: silence gave P1 0 Hz; Or47b scent gave P1 24-50 Hz, putative_ppk23 contact 24-46 Hz, and LC10a vision 26 Hz. LC10a drive gave pIP10 111 Hz; direct P1 drive at 100 Hz gave pIP10 76 Hz. P1 can drive pIP10, but vision also drives it, explaining why mute did not lower pIP10 in the loop. These are motivating probes, not v6 outcomes.",
+    *LIMITATIONS,
+    "The baseline is a separate v5 run; its path and byte SHA256 identify the controls. P1 drive is an imposed intervention, not spontaneous firing. The retained v5 state-drive limitation describes the disconnected tonic input; v6 closes pC1 by hand."]
+
+
+def read_baseline(path, seeds, steps, brain):
+    if not path:
+        raise ValueError("v6 requires --baseline")
+    raw = Path(path).read_bytes()
+    data = json.loads(raw)
+    if data.get("protocol") != "v5" or data.get("seeds") != seeds or data.get("steps") != steps:
+        raise ValueError("baseline protocol, seeds or steps mismatch")
+    env = data.get("environment", {})
+    classes = env.get("brain_classes", {"male": env.get("brain_class"), "female": env.get("brain_class")})
+    if classes != {"male": brain, "female": brain}:
+        raise ValueError("baseline male/female brain classes mismatch")
+    for key, expected in (("female_exc_scale", FEMALE_EXC_SCALE), ("female_eye", FEMALE_EYE)):
+        if data.get(key) != expected:
+            raise ValueError("baseline settings mismatch: " + key)
+    song = [r for r in data["outcomes"] if r["condition"] == "song"]
+    if sorted(r["seed"] for r in song) != seeds:
+        raise ValueError("baseline song seeds mismatch")
+    for key in ("sim_steps", "world_dt_s", "state_carry", "accept_windows", "quarter_rule"):
+        if data.get("protocol_spec", {}).get(key) != PROTOCOLS["v5"][key]:
+            raise ValueError("baseline protocol settings mismatch: " + key)
+    for r in data["outcomes"]:
+        check_baseline_start(data, r["seed"], r["start"])
+    return data, dict(path=Path(os.path.relpath(path)).as_posix(), sha256=hashlib.sha256(raw).hexdigest(),
+                      date=data.get("date", "not recorded"))
+
+
+def check_baseline_start(baseline, seed, start):
+    expected = next(r["start"] for r in baseline["outcomes"] if r["seed"] == seed and r["condition"] == "song")
+    if expected != start:
+        raise ValueError(f"baseline start mismatch for seed {seed}")
+
+
+def summarise_v6(rows, baseline_rows):
+    indexed = {(r["seed"], r["condition"]): r for r in rows + baseline_rows}
+    seeds = sorted({r["seed"] for r in rows})
+    predictions = {}
+    for label, metric, condition, sign in (("P9'", "vpodn_hz", "gated", -1),
+        ("P13_command", "pip10_hz", "p1drive", 1), ("P13_rms", "delivered_rms", "p1drive", 1),
+        ("P14", "vpodn_hz", "p1drive", 1)):
+        diffs = [sign*(indexed[s, condition][metric]-indexed[s, "song"][metric]) for s in seeds]
+        mean = float(np.mean(diffs))
+        se = float(np.std(diffs, ddof=1)/np.sqrt(len(diffs))) if len(diffs) > 1 else None
+        predictions[label] = dict(mean=mean, se=se, n=len(diffs), paired_differences=diffs,
+            metric=metric, control="v5 song", direction=f"{condition} - v5 song" if sign == 1 else "v5 song - gated",
+            verdict=verdict(mean, se, len(diffs)))
+    spread = {}
+    for c in V6_CONDITIONS:
+        rr = [r for r in rows if r["condition"] == c]
+        counts = {k: sum(r[k] for r in rr) for k in ("accept", "approach", "retreat")}
+        same = len({tuple(r[k] for k in counts) for r in rr}) == 1
+        spread[c] = dict(n=len(rr), **counts, no_accept=len(rr)-counts["accept"],
+            accept_seeds=[r["seed"] for r in rr if r["accept"]], no_accept_seeds=[r["seed"] for r in rr if not r["accept"]],
+            sentence=f"{c}: every seed gives the same outcome." if same else f"{c}: outcomes differ across seeds.")
+    descriptive = {}
+    for label, c, metrics in (("P10'", "gated", ("ovidn_hz", "retreat_fraction")),
+                             ("P15", "p1drive", ("p1_active_windows", "lc10a_hz"))):
+        descriptive[label] = [{k: indexed[s, cc][k] for k in ("seed", "condition", *metrics)}
+                              for s in seeds for cc in (c, "song")]
+    joint = [predictions[k]["verdict"] for k in ("P13_command", "P13_rms")]
+    return dict(predictions=predictions, seed_spread=spread, **descriptive,
+                P13_verdict="supported" if all(v == "supported" for v in joint) else
+                "undetermined" if len(seeds) < 2 else "not supported")
+
+
+def write_v6_report(json_path, data):
+    lines = ["# Courtship v6 addendum", "", "Baseline: " + str(data["baseline"]),
+        "Quick runs are smoke tests, not the full experiment.", data["protocol_spec"]["text"],
+        "| Seed | Condition | Accept | Approach | Retreat | vpoDN Hz | pIP10 Hz | Delivered RMS |",
+        "|---:|---|---|---|---|---:|---:|---:|"]
+    for r in data["outcomes"]:
+        lines.append("| " + " | ".join(str(r[k]) for k in ("seed", "condition", "accept", "approach", "retreat", "vpodn_hz", "pip10_hz", "delivered_rms")) + " |")
+    for label, p in data["summary"]["predictions"].items():
+        lines.append(f"{label}: {p}")
+    lines.append("P13 joint verdict: " + data["summary"]["P13_verdict"])
+    for label in ("P10'", "P15"):
+        lines += [label + " (descriptive):", *[str(r) for r in data["summary"][label]]]
+    for s in data["summary"]["seed_spread"].values():
+        lines.append(str(s))
+    lines += ["", "## Limitations", *["- " + s for s in data["limitations"]]]
+    destination = Path(str(json_path).replace("_experiment.json", "_report.md"))
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
 
 
 class LuminanceEye:
@@ -117,7 +223,7 @@ class LuminanceEye:
 
 class ExperimentRoom(bw.Room):
     def configure(self, seed, condition, song_sound=None):
-        if condition not in CONDITIONS and condition != "dark":
+        if condition not in CONDITIONS and condition not in V6_CONDITIONS and condition != "dark":
             raise ValueError("unknown condition")
         self.condition = condition
         rng = np.random.default_rng(np.random.SeedSequence([seed, 905]))
@@ -222,6 +328,10 @@ def build_room(seed, condition, song_sound=None, brains=None,
         disclosure=("MEASURED: annotation columns and soma sides loaded by bodyId." if available
                     else "CHOSEN: missing annotations use luminance and unknown soma sides; no column or side identities are invented."))
     room.configure(seed, condition, song_sound)
+    if condition == "gated":
+        body.gains = pc1_lesion(female)
+    if condition == "p1drive":
+        install_p1_drive(room.bodies["A"])
     return room
 
 
@@ -410,6 +520,8 @@ def assert_not_published(prefix):
 
 def write_report(json_path):
     data = json.loads(Path(json_path).read_text(encoding="utf-8"))
+    if data["protocol"] == "v6":
+        return write_v6_report(json_path, data)
     environment = data.get("environment", {"brain_class": "flysim.FlyBrain", "torch_devices": {"male": None, "female": None}})
     lines = ["# Courtship experiment", "", f"Run: {len(data['seeds'])} seeds x {len(data['protocol_spec']['conditions'])} conditions x {data['steps']} steps; quick={data['quick']}.",
         "Quick runs are smoke tests; their two-seed verdicts are not the full ten-seed experiment.", "",
@@ -476,10 +588,11 @@ def write_report(json_path):
 def render_pil(path, data, traces):
     """The plume runner's existing Pillow fallback, with rate traces."""
     from PIL import Image, ImageDraw
-    img = Image.new("RGB", (420 * len(CONDITIONS), 740), "white")
+    conditions = data["protocol_spec"]["conditions"]
+    img = Image.new("RGB", (420 * len(conditions), 740), "white")
     draw = ImageDraw.Draw(img)
     colors = ("blue", "red", "green", "purple", "orange", "brown", "teal", "magenta", "navy", "gray")
-    for col, c in enumerate(CONDITIONS):
+    for col, c in enumerate(conditions):
         left = 50 + col * 420
         draw.text((left, 10), c + ": her solid / his dashed", fill="black")
         draw.rectangle((left, 50, left+320, 370), outline="black")
@@ -520,8 +633,9 @@ def save(prefix, data, traces):
         return
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(2, len(CONDITIONS), figsize=(4 * len(CONDITIONS), 7))
-    for col, c in enumerate(CONDITIONS):
+    conditions = data["protocol_spec"]["conditions"]
+    fig, axes = plt.subplots(2, len(conditions), figsize=(4 * len(conditions), 7))
+    for col, c in enumerate(conditions):
         for r in data["outcomes"]:
             if r["condition"] != c:
                 continue
@@ -545,13 +659,14 @@ def main(argv=None, room_factory=None):
     ap.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     ap.add_argument("--quick", type=int, choices=(0, 1), default=0)
     ap.add_argument("--brain", default="flysim.FlyBrain")
-    ap.add_argument("--out", default="build/courtship_v5_quick")
+    ap.add_argument("--baseline")
+    ap.add_argument("--out")
     ap.add_argument("--budget-min", type=float, default=150)
     ap.add_argument("--log")
     ap.add_argument("--reanalyse")
     ap.add_argument("--note")
     args = ap.parse_args(argv)
-    prefix = Path(args.out)
+    prefix = Path(args.out or f"build/courtship_{args.protocol}_quick")
     if args.reanalyse:
         jp = Path(args.reanalyse)
         if not str(jp).endswith("_experiment.json"):
@@ -569,13 +684,25 @@ def main(argv=None, room_factory=None):
         data["outcomes"] = [dict(r, **outcome(r["seed"], r["condition"],
             {k.split(f"s{r['seed']}_{r['condition']}_", 1)[1]: v for k, v in traces.items()
              if k.startswith(f"s{r['seed']}_{r['condition']}_")}, r["start"])) for r in data["outcomes"]]
-        data["summary"] = summarise(data["outcomes"])
+        if data["protocol"] == "v6":
+            baseline, identity = read_baseline(args.baseline or data["baseline"]["path"], data["seeds"], data["steps"], data["environment"]["brain_class"])
+            if identity["sha256"] != data["baseline"]["sha256"]:
+                raise ValueError("baseline SHA256 changed")
+            for r in data["outcomes"]:
+                check_baseline_start(baseline, r["seed"], r["start"])
+            data["summary"] = summarise_v6(data["outcomes"], baseline["outcomes"])
+        else:
+            data["summary"] = summarise(data["outcomes"])
         data["reanalysis_note"] = args.note
         save(prefix, data, traces)
         return 0
     n, steps = (2, 80) if args.quick else (args.seeds, args.steps)
     if n < 1 or steps < 4 or not np.isfinite(args.budget_min) or args.budget_min <= 0:
         ap.error("positive seeds and budget, and at least four steps required")
+    conditions = PROTOCOLS[args.protocol]["conditions"]
+    baseline = baseline_identity = None
+    if args.protocol == "v6":
+        baseline, baseline_identity = read_baseline(args.baseline, list(range(n)), steps, args.brain)
     factory = room_factory or build_room
     cls = bw.brain_class(args.brain)
     brains = None if room_factory else (cls(), load_female(exc_scale=FEMALE_EXC_SCALE, brain_class=cls))
@@ -587,8 +714,10 @@ def main(argv=None, room_factory=None):
     seed = 0
     while seed < n:
         sound = None
-        for c in CONDITIONS:
+        for c in conditions:
             room = factory(seed, c, song_sound=sound, brains=brains)
+            if baseline is not None:
+                check_baseline_start(baseline, seed, room.arena.geometry())
             t0 = time.perf_counter()
             row, trace = run_trial(room, steps, seed, c)
             elapsed = time.perf_counter() - t0
@@ -609,9 +738,14 @@ def main(argv=None, room_factory=None):
             traces.update({f"s{seed}_{c}_{k}": v for k, v in trace.items()})
         seed += 1
     data = dict(protocol=args.protocol, protocol_spec=PROTOCOLS[args.protocol], steps=steps,
-        seeds=list(range(n)), quick=bool(args.quick), outcomes=rows, summary=summarise(rows),
+        seeds=list(range(n)), quick=bool(args.quick), outcomes=rows,
+        summary=summarise_v6(rows, baseline["outcomes"]) if baseline is not None else summarise(rows),
         female_exc_scale=FEMALE_EXC_SCALE, female_eye=FEMALE_EYE,
-        ear=WaveEar().describe(), limitations=LIMITATIONS, budget_ladder=ladder, timing=timings, environment=environment, note=args.note)
+        ear=WaveEar().describe(), limitations=V6_LIMITATIONS if baseline is not None else LIMITATIONS,
+        budget_ladder=ladder, timing=timings, environment=environment, note=args.note,
+        date=datetime.now(timezone.utc).isoformat())
+    if baseline_identity is not None:
+        data["baseline"] = baseline_identity
     save(prefix, data, traces)
     return 0
 
