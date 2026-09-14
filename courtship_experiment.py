@@ -19,17 +19,21 @@ from courtship import WaveEar
 FEMALE_EXC_SCALE = 1.0
 # CHOSEN: uniform grey luminance carries no information and floods her brain.
 FEMALE_EYE = "blind"
+ENABLE_DARK = False
 CONDITIONS = {"song": (True, False), "jittered": (True, True),
-              "silence": (False, False), "mute": (True, False), "dark": (False, False)}
+              "silence": (False, False), "mute": (True, False), "noscent": (True, False)}
+if ENABLE_DARK:
+    CONDITIONS["dark"] = (False, False)
 DEFAULT_STEPS = 400
 ACCEPT_WINDOWS = 3
 PROTOCOL_TEXT = """CHOSEN before data: all five conditions share seed and arena start.
 - song: his previous measured pIP10 mean sets amplitude; per-cell pulse and sine motor means set mode.
-- jittered: same amplitude/mode mapping; each IPI is uniform 15-60 ms, seed-derived RNG (seed, 731). Closed-loop trajectories may differ; measured trial RMS ratios need not equal one.
+- jittered: replay the paired song first-recorded a, m and distance series; each IPI is uniform 15-60 ms, seed-derived RNG (seed, 731). CHOSEN: one trial-wide gain matches delivered RMS to song, including pulse-density differences; his live brain still runs and is recorded.
 - silence: her waveform is zero; his brain still runs.
 - mute: a lesion, the way the tests already lesion; it asks whether the song we synthesise depends on P1. Outgoing gains zero exactly on every dictionary P1 type; all other gains one.
-- dark: blind and silent; coincides with silence while FEMALE_EYE is blind.
-CHOSEN: pIP10 is the descending song command; no P1, no pIP10, no song. Amplitude clips pIP10 mean / (1000 / refractory_ms). No explicit P1 gate is applied.
+- noscent: identical to song with both Or47b and contact scent drives to him zero.
+- dark is excluded because it duplicates silence while FEMALE_EYE is blind; ENABLE_DARK can re-enable it.
+CHOSEN: pIP10 is the descending song command; zero pIP10 produces zero song. Dependence on P1 is tested, not assumed. Amplitude clips pIP10 mean / (1000 / refractory_ms). No explicit P1 gate is applied.
 CHOSEN: mode = pulse per-cell mean / (pulse per-cell mean + sine per-cell mean), zero if both zero. Waveform = a * (m * pulse + (1-m) * sine), scaled by existing distance falloff.
 CHOSEN: 22050 Hz waveform; 35 ms IPI, 4 ms Hann-windowed 250 Hz pulse, 150 Hz sine; phases and sample clock carry across windows.
 CHOSEN: JO-A 100-500 Hz, JO-B 500-2500 Hz, Butterworth order 4, sosfiltfilt with padlen 27 per 50 ms waveform. Each of ten 5 ms band-RMS windows drives SOUND_MAX_HZ * clip(RMS / RMS_FULL, 0, 1), equalised per soma side.
@@ -47,7 +51,9 @@ Predictions fixed before data (paired difference > 2 SE across seeds; P5 require
 - P4 approach: last-quarter distance, song < silence.
 - P5 command: pIP10 mean rate, song > mute, and delivered song RMS, song > mute (the causal chain P1 → pIP10 → song).
 - P6 answer follows command: her vpoDN, song > mute.
-- P0 baselines (descriptive): silence/dark/mute active windows per seed.
+- P8 presence: his P1 mean rate, song > noscent.
+- P8b (descriptive): his LC10a mean rate, song versus noscent; no verdict.
+- P0 baselines (descriptive): silence/mute active windows per seed.
 - P7 (descriptive): his P1 active windows, LC10a mean rate per window (275 cells), and lagged correlations of his song amplitude a and mode m with her previous distance and speed.
 - Seed spread: accept / approach / retreat per seed and condition; say plainly when every seed gives the same outcome.
 """ + "\n" + BIOLOGY
@@ -65,11 +71,12 @@ LIMITATIONS = [
     "Her ear now hears a waveform in 5 ms sub-windows; the brain runs in real time for her. His brain also runs in real time.",
     "Pulse rhythm and carriers are chosen synthesis, not measured spike timing or a biomechanical wing model.",
     "The fork's zero-phase filter uses the whole current 50 ms block; boundary effects and within-block lookahead remain. Sample bins alternate lengths at 22050 Hz.",
-    "Jitter changes pulse density as well as timing (mean IPI 37.5 ms versus 35 ms). Closed-loop amplitude, mode and distance can differ; realised RMS ratio is measured, not forced.",
+    "Jitter changes pulse density as well as timing (mean IPI 37.5 ms versus 35 ms). Replay holds source amplitude, mode and distance fixed; one trial-wide gain matches energy. Local envelopes and spectral energy can still differ.",
     "The contact chemosensory cells are a putative receptor label (putative_ppk23), not verified ppk23 expression.",
     "His female-scent input is a chosen drive at the smell ceiling with distance falloff, not a measured pheromone plume; the cVA channel is held at zero because there is no other male.",
     "He is inside the loop: his trajectory and song can change when she moves differently. Mute additionally changes his P1 outgoing gains.",
     "vpoDN identified as DNp37 by alias, 2 cells; pC1a-e 10 cells. No pheromone channel to her.",
+    "In closed-loop 50 ms windows, silencing P1 outputs did not reduce pIP10 in the v4 smoke run; pIP10 is driven mainly by AVLP717m and aIPg7 in this graph, so the song dependence on P1 is not established here.",
     "Male P1 membership is the dictionary's uncertain 86-cell group. Outgoing-gain lesion need not silence P1's own spikes.",
     "No adaptation mechanism was added on his side; correlation does not establish causation.",
     "CHOSEN: female raw weights for parity; female eye blind. Earlier luminance silence measured vpoDN 54-206 Hz; contrast/motion vision remains a later step.",
@@ -97,7 +104,7 @@ class LuminanceEye:
 
 class ExperimentRoom(bw.Room):
     def configure(self, seed, condition, song_sound=None):
-        if condition not in CONDITIONS:
+        if condition not in CONDITIONS and condition != "dark":
             raise ValueError("unknown condition")
         self.condition = condition
         body = self.bodies["A"]
@@ -107,8 +114,35 @@ class ExperimentRoom(bw.Room):
             sine_cells=len(groups.get("song_sine_hg1", range(2))),
             pip10_full=1000/getattr(getattr(getattr(body, "fb", None), "p", None), "refractory", 2.2))
         self.previous_rates = dict(pip10_hz=0., pulse_hz=0., sine_hz=0.)
+        self.replay = []
+        self.replay_step = 0
+        if condition == "jittered":
+            if song_sound is None:
+                raise ValueError("jittered requires the paired song trace first")
+            for a, m, d in zip(song_sound["a"], song_sound["m"], song_sound["distance_mm"]):
+                wave = self.singer.render(a*self.singer.pip10_full,
+                    m*self.singer.pulse_cells, (1-m)*self.singer.sine_cells,
+                    attenuation=self.channels.falloff(d))
+                self.replay.append((wave, dict(self.singer.record, source_distance_mm=float(d))))
+            raw = np.sqrt(np.mean([r[1]["delivered_rms"]**2 for r in self.replay]))
+            target = np.sqrt(np.mean(song_sound["delivered_rms"]**2))
+            if raw == 0 and target > 0:
+                raise ValueError("cannot energy-match an empty jittered waveform")
+            gain = float(target/raw) if raw else 1.
+            for wave, record in self.replay:
+                wave *= gain
+                record.update(delivered_rms=float(np.sqrt(np.mean(wave**2))), replay_gain=gain)
+
+    def listener_scent(self, smell):
+        if self.condition == "noscent":
+            return {"A": {"female_scent_orn": 0., "female_scent_contact": 0., bw.SMELL_KEY: 0.}, "B": 0.}
+        return smell
 
     def listener_sound(self, sound_hz):
+        if self.condition == "jittered":
+            wave, self.singer.record = self.replay[self.replay_step]
+            self.replay_step += 1
+            return wave.copy()
         wave = self.singer.render(**self.previous_rates,
                                   attenuation=self.channels.falloff(self.arena.distance()))
         if self.condition in ("silence", "dark"):
@@ -197,7 +231,7 @@ def outcome(seed, condition, trace, start):
         for label, key in (("distance", "distance_mm"), ("speed", "her_speed_mm_s")):
             result[f"{channel}_{label}_lagged_rho"] = (
                 correlation(values[1:], trace[key][:-1]) if values is not None else None)
-    for key in ("pip10_hz", "lc10a_hz", "a", "m"):
+    for key in ("p1_hz", "pip10_hz", "lc10a_hz", "a", "m"):
         result[key] = float(np.mean(trace[key])) if key in trace else None
     result["delivered_rms"] = float(np.sqrt(np.mean(trace["delivered_rms"]**2))) if "delivered_rms" in trace else None
     for channel in ("a", "m"):
@@ -245,6 +279,8 @@ def run_trial(room, steps, seed, condition):
                    source_pip10_hz=wave.get("pip10_hz", 0.),
                    a=wave.get("a", 0.), m=wave.get("m", 0.),
                    delivered_rms=wave.get("delivered_rms", 0.),
+                   source_distance_mm=wave.get("source_distance_mm", g["distance_mm"]),
+                   replay_gain=wave.get("replay_gain", 1.),
                    her_brain_s=r["B"].get("brain_s", 0.))
         rows.append(row)
     trace = {k: np.asarray([r[k] for r in rows], dtype=float) for k in rows[0]}
@@ -276,7 +312,9 @@ def summarise(rows):
         ("P4", "last_distance_mm", "silence", -1),
         ("P5_command", "pip10_hz", "mute", 1),
         ("P5_rms", "delivered_rms", "mute", 1),
-        ("P6", "vpodn_hz", "mute", 1)):
+        ("P6", "vpodn_hz", "mute", 1),
+        ("P8", "p1_hz", "noscent", 1),
+        ("P8b", "lc10a_hz", "noscent", 1)):
         diffs = [sign * (indexed[s, "song"][key] - indexed[s, control][key])
                  for s in sorted({r["seed"] for r in rows})]
         mean = float(np.mean(diffs))
@@ -284,6 +322,8 @@ def summarise(rows):
         predictions[label] = dict(mean=mean, se=se, n=len(diffs), paired_differences=diffs,
             metric=key, control=control, direction="song - control" if sign == 1 else "control - song",
             verdict=verdict(mean, se, len(diffs)))
+        if label == "P8b":
+            predictions[label]["verdict"] = "descriptive; no verdict"
     spread = {}
     for c in CONDITIONS:
         rr = [r for r in rows if r["condition"] == c]
@@ -347,7 +387,7 @@ def write_report(json_path):
     lines += ["", f"P5 joint verdict: {data['summary']['P5_verdict']}.",
               "MEASURED jittered/song RMS ratios: " + str(data["summary"]["rms_ratios"]),
               "CHOSEN ear settings: " + str(data.get("ear", WaveEar().describe()))]
-    lines.append("The realised RMS ratios include condition-dependent command, mode and distance; "
+    lines.append("Replay uses song command, mode and distance with a disclosed trial-wide energy gain; "
                  "P3 cannot isolate timing when energy differs substantially. Mute tests the "
                  "command chain; its name does not guarantee silence.")
     if data.get("timing"):
@@ -497,7 +537,7 @@ def main(argv=None, room_factory=None):
                 ladder["first_step_s"] = elapsed / steps
                 n = ladder["selected"]
             if c == "song":
-                sound = np.column_stack((trace["her_sound_a_hz"], trace["her_sound_b_hz"]))
+                sound = trace
             rows.append(row)
             traces.update({f"s{seed}_{c}_{k}": v for k, v in trace.items()})
         seed += 1

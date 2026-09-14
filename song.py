@@ -33,7 +33,7 @@ def rms(wave):
 class Singer:
     """Carry sample clock, carrier phase and pulse schedule across world steps.
 
-    CHOSEN: pIP10 is the descending song command; no P1, no pIP10, no song.
+    CHOSEN: pIP10 is the descending song command; zero pIP10 produces zero song; dependence on P1 is not assumed.
     CHOSEN: mode is the fraction of the two per-cell motor means due to pulse.
     A 50 ms window alternates 1103/1102 samples; no half-sample clock drift.
     """

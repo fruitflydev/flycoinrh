@@ -960,6 +960,8 @@ class Room:
         if paired_listener:
             groups = dict(groups)
             groups["female_scent_orn"] = fb.where(type_re="^ORN_VA1v$")
+            # Thistle et al. 2012 Cell 149:1140; Toda et al. 2012 Cell Reports 1:599.
+            # Figures not verified; putative receptor label, not verified ppk23 expression.
             groups["female_scent_contact"] = fb.where(receptor="^putative_ppk23$")
         self.bodies = {
             "A": FlyBody("A", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 1, sides=sides,
@@ -992,6 +994,10 @@ class Room:
         """Room-level control point for the sound delivered to B."""
         return sound_hz
 
+    def listener_scent(self, smell):
+        """Identity hook for paired scent controls; default inputs are unchanged."""
+        return smell
+
     def step(self):
         t0 = time.time()
         a, b = self.arena.A, self.arena.B
@@ -1013,6 +1019,7 @@ class Room:
             smell = {"A": {"female_scent_orn": smell,
                             "female_scent_contact": smell if d <= CONTACT_MM else 0.,
                             SMELL_KEY: 0.}, "B": 0.}
+        smell = self.listener_scent(smell)
         heard["B"] = self.listener_sound(heard["B"])
         seen = {"A": self.channels.ellipse_of(a, b), "B": self.channels.ellipse_of(b, a)}
         rec = {}
