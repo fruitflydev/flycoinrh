@@ -538,6 +538,23 @@ What is chosen or missing:
 
 [The first run, with a rate ear](build/courtship_v3_report.md), is kept for comparison.
 
+This is part one; the loop is built end to end and three of its five steps hold
+under the rules above. What comes next, in the open, on top of this branch:
+
+- **Cooler brains.** Both maps run near their firing ceiling, which is why small
+  signals such as rhythm and her scent get lost. Probes suggest a lower
+  excitation scale makes pIP10 depend on P1; that is a calibration to be chosen
+  before data and run as a new protocol, not a fix to this one.
+- **A no with synapses.** Her sex-peptide axons end without synapses in this map.
+  The candidates for a state that reaches pC1 or oviDN through wiring that is
+  actually there will be read off the graph and pre-registered.
+- **His adaptation, through his eye only.** Whether his song mode follows what
+  LC10a saw a window earlier, with her in view for the whole trial.
+- **More than one male.** The backrooms already step four bodies; a room with one
+  female and several singers asks who she walks beside.
+
+Each of these gets its own preregistered protocol and its own published record.
+
 ## Hosting it
 
 The roaming service runs as a single container. Build the graph first, so
