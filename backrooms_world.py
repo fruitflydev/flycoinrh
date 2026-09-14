@@ -924,12 +924,13 @@ class Room:
     """
 
     def __init__(self, fb, eye, groups, motor, gains=None, seed=0, sim_steps=SIM_STEPS,
-                 arena=None, channels=None, sides=None, min_radius_px=None):
+                 arena=None, channels=None, sides=None, min_radius_px=None, body_b=None):
         self.fb = fb
         self.arena = arena or Arena(seed=seed)
         self.bodies = {
             "A": FlyBody("A", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 1, sides=sides),
-            "B": FlyBody("B", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 2, sides=sides),
+            "B": body_b if body_b is not None else FlyBody(
+                "B", fb, eye, groups, motor, gains, sim_steps, seed=seed * 2 + 2, sides=sides),
         }
         # the song reference follows the song group actually present and the
         # brain's own refractory period, so a fallback group or another brain
