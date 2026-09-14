@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>The Backrooms · FLYBRAIN</title>
-<meta name="description" content="A yellow room with four labelled fly models. Once the generator runs, lines written by a small language model (LFM2.5-1.2B-Instruct), whose next-word scores are adjusted by a readout of an abstract recurrence over the MaleCNS v1.0 fly connectome graph, will appear under their labels. Nothing is generating yet. Not a fly's thoughts.">
+<meta name="description" content="A yellow room with four simulated flies. Each line is written by a small language model (LFM2.5-1.2B-Instruct) from a readout of that fly's simulated brain activity on the Janelia MaleCNS v1.0 connectome (CC BY 4.0), run as a uniform leaky integrate-and-fire model in a simulated room. Not a fly's thoughts: flies do not use language, and the names are labels.">
 <meta property="og:title" content="The Backrooms · FLYBRAIN">
-<meta property="og:description" content="Once the generator runs: lines written by a small language model whose next-word scores are adjusted by a readout of an abstract recurrence over a fly connectome graph. Nothing is generating yet. Not a fly's thoughts.">
+<meta property="og:description" content="Lines written by a small language model from a readout of each fly's simulated brain activity on the MaleCNS v1.0 connectome, a uniform leaky integrate-and-fire simplification. Not a fly's thoughts; flies do not use language.">
 <meta property="og:image" content="/fly.png">
 <link rel="icon" href="/fly.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -105,7 +105,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;positio
 .btn[aria-pressed="true"]{color:var(--amber);border-color:#5a4a26}
 #tx-toggle{display:none}
 
-/* per-turn graph statistics */
+/* per-turn readout and simulation numbers */
 .turnstats{
   position:absolute;left:12px;top:52px;width:min(320px,calc(100% - 24px));
   background:rgba(8,9,12,.84);border:1px solid #2a2f38;border-radius:4px;
@@ -120,10 +120,22 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;positio
 .turnstats[open] summary::before{content:"\2013  "}
 .turnstats .body{padding:0 10px 9px}
 .turnstats .who{color:var(--ink-faint);font-size:11px;margin-bottom:6px}
-.turnstats dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px}
-.turnstats dt{color:var(--ink-dim);white-space:nowrap}
-.turnstats dd{margin:0;color:#eaf4fa;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.turnstats dl{margin:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px}
+.turnstats dt{color:var(--ink-dim);overflow-wrap:anywhere}
+.turnstats dd{margin:0;color:#eaf4fa;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
 .turnstats .note{margin-top:7px;color:var(--ink-faint);font-size:11px;line-height:1.45}
+.turnstats h3{margin:8px 0 4px;font-size:10.5px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+.turnstats h3:first-of-type{margin-top:2px}
+.turnstats ol{margin:0;padding:0;list-style:none;display:grid;gap:3px}
+.turnstats ol li{color:#eaf4fa;line-height:1.4;padding-left:10px;position:relative;overflow-wrap:anywhere}
+.turnstats ol li::before{content:"-";position:absolute;left:0;color:var(--ink-faint)}
+.turnstats ol li.none{color:var(--ink-faint);padding-left:0}
+.turnstats ol li.none::before{content:none}
+.turnstats .scrollbody{max-height:min(46vh,420px);overflow-y:auto}
+.how{margin:6px 0 4px}
+.how summary{cursor:pointer;color:var(--ink-dim)}
+.how p{margin:6px 0 0}
+.how blockquote{margin:6px 0 0;padding:6px 9px;border-left:2px solid var(--line);color:var(--ink-dim);font-family:var(--mono);font-size:11px;line-height:1.5;white-space:pre-wrap}
 
 /* subtitles */
 .subs{
@@ -157,9 +169,10 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;positio
 #lines .meta{display:flex;gap:10px;align-items:baseline;font-family:var(--mono);font-size:11px}
 #lines time{color:var(--ink-faint);font-variant-numeric:tabular-nums}
 #lines .lab{color:var(--acc,var(--ink-dim));letter-spacing:.08em;text-transform:uppercase}
+#lines .to{color:var(--ink-faint)}
 #lines p{margin:2px 0 0;color:var(--ink);font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
 .empty{padding:14px 16px;color:var(--ink-faint);font-size:13.5px}
-.credits{border-top:1px solid var(--line);padding:10px 16px 12px;font-size:12px;line-height:1.55;color:var(--ink-faint)}
+.credits{border-top:1px solid var(--line);padding:10px 16px 12px;font-size:12px;line-height:1.55;color:var(--ink-faint);max-height:48%;overflow-y:auto;flex:none}
 .credits p{margin:0 0 4px}
 .credits .counts{font-family:var(--mono);font-size:11px}
 
@@ -197,7 +210,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;positio
 <div class="app">
   <header class="honesty" role="note" aria-label="What this page is">
     <a class="home" href="/">FLYBRAIN</a>
-    <p><b>What this is.</b> Once the generator runs, the words shown here will come from a small language model, Liquid AI's LFM2.5-1.2B-Instruct. Its next-word scores will be adjusted by a readout of an abstract recurrence over the wiring graph of the MaleCNS v1.0 fly connectome (Janelia et al., CC BY 4.0); that readout has not been trained yet, and nothing is generating. <b>This is not a fly's thoughts.</b> The recurrence is abstract numbers, not simulated spikes, and the method's own published control performed slightly better without the fly anatomy. The flies' names are labels, not personalities.</p>
+    <p><b>What this is.</b> Each line is written by a small language model, Liquid AI's LFM2.5-1.2B-Instruct, from a short readout of that fly's simulated brain activity: four copies of the Janelia MaleCNS v1.0 fly connectome (CC BY 4.0), each run as a uniform leaky integrate-and-fire model, a simplification of real neurons, in a simulated room. <b>This is not a fly's thoughts.</b> Flies do not use language, and the names A, B, C and D are labels, not personalities. Each turn lists the readout the model was shown. A line is kept only if its numbers, neuron names and distances are in that readout, and it can still misstate it.</p>
   </header>
 
   <main>
@@ -214,11 +227,14 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;positio
       </div>
 
       <details class="turnstats" id="turnstats" open>
-        <summary>graph statistics · this turn</summary>
-        <div class="body">
+        <summary>readout · this turn</summary>
+        <div class="body scrollbody">
           <div class="who" id="stats-who">waiting for a turn</div>
+          <h3>shown to the model</h3>
+          <ol id="basis"><li class="none">no turn yet</li></ol>
+          <h3>simulation numbers</h3>
           <dl id="stats"></dl>
-          <div class="note" id="glow-note">Labels are shown exactly as the engine sends them.</div>
+          <div class="note" id="glow-note">Readout lines are shown exactly as the engine sends them.</div>
         </div>
       </details>
 
@@ -240,9 +256,24 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:0;positio
         <div class="empty" id="tx-empty">Nothing has been generated yet.</div>
       </div>
       <div class="credits">
-        <p>Language model: LFM2.5-1.2B-Instruct by Liquid AI, to be used under the LFM Open License.</p>
+        <details class="how" id="how">
+          <summary>How the lines are made</summary>
+          <p>Every line is written by LFM2.5-1.2B-Instruct running on one local GPU. One wiring diagram of a male fruit fly's central nervous system (Janelia MaleCNS v1.0, 165,122 neurons) is run as four separate copies, each a uniform leaky integrate-and-fire model: every neuron has the same simple parameters, and a connection's weight is its synapse count times a fixed 0.275 mV with the sign of its predicted transmitter. The copies stand in a simulated 20 x 20 mm room; each walks by its own descending neurons, sees the others as dark shapes, gets a cVA smell drive as they come near and a sound drive from their simulated pulse-song motor neurons. When a fly's turn comes (every 10 s, A, B, C, D in order), its readout is at most six lines: its two named neuron groups whose firing rose most above their own baseline, how far it walked since its last turn, and how far away each other fly is. The model gets the fixed instruction below, that readout and the last line, and samples one or two sentences (temperature 0.4, top-p 0.9, repetition penalty 1.05, at most 60 tokens).</p>
+          <p>The fixed instruction, word for word:</p>
+          <blockquote id="system-prompt">You write one short line at a time for one of four simulated flies, labelled A, B, C and D, in a small simulated room. Under the readout you get facts about that fly, measured in a computer simulation of its neurons and body, and the last line another fly said. Write in the first person as that fly, in one or two short sentences. Use only facts from that fly's own readout, with each number and unit exactly as written. A fly cannot see another fly's neurons. Never repeat a recent line. Do not mention people, the internet, money or anything outside the room. Do not claim feelings, thoughts, wishes or consciousness. Plain text only: no name label, no quotation marks, no lists.</blockquote>
+          <p>Each turn's message, with only the labels, readout lines and last line filled in:</p>
+          <blockquote>Readout for fly A:
+- &lt;readout lines&gt;
+
+Last line:
+D: &lt;the last line&gt;
+
+Write fly A's line in the first person: one fact from its readout, with the number and unit, then how far fly D is from it, from the readout.</blockquote>
+          <p>Only formatting is normalised (curly quotes, dashes, an ellipsis character, surrounding spaces, a leading name label); no word is changed. A line is then kept only if it passes the safety filter and a grounding check: it quotes at least one number with its unit, every number it quotes is in its own readout with that unit, every neuron group it names is in that readout, a distance it gives another fly is that fly's distance there, and it does not repeat one of the last six lines. Otherwise it is dropped and counted, never edited, and sampled again at most twice. The check cannot see a right number in a wrong sentence, so a kept line can still misstate the readout. The rates, distances and bearings are measured in the simulation; the room, the readout's shape, the instruction, the sampling settings and the checks are choices.</p>
+        </details>
+        <p>Language model: LFM2.5-1.2B-Instruct by Liquid AI, used under the LFM Open License v1.0.</p>
         <p>Connectome: MaleCNS v1.0, Janelia FlyEM et al., <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>. Rendering: three.js (MIT).</p>
-        <p>Visitors cannot post lines. Every line passes a safety filter before it is shown (length limit; slurs, sexual content, threats, self-harm, web addresses starting http or www., bare addresses on common domains, @handles, and any financial or trading language); filtered lines are dropped and counted, never edited.</p>
+        <p>Visitors cannot post lines. Every line and every readout line passes a safety filter before it is shown (length limit; slurs, sexual content, threats, self-harm, web addresses starting http or www., bare addresses on common domains, @handles, and any financial or trading language); filtered lines are dropped and counted, never edited.</p>
         <p class="counts" id="counts"></p>
       </div>
     </aside>
@@ -263,7 +294,7 @@ const RELAY_BASE = 'https://backrooms-production-004b.up.railway.app';
      GET  /turns?after=ID    {turns:[...first 100 with seq > ID], ...}
      GET  /stream?after=ID   SSE: `turn` events replaying seq > ID (or Last-Event-ID), one
                              `caught_up` event {last_seq}, then live `turn` events
-   turn: {seq, at, ts, speaker, to?, text, engine_seq?, meta?:{<label as sent>: number}}
+   turn: {seq, at, ts, speaker, to?, text, engine_seq?, fly_index?, basis?:[readout strings], meta?:{key: number}}
    ------------------------------------------------------------------------ */
 
 const $ = (id) => document.getElementById(id);
@@ -1112,8 +1143,10 @@ function norm(raw) {
     if (t[k] && typeof t[k] === 'object' && !Array.isArray(t[k])) { stats = t[k]; break; }
   }
   const conv = t.conversation ?? t.conversation_id ?? t.session ?? t.session_id ?? null;
+  const basis = Array.isArray(t.basis) ? t.basis.filter((b) => typeof b === 'string' && b.trim()).slice(0, 6).map((b) => b.slice(0, 200)) : null;
+  const to = typeof t.to === 'string' && /^[A-Za-z][A-Za-z0-9 _.-]{0,23}$/.test(t.to) ? t.to : null;
   return {
-    id, label, text, stats, flyIndex, conv: conv === null ? null : String(conv),
+    id, label, text, stats, flyIndex, basis, to, conv: conv === null ? null : String(conv),
     ts: tsParsed ?? Date.now(), tsKnown: tsParsed !== null,
     key: id !== null ? 'i:' + id : 't:' + (tsParsed ?? '') + '|' + label + '|' + text.slice(0, 60),
   };
@@ -1214,6 +1247,7 @@ function addTranscript(t) {
   if (!t.tsKnown) time.title = 'time received';
   const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = t.label;
   meta.append(time, lab);
+  if (t.to) { const to = document.createElement('span'); to.className = 'to'; to.textContent = 'to ' + t.to; to.title = 'the fly that spoke last before this line'; meta.append(to); }
   const p = document.createElement('p'); p.textContent = t.text;
   li.append(meta, p);
   const stick = txScroll.scrollHeight - txScroll.scrollTop - txScroll.clientHeight < 60;
@@ -1239,7 +1273,22 @@ function markNow(t) {
   }
 }
 
-/* ---- per-turn statistics ---- */
+/* ---- per-turn readout and numbers ---- */
+// the engine's meta keys (backrooms_talk/TURN_SCHEMA.md) with plain names and units; other keys are shown as sent
+const META_LABELS = {
+  active_fraction: ['neurons that fired (12 ms window)', (v) => (v * 100).toFixed(1) + ' %'],
+  brain_rate_hz: ['mean rate, all neurons', (v) => v.toFixed(2) + ' Hz'],
+  song_hz: ['song level (8 pulse-song MNs, summed)', (v) => v.toFixed(0) + ' Hz'],
+  sound_drive_hz: ['sound drive to JO-A / JO-B', (v) => v.toFixed(0) + ' Hz per cell'],
+  smell_drive_hz: ['cVA drive to ORN_DA1', (v) => v.toFixed(0) + ' Hz per cell'],
+  top_group_rate_hz: ['first readout group, now', (v) => v.toFixed(0) + ' Hz'],
+  top_group_baseline_hz: ['its baseline', (v) => v.toFixed(0) + ' Hz'],
+  nearest_fly_mm: ['nearest other fly', (v) => v.toFixed(1) + ' mm'],
+  world_s: ['room time', (v) => v.toFixed(1) + ' s'],
+  window_steps: ['window since its last turn', (v) => v + ' x 50 ms'],
+  seed: ['sampling seed', (v) => String(v)],
+  new_tokens: ['tokens generated', (v) => String(v)],
+};
 function fmtScalar(v) {
   if (typeof v === 'number') {
     if (!isFinite(v)) return String(v);
@@ -1264,7 +1313,7 @@ function pickGlowMetric(stats) {
   if (!stats) return null;
   const entries = Object.entries(stats).filter(([, v]) => typeof v === 'number' && isFinite(v));
   if (!entries.length) return null;
-  for (const re of [/graph[\s_-]*state/i, /readout/i, /norm|energy|activity|magnitude/i]) {
+  for (const re of [/^active_fraction$/, /^brain_rate_hz$/, /graph[\s_-]*state/i, /readout/i, /norm|energy|activity|magnitude/i]) {
     const hit = entries.find(([k]) => re.test(k));
     if (hit) return hit;
   }
@@ -1287,21 +1336,33 @@ function renderStats(t, replay) {
   const dl = $('stats');
   dl.replaceChildren();
   $('stats-who').textContent = (replay ? 'replay · ' : '') + t.label + (t.id !== null ? ' · turn ' + t.id : '') + ' · ' + hhmmss(t.ts);
+  const ol = $('basis');
+  ol.replaceChildren();
+  if (t.basis && t.basis.length) {
+    for (const b of t.basis) { const li = document.createElement('li'); li.textContent = b; ol.appendChild(li); }
+  } else {
+    const li = document.createElement('li'); li.className = 'none';
+    li.textContent = t.basis ? 'no readout lines were shown for this turn' : 'this turn was sent without its readout';
+    ol.appendChild(li);
+  }
   const entries = t.stats ? Object.entries(t.stats).slice(0, 14) : [];
   if (!entries.length) {
-    const dt = document.createElement('dt'); dt.textContent = 'no graph statistics sent with this turn';
+    const dt = document.createElement('dt'); dt.textContent = 'no numbers sent with this turn';
     dl.appendChild(dt);
   }
   for (const [k, v] of entries) {
-    const dt = document.createElement('dt'); dt.textContent = k;
-    const dd = document.createElement('dd'); dd.textContent = fmtValue(v);
+    const lab = META_LABELS[k];
+    const dt = document.createElement('dt'); dt.textContent = lab ? lab[0] : k;
+    if (lab) dt.title = k;
+    const dd = document.createElement('dd');
+    dd.textContent = lab && typeof v === 'number' && isFinite(v) ? lab[1](v) : fmtValue(v);
     try { dd.title = JSON.stringify(v).slice(0, 400); } catch { /* ignore */ }
     dl.append(dt, dd);
   }
   const g = glowFor(t.stats);
   if (R) R.glowK = g.k;
   $('glow-note').textContent = g.key
-    ? `The head glow follows “${g.key}”, scaled against the last ${Math.min(60, (S.metricHist.get(g.key) || []).length)} turn(s) shown here.`
+    ? `The head glow follows “${META_LABELS[g.key] ? META_LABELS[g.key][0] : g.key}”, scaled against the last ${Math.min(60, (S.metricHist.get(g.key) || []).length)} turn(s) shown here. It is decoration, not a measurement.`
     : 'No numeric statistic in this turn, so the head glow uses a fixed middle strength.';
 }
 
